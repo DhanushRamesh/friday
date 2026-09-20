@@ -18,6 +18,7 @@ import (
 
 	"github.com/DhanushRamesh/friday/internal/config"
 	"github.com/DhanushRamesh/friday/internal/logging"
+	"github.com/DhanushRamesh/friday/internal/storage"
 )
 
 func main() {
@@ -55,9 +56,26 @@ func run() error {
 	// misbehaving deployment is which settings it actually loaded.
 	logger.Info("configuration loaded", slog.Any("config", cfg))
 
+	// Fail at startup rather than on the first request. A server that accepts
+	// traffic it cannot serve is harder to diagnose than one that refuses to
+	// start and says why.
+	db, err := storage.Open(context.Background(), cfg.Database, logger.Logger, storage.Options{
+		// Statements carry user messages and tool output once tasks exist, so
+		// they are recorded only on a developer machine.
+		LogStatements: !cfg.Env.IsProduction(),
+	})
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			logger.Error("closing database", slog.Any("error", err))
+		}
+	}()
+
 	srv := &http.Server{
 		Addr:              cfg.Server.Addr,
-		Handler:           routes(logger.Logger, cfg.Server.RequestTimeout),
+		Handler:           routes(logger.Logger, cfg.Server.RequestTimeout, db),
 		ReadHeaderTimeout: cfg.Server.ReadHeaderTimeout,
 		IdleTimeout:       cfg.Server.IdleTimeout,
 	}
@@ -102,7 +120,13 @@ func serve(srv *http.Server, logger *logging.Logger, shutdownTimeout time.Durati
 	return nil
 }
 
-func routes(logger *slog.Logger, requestTimeout time.Duration) http.Handler {
+// pinger is the part of the database handle the readiness check needs. Taking
+// an interface keeps routes testable without a live database.
+type pinger interface {
+	Ping(ctx context.Context) error
+}
+
+func routes(logger *slog.Logger, requestTimeout time.Duration, db pinger) http.Handler {
 	r := chi.NewRouter()
 
 	// Order matters: RequestID must precede requestContext, which must precede
@@ -114,11 +138,45 @@ func routes(logger *slog.Logger, requestTimeout time.Duration) http.Handler {
 	r.Use(recoverer(logger))
 	r.Use(middleware.Timeout(requestTimeout))
 
+	// Liveness: is the process up. This must not touch dependencies, or a
+	// database blip would have the supervisor restart a healthy server.
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(r.Context(), w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
+	// Readiness: can the process actually serve traffic.
+	r.Get("/ready", readyHandler(logger, db))
+
 	return r
+}
+
+// readinessTimeout bounds the dependency checks. It is short because a load
+// balancer polling this will not wait, and a slow answer is a failed one.
+const readinessTimeout = 2 * time.Second
+
+func readyHandler(logger *slog.Logger, db pinger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), readinessTimeout)
+		defer cancel()
+
+		checks := map[string]string{"database": "ok"}
+		status := http.StatusOK
+
+		if err := db.Ping(ctx); err != nil {
+			// The caller gets a plain word; the detail stays in the log.
+			checks["database"] = "unreachable"
+			status = http.StatusServiceUnavailable
+			logger.ErrorContext(ctx, "readiness check failed",
+				slog.String("check", "database"),
+				slog.Any("error", err))
+		}
+
+		body := map[string]any{"status": "ready", "checks": checks}
+		if status != http.StatusOK {
+			body["status"] = "not ready"
+		}
+		writeJSON(ctx, w, status, body)
+	}
 }
 
 func writeJSON(ctx context.Context, w http.ResponseWriter, status int, body any) {

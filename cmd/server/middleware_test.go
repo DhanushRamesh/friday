@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -160,7 +162,7 @@ func TestHealthEndpoint(t *testing.T) {
 	logger, _ := testLogger(t)
 
 	rec := httptest.NewRecorder()
-	routes(logger, 30*time.Second).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
+	routes(logger, 30*time.Second, stubPinger{}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
@@ -171,5 +173,80 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 	if body["status"] != "ok" {
 		t.Errorf("status = %q, want ok", body["status"])
+	}
+}
+
+// stubPinger stands in for the database in routing tests.
+type stubPinger struct{ err error }
+
+func (s stubPinger) Ping(context.Context) error { return s.err }
+
+func TestReadyReportsOKWhenDatabaseReachable(t *testing.T) {
+	logger, _ := testLogger(t)
+
+	rec := httptest.NewRecorder()
+	routes(logger, 30*time.Second, stubPinger{}).
+		ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ready", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	var body struct {
+		Status string            `json:"status"`
+		Checks map[string]string `json:"checks"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if body.Status != "ready" || body.Checks["database"] != "ok" {
+		t.Errorf("body = %+v, want ready with database ok", body)
+	}
+}
+
+// Readiness must fail when the database is gone, otherwise a load balancer
+// keeps sending traffic to a server that cannot answer it.
+func TestReadyFailsWhenDatabaseUnreachable(t *testing.T) {
+	logger, buf := testLogger(t)
+
+	rec := httptest.NewRecorder()
+	routes(logger, 30*time.Second, stubPinger{err: errors.New("connection refused")}).
+		ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ready", nil))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+
+	var body struct {
+		Status string            `json:"status"`
+		Checks map[string]string `json:"checks"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if body.Status != "not ready" || body.Checks["database"] != "unreachable" {
+		t.Errorf("body = %+v, want 'not ready' with database unreachable", body)
+	}
+
+	// The response says only "unreachable"; the cause belongs in the log.
+	if strings.Contains(rec.Body.String(), "connection refused") {
+		t.Errorf("driver detail leaked into the response: %s", rec.Body.String())
+	}
+	if !strings.Contains(buf.String(), "connection refused") {
+		t.Errorf("cause not logged, so the failure is undiagnosable:\n%s", buf.String())
+	}
+}
+
+// Liveness must not depend on the database. A database blip would otherwise
+// have the supervisor restart a perfectly healthy server.
+func TestHealthIgnoresDatabaseState(t *testing.T) {
+	logger, _ := testLogger(t)
+
+	rec := httptest.NewRecorder()
+	routes(logger, 30*time.Second, stubPinger{err: errors.New("down")}).
+		ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200 even with the database down", rec.Code)
 	}
 }

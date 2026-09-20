@@ -73,6 +73,9 @@ reader can tell a decision from an accident.
 | **`config.ini`** for configuration | With environment variables overriding it. See section 5. |
 | **`log/slog`** for logging | Standard library. No zap, no zerolog, no logrus. |
 | Events use an **in-process bus** in V1 | MySQL has no `LISTEN`/`NOTIFY`. Single process makes this a non-problem. Revisit only if FRIDAY ever runs more than one process. Do not add Redis before then. |
+| **GORM** for persistence | Owner's decision, made after the tradeoffs were laid out. The known costs: `AutoMigrate` is not a migration system, generated SQL is opaque, and the ORM's natural idiom (`db.Save`) bypasses domain invariants. Accepted. Do not re-argue this. |
+| Domain types stay **free of GORM** | The mitigation for the above. Persistence uses its own row structs with GORM tags, mapped to and from domain types at the repository boundary. A domain struct must never embed `gorm.Model` or carry a `gorm:` tag. |
+| GORM logs through **`internal/logging`** | GORM's default logger writes its own format to stdout, bypassing structured logging and credential redaction entirely. |
 | Semantic memory approach is **undecided** | MySQL Community has a `VECTOR` type but no distance function; similarity search is HeatWave-only. Decide when memory is actually built. |
 
 ### Hosting
@@ -185,9 +188,12 @@ MySQL 8. Local development database and user are created by hand; see
   accounts. Create both for local development.
 - Storage goes behind a repository interface so the engine stays swappable.
 
-Migrations are not set up yet. When they are, the intended approach is `goose`
-used **as a library** with `embed.FS`, so migrations compile into the binary
-and deployment stays a single file. Confirm with the owner before building it.
+Migrations are not set up yet. GORM's `AutoMigrate` is **not** a substitute: it
+adds tables and columns but never drops, renames or transforms, so a schema
+evolved with it drifts from what a fresh database produces. When migrations are
+built, the intended approach is `goose` used **as a library** with `embed.FS`,
+so they compile into the binary and deployment stays a single file. Confirm
+with the owner before building it.
 
 ---
 
@@ -219,19 +225,25 @@ Keep this honest. An inaccurate status here is worse than none.
   credential redaction, runtime-adjustable level
 - `internal/config` — three-layer configuration, validation, secret handling,
   wired into the server
+- `internal/storage` — MySQL connection through GORM, pool configuration,
+  GORM logging routed into `internal/logging`, opened at startup
+- `GET /health` (liveness, no dependencies) and `GET /ready` (checks the
+  database, 503 when it is unreachable)
 
 **Not built**
 
 - Task model and task API
-- Database access, migrations, any persistence
+- Migrations, and any table or repository
 - Agent loop, tools, permissions, events
 - Authentication
 - Any client
 
 **Known loose ends**
 
-- Nothing reads or writes the database yet. `config.Database` is validated and
-  a DSN is produced, but no connection is opened by the server.
+- The connection is open but nothing uses it: there are no tables, no
+  migrations and no repositories.
+- FRIDAY refuses to start when the database is unreachable. That is deliberate
+  for now, but means a database restart takes the server down with it.
 
 ---
 

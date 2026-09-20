@@ -16,12 +16,12 @@ This is early. What exists today:
 | HTTP server, graceful shutdown | working |
 | Structured logging, redaction, request tracing | working |
 | Configuration from `config.ini` + environment | working, drives the server |
-| MySQL connection | verified by hand, not yet used by the server |
+| MySQL connection (GORM) | working, opened at startup |
 | Task API, agent, tools | not started |
 
-The server currently serves one endpoint, `GET /health`. It is configured
-entirely through `config.ini` and the environment variables below, and refuses
-to start if either is invalid.
+The server serves `GET /health` and `GET /ready`. It is configured entirely
+through `config.ini` and the environment variables below, and refuses to start
+if the configuration is invalid or the database is unreachable.
 
 > Working on this codebase, with an AI agent or otherwise? Read
 > [`DEVELOPMENT.md`](DEVELOPMENT.md) first. It records the decisions already
@@ -90,7 +90,15 @@ go run ./cmd/server
 ```bash
 curl localhost:8080/health
 # {"status":"ok"}
+
+curl localhost:8080/ready
+# {"checks":{"database":"ok"},"status":"ready"}
 ```
+
+`/health` is liveness: it reports whether the process is up and deliberately
+touches no dependencies, so a database blip cannot cause a supervisor to
+restart a healthy server. `/ready` is readiness: it checks the database and
+returns 503 when FRIDAY cannot actually serve traffic.
 
 ## Configuration
 
@@ -139,6 +147,7 @@ FRIDAY starts on defaults and environment variables alone.
 cmd/server/          entry point, routing, HTTP middleware
 internal/config/     configuration loading and validation
 internal/logging/    structured logging, context propagation, redaction
+internal/storage/    database connection, pool, GORM logging bridge
 config.example.ini   template; copy to config.ini
 ```
 
