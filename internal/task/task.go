@@ -31,6 +31,18 @@ const (
 	MaxResponseBytes = 15 << 20
 )
 
+// StoredPrecision : The precision timestamps are kept at.
+//
+// Go clocks to the nanosecond and MySQL's DATETIME(3) columns to the
+// millisecond, rounding what it is given. Left alone, a task in memory stops
+// matching the row it was just written to, and every later comparison between
+// the two is subtly wrong. Truncating here rather than rounding means the
+// value the domain holds is exactly the value that will be stored.
+const StoredPrecision = time.Millisecond
+
+// now : Returns the current time at the precision timestamps are stored at.
+func now() time.Time { return time.Now().UTC().Truncate(StoredPrecision) }
+
 // Errors reported when a task cannot be created or completed.
 var (
 	// ErrEmptyPrompt : The prompt was empty or only whitespace.
@@ -79,13 +91,13 @@ func New(prompt string) (*Task, error) {
 		return nil, fmt.Errorf("%w: %d characters, limit is %d", ErrPromptTooLong, n, MaxPromptRunes)
 	}
 
-	now := time.Now().UTC()
+	created := now()
 	return &Task{
 		ID:        NewID(),
 		Prompt:    prompt,
 		Status:    StatusPending,
-		CreatedAt: now,
-		UpdatedAt: now,
+		CreatedAt: created,
+		UpdatedAt: created,
 	}, nil
 }
 
@@ -169,11 +181,11 @@ func (t *Task) transitionTo(next Status) error {
 		return &TransitionError{From: t.Status, To: next}
 	}
 
-	now := time.Now().UTC()
+	changed := now()
 	t.Status = next
-	t.UpdatedAt = now
+	t.UpdatedAt = changed
 	if next.IsTerminal() {
-		t.FinishedAt = &now
+		t.FinishedAt = &changed
 	}
 	return nil
 }

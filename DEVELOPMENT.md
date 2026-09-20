@@ -320,7 +320,16 @@ CREATE TABLE tasks (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
-`DATETIME(3)` keeps milliseconds, which plain `DATETIME` truncates away. The
+`DATETIME(3)` keeps milliseconds, which plain `DATETIME` truncates away.
+
+Timestamps set by the domain are truncated to `task.StoredPrecision`, which is
+one millisecond, before they are stored. Go clocks to the nanosecond and MySQL
+rounds a `DATETIME(3)` to the millisecond, so without this a task in memory
+stops matching the row just written from it, and every later comparison between
+the two is quietly wrong. Truncating rather than rounding means the value the
+domain holds is exactly the value that will be stored. The cost is that a task
+beginning and finishing within the same millisecond reports no duration, which
+no real task does. The
 identifier is stored with its prefix and readable, rather than as a `BINARY(16)`
 ULID, so the table can be read directly during development. A ULID primary key
 already orders by creation time, so listing needs no sort. The secondary index
@@ -523,12 +532,15 @@ Keep this honest. An inaccurate status here is worse than none.
 - `internal/provider` — the Provider interface, its message types, and the
   stub implementation. Pure Go; no network
 - Migrations for `tasks` and `task_messages`, applied at startup
+- `internal/task/mysql` — the task repository. The `Repository` interface is
+  declared in `internal/task`, which stays free of GORM; every mapping between
+  a domain type and a row happens in the implementation beside it
 - `GET /health` (liveness, no dependencies) and `GET /ready` (checks the
   database, 503 when it is unreachable)
 
 **Not built**
 
-- The repository: nothing reads or writes the tables yet
+- The runner that executes tasks, and the task API
 - The task API and the runner that executes tasks
 - Agent loop, tools, permissions, events
 - Authentication
@@ -536,7 +548,7 @@ Keep this honest. An inaccurate status here is worse than none.
 
 **Known loose ends**
 
-- The tables exist but nothing reads or writes them yet.
+- The repository exists but nothing calls it: no runner and no API yet.
 - FRIDAY refuses to start when the database is unreachable. That is deliberate
   for now, but means a database restart takes the server down with it.
 

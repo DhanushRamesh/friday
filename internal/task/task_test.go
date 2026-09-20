@@ -130,8 +130,51 @@ func TestLifecycleToCompleted(t *testing.T) {
 	if tk.FinishedAt == nil {
 		t.Error("FinishedAt not stamped on a finished task")
 	}
-	if tk.Duration() <= 0 {
-		t.Errorf("Duration = %v, want a positive span", tk.Duration())
+	if tk.Duration() < 0 {
+		t.Errorf("Duration = %v, want a non-negative span", tk.Duration())
+	}
+}
+
+// Timestamps are truncated to StoredPrecision, so a task finishing within the
+// same millisecond it started reports no duration at all. A task that takes
+// real time must report it.
+func TestDurationMeasuresElapsedTime(t *testing.T) {
+	tk := mustNew(t, "something slow")
+
+	if err := tk.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if err := tk.Complete("done"); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+
+	if got := tk.Duration(); got < 3*time.Millisecond {
+		t.Errorf("Duration = %v, want at least 3ms after sleeping 5ms", got)
+	}
+}
+
+// Every timestamp the domain sets must already be at the precision it will be
+// stored at, so a task in memory matches the row written from it.
+func TestTimestampsAreAtStoredPrecision(t *testing.T) {
+	tk := mustNew(t, "check my precision")
+	if err := tk.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := tk.Complete("done"); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+
+	stamps := map[string]time.Time{
+		"CreatedAt":  tk.CreatedAt,
+		"UpdatedAt":  tk.UpdatedAt,
+		"StartedAt":  *tk.StartedAt,
+		"FinishedAt": *tk.FinishedAt,
+	}
+	for name, ts := range stamps {
+		if ts.Truncate(task.StoredPrecision) != ts {
+			t.Errorf("%s = %v, which carries more precision than can be stored", name, ts)
+		}
 	}
 }
 
