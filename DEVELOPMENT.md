@@ -142,8 +142,39 @@ Use `internal/logging`. Do not construct `slog` handlers elsewhere.
 
 ### Comments
 
-Comment the **why**, not the what. A comment explaining a non-obvious choice or
-a trap avoided earns its place; one restating the code does not.
+Follow Go doc comment convention.
+
+- Every exported type, function, constant, method and non-obvious struct field
+  carries a doc comment. So does an unexported one whose purpose is not
+  evident from its name.
+- A doc comment begins with the identifier's name, then a colon, then the
+  description:
+
+  ```go
+  // Open : Connects to MySQL, configures the pool and verifies the
+  // connection. The caller must Close the returned DB.
+  func Open(...) (*DB, error)
+
+  // DB : An open database handle wrapping a *gorm.DB.
+  type DB struct {
+      // sqlDB : The underlying pool, kept for Ping and Stats.
+      sqlDB *sql.DB
+  }
+  ```
+
+  The word after the colon is capitalised, and the text is a description in
+  its own right rather than a continuation of a sentence begun by the name.
+  Write `// Redacted : The placeholder substituted for a redacted value.`, not
+  `// Redacted : is the placeholder...`.
+- Comments describe what the code is and does. They do not narrate how a
+  decision was reached, what was considered and rejected, or what was asked
+  for. That history belongs in commit messages and in this file, where it can
+  be looked up deliberately.
+- Keep them short. A one-line `// why` above a genuinely non-obvious statement
+  earns its place; a paragraph of reasoning does not.
+
+The reader of a comment has the file in front of them and none of the
+surrounding conversation.
 
 ### Time
 

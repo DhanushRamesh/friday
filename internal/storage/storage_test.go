@@ -15,7 +15,7 @@ import (
 
 func discard() *slog.Logger { return slog.New(slog.NewJSONHandler(io.Discard, nil)) }
 
-// testDatabase returns the local development database settings, skipping the
+// testDatabase : Returns the local development database settings, skipping the
 // test when MySQL is not reachable so the suite still runs on a bare checkout.
 func testDatabase(t *testing.T) config.Database {
 	t.Helper()

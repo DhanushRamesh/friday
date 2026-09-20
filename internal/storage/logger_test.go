@@ -32,7 +32,7 @@ func lastRecord(t *testing.T, buf *bytes.Buffer) map[string]any {
 	return rec
 }
 
-// trace invokes the GORM hook the way GORM itself would.
+// trace : Invokes the GORM hook the way GORM itself would.
 func trace(l *gormLogger, elapsed time.Duration, sql string, rows int64, err error) {
 	l.Trace(context.Background(), time.Now().Add(-elapsed), func() (string, int64) {
 		return sql, rows

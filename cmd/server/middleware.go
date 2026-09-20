@@ -11,14 +11,14 @@ import (
 	"github.com/DhanushRamesh/friday/internal/logging"
 )
 
-// quietPaths are logged at debug level. Health checks are polled continuously
+// quietPaths : Logged at debug level. Health checks are polled continuously
 // by load balancers and would otherwise drown out real traffic.
 var quietPaths = map[string]bool{
 	"/health": true,
 	"/ready":  true,
 }
 
-// requestContext stamps the request ID onto the context so that every line
+// requestContext : Stamps the request ID onto the context so that every line
 // logged while serving the request carries it, including lines written deep in
 // the agent and tool layers that never see the *http.Request.
 //
@@ -33,7 +33,7 @@ func requestContext(next http.Handler) http.Handler {
 	})
 }
 
-// requestLogger emits one record per completed request. Server errors log at
+// requestLogger : Emits one record per completed request. Server errors log at
 // error level and client errors at warn, so alerting can key off level alone.
 func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -65,7 +65,7 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-// recoverer converts a panic in a handler into a 500 and a logged stack trace.
+// recoverer : Converts a panic in a handler into a 500 and a logged stack trace.
 //
 // chi ships its own, but it writes the trace to stderr as unstructured text,
 // which means a panic would be the one event missing from structured logs.

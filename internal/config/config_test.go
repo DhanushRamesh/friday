@@ -13,7 +13,7 @@ import (
 	"github.com/DhanushRamesh/friday/internal/logging"
 )
 
-// env builds a Lookup over a map, standing in for the process environment.
+// env : Builds a Lookup over a map, standing in for the process environment.
 func env(pairs map[string]string) config.Lookup {
 	return func(key string) (string, bool) {
 		v, ok := pairs[key]
@@ -21,7 +21,7 @@ func env(pairs map[string]string) config.Lookup {
 	}
 }
 
-// writeINI puts contents in a temporary file and returns its path.
+// writeINI : Puts contents in a temporary file and returns its path.
 func writeINI(t *testing.T, contents string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.ini")

@@ -1,9 +1,8 @@
-// Package storage owns FRIDAY's database connection.
+// Package storage : owns FRIDAY's database connection.
 //
-// It opens and configures the connection pool, routes GORM's logging through
-// internal/logging, and exposes a health check. It deliberately contains no
-// queries: repositories live beside the domain packages they serve, so that
-// this package stays the only place that knows how a connection is made.
+// It opens the connection, configures the pool, routes GORM's logging through
+// internal/logging and exposes a reachability check. It contains no queries;
+// repositories belong with the domain packages they serve.
 package storage
 
 import (
@@ -19,32 +18,28 @@ import (
 	"github.com/DhanushRamesh/friday/internal/config"
 )
 
-// DefaultSlowQueryThreshold is the duration past which a successful query is
-// still worth a warning. Every statement FRIDAY runs is a small indexed read
-// or write, so anything slower than this points at a missing index rather
-// than at honest work.
+// DefaultSlowQueryThreshold : The duration past which a successful query is
+// logged at warn rather than debug.
 const DefaultSlowQueryThreshold = 200 * time.Millisecond
 
-// DB is an open database handle.
+// DB : An open database handle wrapping a *gorm.DB.
 type DB struct {
 	*gorm.DB
 	sqlDB *sql.DB
 }
 
-// Options tunes behaviour that does not belong in user-facing configuration.
+// Options : Settings for Open that are not part of user-facing configuration.
 type Options struct {
-	// SlowQueryThreshold defaults to DefaultSlowQueryThreshold.
+	// SlowQueryThreshold : The duration past which a successful query is
+	// logged at warn. Zero selects DefaultSlowQueryThreshold.
 	SlowQueryThreshold time.Duration
-	// LogStatements includes SQL text in query logs. Statements carry
-	// interpolated parameters, which for FRIDAY means user messages and tool
-	// output, so this should only be true in development.
+	// LogStatements : Whether query logs include SQL text. Statements carry
+	// interpolated parameter values, so this should be false in production.
 	LogStatements bool
 }
 
-// Open connects to MySQL, configures the pool, and verifies the connection
-// before returning. A returned DB is ready to use.
-//
-// The caller owns the handle and must Close it.
+// Open : Connects to MySQL, configures the pool and verifies the connection
+// before returning. The caller must Close the returned DB.
 func Open(ctx context.Context, cfg config.Database, logger *slog.Logger, opts Options) (*DB, error) {
 	if opts.SlowQueryThreshold <= 0 {
 		opts.SlowQueryThreshold = DefaultSlowQueryThreshold
@@ -55,26 +50,23 @@ func Open(ctx context.Context, cfg config.Database, logger *slog.Logger, opts Op
 		&gorm.Config{
 			Logger: newGormLogger(logger, opts.SlowQueryThreshold, opts.LogStatements),
 
-			// GORM stamps timestamps itself. Without this it would use the
-			// process's local time while the connection runs in UTC, so rows
-			// written by FRIDAY and rows written by MySQL would disagree.
+			// UTC, matching the connection. GORM otherwise stamps its own
+			// timestamps in the process's local time.
 			NowFunc: func() time.Time { return time.Now().UTC() },
 
-			// GORM wraps every single write in its own transaction by
-			// default. FRIDAY manages transactions where it needs them, so
-			// this only adds a round trip per statement.
+			// GORM otherwise wraps every write in its own transaction,
+			// costing a round trip per statement.
 			SkipDefaultTransaction: true,
 
-			// Reuse prepared statements across a long-lived server.
 			PrepareStmt: true,
 
-			// Report driver errors as gorm.ErrDuplicatedKey and friends, so
-			// callers can test for them without matching MySQL error numbers.
+			// Report driver errors as gorm.ErrDuplicatedKey and similar,
+			// rather than as MySQL error numbers.
 			TranslateError: true,
 		},
 	)
 	if err != nil {
-		// cfg.DSN() holds the password, so the target is described safely.
+		// SafeAddr rather than the DSN, which holds the password.
 		return nil, fmt.Errorf("storage: connecting to %s: %w", cfg.SafeAddr(), err)
 	}
 
@@ -89,8 +81,7 @@ func Open(ctx context.Context, cfg config.Database, logger *slog.Logger, opts Op
 
 	db := &DB{DB: gormDB, sqlDB: sqlDB}
 
-	// gorm.Open can succeed without having reached the server. Fail here
-	// rather than on the first request.
+	// gorm.Open can succeed without having reached the server.
 	pingCtx, cancel := context.WithTimeout(ctx, cfg.ConnectTimeout)
 	defer cancel()
 	if err := db.Ping(pingCtx); err != nil {
@@ -108,15 +99,15 @@ func Open(ctx context.Context, cfg config.Database, logger *slog.Logger, opts Op
 	return db, nil
 }
 
-// Ping verifies that the database is reachable. It backs the readiness check.
+// Ping : Reports whether the database is reachable.
 func (d *DB) Ping(ctx context.Context) error {
 	return d.sqlDB.PingContext(ctx)
 }
 
-// Stats reports connection pool usage, for health output and diagnostics.
+// Stats : Returns connection pool statistics.
 func (d *DB) Stats() sql.DBStats { return d.sqlDB.Stats() }
 
-// Close releases the pool. It is safe to call on a partially opened DB.
+// Close : Releases the connection pool. It is safe to call on a nil DB.
 func (d *DB) Close() error {
 	if d == nil || d.sqlDB == nil {
 		return nil

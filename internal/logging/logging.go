@@ -1,13 +1,12 @@
-// Package logging provides structured logging for FRIDAY.
+// Package logging : provides structured logging built on log/slog.
 //
-// It wraps log/slog with three things the stdlib does not give you:
+// It adds three things to a standard slog logger:
 //
-//   - context-carried attributes, so a request or task ID set once in
-//     middleware appears on every line logged downstream;
-//   - redaction of credential-shaped values, so tokens and keys never
-//     reach disk;
-//   - a runtime-adjustable level, so verbosity can be raised on a running
-//     server without a restart.
+//   - attributes carried on a context.Context and attached to every record
+//     logged with it, so an identifier set once at the edge of a request
+//     appears on all subsequent records;
+//   - redaction of attributes whose key or type marks them as a credential;
+//   - a level that can be changed after construction.
 package logging
 
 import (
@@ -17,45 +16,48 @@ import (
 	"strings"
 )
 
-// Format selects the encoding of log records.
+// Format : Selects the encoding of log records.
 type Format string
 
+// Supported output formats.
 const (
-	// FormatJSON emits one JSON object per record. Use in deployed environments.
+	// FormatJSON : Emits one JSON object per record.
 	FormatJSON Format = "json"
-	// FormatText emits human-readable key=value pairs. Use during development.
+	// FormatText : Emits human-readable key=value pairs.
 	FormatText Format = "text"
 )
 
-// Config describes how the logger should be constructed.
+// Config : Describes how the logger should be constructed.
 type Config struct {
-	// Level is the minimum level to emit: debug, info, warn or error.
+	// Level : The minimum level to emit: debug, info, warn or error.
 	// Defaults to info when empty.
 	Level string
-	// Format selects the output encoding. Defaults to FormatJSON when empty.
+	// Format : Selects the output encoding. Defaults to FormatJSON when empty.
 	Format Format
-	// AddSource attaches the source file and line to every record. It costs a
-	// stack walk per record, so it is normally enabled only in development.
+	// AddSource : Attaches the source file and line to every record, at the
+	// cost of a stack walk per record.
 	AddSource bool
-	// Service, Version and Env are attached to every record so lines from
-	// different processes remain distinguishable once aggregated.
+	// Service : Names the process. It is attached to every record.
 	Service string
+	// Version : Identifies the build. It is attached to every record.
 	Version string
-	Env     string
-	// RedactKeys extends the built-in set of attribute keys whose values are
-	// replaced with a placeholder. Matching is case-insensitive.
+	// Env : Names the deployment environment. It is attached to every record.
+	Env string
+	// RedactKeys : Names further attribute keys whose values are replaced with
+	// Redacted, in addition to the built-in set. Matching is
+	// case-insensitive.
 	RedactKeys []string
 }
 
-// Logger is a *slog.Logger whose level can be changed after construction.
+// Logger : A *slog.Logger whose minimum level can be changed after
+// construction. It is safe for concurrent use.
 type Logger struct {
 	*slog.Logger
 	level *slog.LevelVar
 }
 
-// New builds a Logger writing to w.
-//
-// The returned Logger is safe for concurrent use.
+// New : Returns a Logger writing records to w in the format given by cfg.
+// It reports an error if cfg names an unknown level or format.
 func New(w io.Writer, cfg Config) (*Logger, error) {
 	level, err := ParseLevel(cfg.Level)
 	if err != nil {
@@ -90,15 +92,16 @@ func New(w io.Writer, cfg Config) (*Logger, error) {
 	return &Logger{Logger: logger, level: lvar}, nil
 }
 
-// SetLevel changes the minimum level. It takes effect immediately for every
-// logger derived from this one.
+// SetLevel : Sets the minimum level, taking effect immediately for this Logger
+// and every logger derived from it.
 func (l *Logger) SetLevel(level slog.Level) { l.level.Set(level) }
 
-// Level reports the current minimum level.
+// Level : Reports the current minimum level.
 func (l *Logger) Level() slog.Level { return l.level.Level() }
 
-// ParseLevel converts a level name to a slog.Level. An empty name yields
-// LevelInfo.
+// ParseLevel : Returns the slog.Level named by name, which may be "debug",
+// "info", "warn", "warning" or "error" in any case. An empty name returns
+// slog.LevelInfo.
 func ParseLevel(name string) (slog.Level, error) {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "debug":
@@ -114,6 +117,8 @@ func ParseLevel(name string) (slog.Level, error) {
 	}
 }
 
+// serviceAttrs : Returns the identifying attributes from cfg that are attached
+// to every record.
 func serviceAttrs(cfg Config) []slog.Attr {
 	var attrs []slog.Attr
 	if cfg.Service != "" {

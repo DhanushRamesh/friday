@@ -11,23 +11,21 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 )
 
-// gormLogger adapts GORM's logging interface onto log/slog.
-//
-// GORM's own logger writes its own format to stdout, which would bypass
-// structured logging, the request identifiers carried on the context, and the
-// credential redaction in internal/logging. Everything GORM has to say goes
-// through the same pipeline as the rest of FRIDAY instead.
+// gormLogger : Adapts gorm.io/gorm/logger.Interface onto log/slog, so that
+// GORM's output carries the same structure, context attributes and redaction
+// as the rest of FRIDAY's logging.
 type gormLogger struct {
 	logger *slog.Logger
-	// slowThreshold marks a query as worth noticing. Anything slower is
+	// slowThreshold : Marks a query as worth noticing. Anything slower is
 	// logged at warn even when it succeeds.
 	slowThreshold time.Duration
-	// logStatements includes the SQL text in each record. Statements carry
+	// logStatements : Includes the SQL text in each record. Statements carry
 	// interpolated parameter values, which for FRIDAY means user messages and
 	// tool output, so this stays off outside development.
 	logStatements bool
 }
 
+// newGormLogger : Returns a gormLogger writing to logger.
 func newGormLogger(logger *slog.Logger, slowThreshold time.Duration, logStatements bool) *gormLogger {
 	return &gormLogger{
 		logger:        logger,
@@ -36,23 +34,27 @@ func newGormLogger(logger *slog.Logger, slowThreshold time.Duration, logStatemen
 	}
 }
 
-// LogMode satisfies GORM's interface. Verbosity is controlled by the slog
-// level instead, so the request is ignored.
+// LogMode : Implements logger.Interface. The requested level is ignored;
+// verbosity follows the slog level.
 func (l *gormLogger) LogMode(gormlogger.LogLevel) gormlogger.Interface { return l }
 
+// Info : Records one of GORM's own informational messages.
 func (l *gormLogger) Info(ctx context.Context, msg string, args ...any) {
 	l.logger.InfoContext(ctx, "gorm: "+sprintf(msg, args))
 }
 
+// Warn : Records one of GORM's own warnings.
 func (l *gormLogger) Warn(ctx context.Context, msg string, args ...any) {
 	l.logger.WarnContext(ctx, "gorm: "+sprintf(msg, args))
 }
 
+// Error : Records one of GORM's own errors.
 func (l *gormLogger) Error(ctx context.Context, msg string, args ...any) {
 	l.logger.ErrorContext(ctx, "gorm: "+sprintf(msg, args))
 }
 
-// Trace is called once per statement with its duration and outcome.
+// Trace : Records the outcome of one statement. GORM calls it after every
+// query.
 func (l *gormLogger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
 	elapsed := time.Since(begin)
 
@@ -64,7 +66,6 @@ func (l *gormLogger) Trace(ctx context.Context, begin time.Time, fc func() (stri
 		level = slog.LevelWarn
 	}
 
-	// A missing row is an ordinary outcome that callers handle, not a fault.
 	if !l.logger.Enabled(ctx, level) {
 		return
 	}
@@ -96,8 +97,8 @@ func (l *gormLogger) Trace(ctx context.Context, begin time.Time, fc func() (stri
 	l.logger.LogAttrs(ctx, level, msg, attrs...)
 }
 
-// sprintf formats GORM's message only when it carries arguments, avoiding a
-// needless allocation for the common case of a plain string.
+// sprintf : Formats msg with args, returning msg unchanged when there are
+// none.
 func sprintf(msg string, args []any) string {
 	if len(args) == 0 {
 		return msg

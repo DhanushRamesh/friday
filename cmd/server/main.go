@@ -21,15 +21,18 @@ import (
 	"github.com/DhanushRamesh/friday/internal/storage"
 )
 
+// main : Starts the server and exits non-zero if it cannot run.
 func main() {
 	if err := run(); err != nil {
-		// Configuration is read before the logger exists, so a startup failure
-		// has nowhere structured to go and is reported plainly instead.
+		// Configuration is read before the logger exists, so this cannot be
+		// a structured record.
 		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
 		os.Exit(1)
 	}
 }
 
+// run : Loads configuration, opens the dependencies and serves until
+// interrupted, returning the first error that prevents any of it.
 func run() error {
 	cfg, err := config.LoadFromEnv()
 	if err != nil {
@@ -47,21 +50,16 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	// Set the default so packages that log without an injected logger still
-	// produce records in the configured format.
+	// So that packages logging without an injected logger use this format.
 	slog.SetDefault(logger.Logger)
 
-	// Record the effective configuration once at startup. Config redacts the
-	// database password, so this is safe to emit. The first question about any
-	// misbehaving deployment is which settings it actually loaded.
+	// Config redacts the database password, so this is safe to emit.
 	logger.Info("configuration loaded", slog.Any("config", cfg))
 
-	// Fail at startup rather than on the first request. A server that accepts
-	// traffic it cannot serve is harder to diagnose than one that refuses to
-	// start and says why.
+	// Opened here so an unusable database stops startup rather than failing
+	// on the first request.
 	db, err := storage.Open(context.Background(), cfg.Database, logger.Logger, storage.Options{
-		// Statements carry user messages and tool output once tasks exist, so
-		// they are recorded only on a developer machine.
+		// Statements carry user data, so they are recorded outside production only.
 		LogStatements: !cfg.Env.IsProduction(),
 	})
 	if err != nil {
@@ -83,7 +81,7 @@ func run() error {
 	return serve(srv, logger, cfg.Server.ShutdownTimeout)
 }
 
-// serve starts the server and blocks until an interrupt arrives, then drains
+// serve : Starts the server and blocks until an interrupt arrives, then drains
 // in-flight requests before returning.
 func serve(srv *http.Server, logger *logging.Logger, shutdownTimeout time.Duration) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -120,12 +118,13 @@ func serve(srv *http.Server, logger *logging.Logger, shutdownTimeout time.Durati
 	return nil
 }
 
-// pinger is the part of the database handle the readiness check needs. Taking
-// an interface keeps routes testable without a live database.
+// pinger : The part of a database handle that the readiness check requires.
 type pinger interface {
 	Ping(ctx context.Context) error
 }
 
+// routes : Builds the HTTP handler, applying the middleware stack in the
+// order every request passes through it.
 func routes(logger *slog.Logger, requestTimeout time.Duration, db pinger) http.Handler {
 	r := chi.NewRouter()
 
@@ -138,22 +137,23 @@ func routes(logger *slog.Logger, requestTimeout time.Duration, db pinger) http.H
 	r.Use(recoverer(logger))
 	r.Use(middleware.Timeout(requestTimeout))
 
-	// Liveness: is the process up. This must not touch dependencies, or a
-	// database blip would have the supervisor restart a healthy server.
+	// Liveness. Touches no dependencies, so a dependency outage cannot cause
+	// a supervisor to restart a working process.
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(r.Context(), w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
-	// Readiness: can the process actually serve traffic.
+	// Readiness.
 	r.Get("/ready", readyHandler(logger, db))
 
 	return r
 }
 
-// readinessTimeout bounds the dependency checks. It is short because a load
-// balancer polling this will not wait, and a slow answer is a failed one.
+// readinessTimeout : Bounds the dependency checks made by readyHandler.
 const readinessTimeout = 2 * time.Second
 
+// readyHandler : Reports whether FRIDAY's dependencies are usable, answering
+// 503 when any check fails.
 func readyHandler(logger *slog.Logger, db pinger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), readinessTimeout)
@@ -163,7 +163,7 @@ func readyHandler(logger *slog.Logger, db pinger) http.HandlerFunc {
 		status := http.StatusOK
 
 		if err := db.Ping(ctx); err != nil {
-			// The caller gets a plain word; the detail stays in the log.
+			// The cause goes to the log, not to the caller.
 			checks["database"] = "unreachable"
 			status = http.StatusServiceUnavailable
 			logger.ErrorContext(ctx, "readiness check failed",
@@ -179,6 +179,7 @@ func readyHandler(logger *slog.Logger, db pinger) http.HandlerFunc {
 	}
 }
 
+// writeJSON : Writes body as a JSON response with the given status code.
 func writeJSON(ctx context.Context, w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -189,7 +190,7 @@ func writeJSON(ctx context.Context, w http.ResponseWriter, status int, body any)
 	}
 }
 
-// version reports the VCS revision stamped into the binary by the Go toolchain.
+// version : Reports the VCS revision stamped into the binary by the Go toolchain.
 func version() string {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {

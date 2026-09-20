@@ -5,15 +5,15 @@ import (
 	"strings"
 )
 
-// Redacted replaces the value of any attribute considered sensitive.
+// Redacted : The placeholder substituted for a redacted value.
 const Redacted = "[REDACTED]"
 
-// sensitiveKeys are attribute names whose values are never written to logs.
+// sensitiveKeys : Holds the attribute names whose values are replaced with
+// Redacted.
 //
-// Matching is exact (case-insensitive) rather than by substring on purpose:
-// FRIDAY logs model token counts, and a substring rule on "token" would redact
-// token_count and tokens_used along with the credentials. Anything not named
-// here should be wrapped in Secret at the call site instead.
+// Keys match exactly rather than by substring, so that names merely
+// containing a sensitive word, such as token_count, are left intact. A value
+// whose key is not listed here can be protected with Secret instead.
 var sensitiveKeys = map[string]struct{}{
 	"access_token":        {},
 	"api_key":             {},
@@ -37,8 +37,8 @@ var sensitiveKeys = map[string]struct{}{
 	"token":               {},
 }
 
-// redactor builds the ReplaceAttr hook, folding any caller-supplied keys into
-// the built-in set.
+// redactor : Returns a slog.HandlerOptions.ReplaceAttr function that redacts
+// the built-in sensitive keys together with extra.
 func redactor(extra []string) func([]string, slog.Attr) slog.Attr {
 	keys := sensitiveKeys
 	if len(extra) > 0 {
@@ -59,20 +59,22 @@ func redactor(extra []string) func([]string, slog.Attr) slog.Attr {
 	}
 }
 
-// Secret wraps a credential so it cannot be logged or printed by accident.
+// Secret : A string that renders as Redacted when logged or formatted.
 //
-// Use it for values whose attribute key is not self-evidently sensitive:
+// It protects a credential whose attribute key is not itself recognised as
+// sensitive:
 //
-//	slog.Any("gitlab_pat", logging.Secret(pat))  // logs [REDACTED]
+//	slog.Any("gitlab_pat", logging.Secret(pat))
 //
-// Call Reveal only where the value is actually used, never in a log call.
+// The underlying value is reachable only through Reveal.
 type Secret string
 
-// LogValue implements slog.LogValuer.
+// LogValue : Implements slog.LogValuer and returns Redacted.
 func (s Secret) LogValue() slog.Value { return slog.StringValue(Redacted) }
 
-// String implements fmt.Stringer, so %s and %v cannot leak the value either.
+// String : Implements fmt.Stringer and returns Redacted, so that %s and %v do
+// not expose the value either.
 func (s Secret) String() string { return Redacted }
 
-// Reveal returns the underlying value.
+// Reveal : Returns the underlying string.
 func (s Secret) Reveal() string { return string(s) }

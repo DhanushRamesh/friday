@@ -176,7 +176,7 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 }
 
-// stubPinger stands in for the database in routing tests.
+// stubPinger : Stands in for the database in routing tests.
 type stubPinger struct{ err error }
 
 func (s stubPinger) Ping(context.Context) error { return s.err }

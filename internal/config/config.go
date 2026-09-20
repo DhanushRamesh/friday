@@ -1,21 +1,14 @@
-// Package config loads and validates FRIDAY's runtime configuration.
+// Package config : loads and validates FRIDAY's runtime configuration.
 //
-// Values are resolved from three layers, each overriding the one before it:
+// Values resolve from three layers, each overriding the one before it:
 //
 //	built-in defaults  <  config.ini  <  environment variables
 //
-// The file is for settings you edit by hand; the environment is for whatever
-// differs per deployment, which in practice means secrets. Every key has an
-// environment equivalent named FRIDAY_<SECTION>_<KEY>, so nothing in the file
-// is impossible to override without editing it.
+// Every setting has an environment equivalent named FRIDAY_<SECTION>_<KEY>,
+// uppercased; a setting outside any section uses FRIDAY_<KEY>.
 //
-// Load is a pure function over a file path and a lookup callback rather than a
-// reader of os.Getenv, so configuration logic can be tested without mutating
-// process state.
-//
-// Validation collects every problem before returning. A server that reports
-// one bad setting per restart wastes more time than one that reports all of
-// them at once.
+// Loading reports every problem it finds rather than stopping at the first,
+// and treats a setting present in the file that nothing reads as an error.
 package config
 
 import (
@@ -34,40 +27,43 @@ import (
 	"github.com/DhanushRamesh/friday/internal/logging"
 )
 
-// DefaultPath is the configuration file used when none is named. It is
-// optional: FRIDAY starts on defaults and environment variables without it.
+// DefaultPath : The configuration file read when none is named. It is
+// optional; without it, defaults and environment variables apply.
 const DefaultPath = "config.ini"
 
-// PathEnvVar names the environment variable holding an explicit config path.
-// When it is set the file must exist, because a typo there should not be
-// silently ignored.
+// PathEnvVar : Names the environment variable holding an explicit
+// configuration file path. When it is set, the file must exist.
 const PathEnvVar = "FRIDAY_CONFIG"
 
-// Environment names a deployment context. Validation is stricter outside dev.
+// Environment : Names a deployment context. Validation is stricter outside
+// EnvDev.
 type Environment string
 
+// Recognised environments.
 const (
-	EnvDev        Environment = "dev"
+	// EnvDev : A developer machine, where defaults such as a blank database
+	// password are permitted.
+	EnvDev Environment = "dev"
+	// EnvProduction : A deployed environment.
 	EnvProduction Environment = "production"
 )
 
-// IsProduction reports whether defaults suitable only for a developer machine
-// should be rejected.
+// IsProduction : Reports whether e is EnvProduction.
 func (e Environment) IsProduction() bool { return e == EnvProduction }
 
-// Config is the fully resolved configuration for one process.
+// Config : The fully resolved configuration for one process.
 type Config struct {
 	Env      Environment
 	Server   Server
 	Log      Log
 	Database Database
 
-	// Source records where the file-backed values came from, for logging at
-	// startup. It is empty when no file was read.
+	// Source : The path of the file the configuration was read from, or
+	// empty if no file was read.
 	Source string
 }
 
-// Server configures the HTTP listener.
+// Server : Configures the HTTP listener.
 type Server struct {
 	Addr              string
 	ReadHeaderTimeout time.Duration
@@ -76,17 +72,15 @@ type Server struct {
 	RequestTimeout    time.Duration
 }
 
-// Log configures the structured logger.
+// Log : Configures the structured logger.
 type Log struct {
 	Level     string
 	Format    logging.Format
 	AddSource bool
 }
 
-// Database configures the MySQL connection.
-//
-// Connection details are held as components rather than one string so the
-// password can carry the Secret type, which cannot be logged or printed.
+// Database : Configures the MySQL connection. The password is held separately
+// as a logging.Secret so that a Database can be logged without exposing it.
 type Database struct {
 	Host     string
 	Port     int
@@ -100,10 +94,10 @@ type Database struct {
 	ConnectTimeout  time.Duration
 }
 
-// DSN returns the connection string for go-sql-driver/mysql.
+// DSN : Returns the connection string for go-sql-driver/mysql.
 //
-// The result contains the password and must never be logged. Use SafeAddr for
-// anything human-facing.
+// The result contains the password. Use SafeAddr for anything that is logged
+// or shown to a user.
 func (d Database) DSN() string {
 	c := mysql.NewConfig()
 	c.Net = "tcp"
@@ -113,21 +107,21 @@ func (d Database) DSN() string {
 	c.DBName = d.Name
 	// Without ParseTime, DATETIME columns scan as []byte rather than time.Time.
 	c.ParseTime = true
-	// Read and write timestamps as UTC so a change to the server timezone
-	// cannot silently reinterpret rows already stored.
+	// UTC, so that the server's timezone cannot reinterpret stored rows.
 	c.Loc = time.UTC
 	c.Timeout = d.ConnectTimeout
 	c.Params = map[string]string{"time_zone": "'+00:00'"}
 	return c.FormatDSN()
 }
 
-// SafeAddr describes the connection target without the password, for logs.
+// SafeAddr : Returns the connection target in the form user@host:port/name,
+// without the password.
 func (d Database) SafeAddr() string {
 	return fmt.Sprintf("%s@%s:%d/%s", d.User, d.Host, d.Port, d.Name)
 }
 
-// LogValue implements slog.LogValuer so a whole Config can be logged without
-// leaking the database password.
+// LogValue : Implements slog.LogValuer, rendering the configuration without the
+// database password.
 func (c Config) LogValue() slog.Value {
 	source := c.Source
 	if source == "" {
@@ -144,14 +138,14 @@ func (c Config) LogValue() slog.Value {
 	)
 }
 
-// Lookup reports the value of an environment variable and whether it was set,
-// matching the signature of os.LookupEnv.
+// Lookup : Reports the value of an environment variable and whether it was set.
+// It has the signature of os.LookupEnv.
 type Lookup func(key string) (string, bool)
 
-// LoadFromEnv resolves configuration using the process environment, reading
-// the file named by FRIDAY_CONFIG, or config.ini when that is unset.
+// LoadFromEnv : Resolves configuration from the process environment and the
+// file named by PathEnvVar, or DefaultPath when that variable is unset.
 //
-// A missing config.ini is not an error; a missing FRIDAY_CONFIG target is.
+// A missing DefaultPath is not an error; a missing PathEnvVar target is.
 func LoadFromEnv() (Config, error) {
 	path, explicit := os.LookupEnv(PathEnvVar)
 	path = strings.TrimSpace(path)
@@ -169,8 +163,10 @@ func LoadFromEnv() (Config, error) {
 	return Load(path, os.LookupEnv)
 }
 
-// Load resolves configuration from the file at path, overridden by lookup.
-// An empty path skips the file entirely.
+// Load : Resolves configuration from the file at path, with values from lookup
+// taking precedence. An empty path skips the file.
+//
+// The returned error, if any, describes every problem found.
 func Load(path string, lookup Lookup) (Config, error) {
 	l := &loader{lookup: lookup, known: map[fieldKey]bool{}}
 
@@ -232,6 +228,8 @@ func Load(path string, lookup Lookup) (Config, error) {
 	return cfg, nil
 }
 
+// validate : Records an error for each setting in cfg that is out of range or
+// missing.
 func (l *loader) validate(cfg Config) {
 	if _, err := logging.ParseLevel(cfg.Log.Level); err != nil {
 		l.errorf("%s: %v", l.where("log", "level"), err)
@@ -263,18 +261,16 @@ func (l *loader) validate(cfg Config) {
 			l.where("database", "max_idle_conns"), cfg.Database.MaxIdleConns, cfg.Database.MaxOpenConns)
 	}
 
-	// A blank database password is normal on a developer machine using local
-	// trust auth, and never acceptable on a deployed one.
 	if cfg.Env.IsProduction() && cfg.Database.Password == "" {
 		l.errorf("%s: must be set when env = production", l.where("database", "password"))
 	}
 }
 
-// fieldKey identifies one setting by its position in the file.
+// fieldKey : Identifies a setting by the section and key naming it in the file.
 type fieldKey struct{ section, key string }
 
-// loader reads typed values from the file and environment, accumulating
-// problems rather than failing at the first one.
+// loader : Reads typed settings from a file and an environment lookup,
+// accumulating errors rather than returning at the first.
 type loader struct {
 	lookup Lookup
 	file   *ini.File
@@ -282,8 +278,8 @@ type loader struct {
 	errs   []error
 }
 
-// envName is the environment variable that overrides a setting:
-// FRIDAY_SERVER_ADDR for [server] addr, FRIDAY_ENV for a top-level key.
+// envName : Returns the environment variable that overrides the given setting,
+// such as FRIDAY_SERVER_ADDR for [server] addr.
 func envName(section, key string) string {
 	if section == "" {
 		return "FRIDAY_" + strings.ToUpper(key)
@@ -291,8 +287,7 @@ func envName(section, key string) string {
 	return "FRIDAY_" + strings.ToUpper(section) + "_" + strings.ToUpper(key)
 }
 
-// where names a setting the way the user wrote it, so an error points at
-// something they can find and edit.
+// where : Renders a setting in both spellings, for use in error messages.
 func (l *loader) where(section, key string) string {
 	if section == "" {
 		return fmt.Sprintf("%s (env %s)", key, envName(section, key))
@@ -300,13 +295,14 @@ func (l *loader) where(section, key string) string {
 	return fmt.Sprintf("[%s] %s (env %s)", section, key, envName(section, key))
 }
 
-// value resolves one setting, preferring the environment over the file.
+// value : Returns the raw text of a setting and whether it was found, taking
+// the environment in preference to the file. It records the setting as known.
 func (l *loader) value(section, key string) (string, bool) {
 	l.known[fieldKey{section, key}] = true
 
 	if v, ok := l.lookup(envName(section, key)); ok {
-		// An explicitly empty variable means "unset" rather than "blank", so
-		// that FRIDAY_SERVER_ADDR= in a shell script falls through.
+		// An empty variable counts as unset, so that FRIDAY_SERVER_ADDR= in a
+		// shell script falls through to the next layer.
 		if v = strings.TrimSpace(v); v != "" {
 			return v, true
 		}
@@ -323,8 +319,8 @@ func (l *loader) value(section, key string) (string, bool) {
 	return "", false
 }
 
-// rejectUnknownKeys reports settings present in the file that nothing reads,
-// which is almost always a typo that would otherwise be silently ignored.
+// rejectUnknownKeys : Records an error for each setting in the file that no
+// call to value claimed, which indicates a misspelled key.
 func (l *loader) rejectUnknownKeys(path string) {
 	if l.file == nil {
 		return
@@ -342,10 +338,13 @@ func (l *loader) rejectUnknownKeys(path string) {
 	}
 }
 
+// errorf : Records a validation problem.
 func (l *loader) errorf(format string, args ...any) {
 	l.errs = append(l.errs, fmt.Errorf(format, args...))
 }
 
+// err : Returns every recorded problem as a single error, or nil if there were
+// none.
 func (l *loader) err() error {
 	if len(l.errs) == 0 {
 		return nil
@@ -357,6 +356,7 @@ func (l *loader) err() error {
 	return fmt.Errorf("invalid configuration:\n  - %s", strings.Join(parts, "\n  - "))
 }
 
+// str : Returns the setting's value, or fallback if it is not set.
 func (l *loader) str(section, key, fallback string) string {
 	if v, ok := l.value(section, key); ok {
 		return v
@@ -364,6 +364,8 @@ func (l *loader) str(section, key, fallback string) string {
 	return fallback
 }
 
+// integer : Returns the setting parsed as an int, or fallback if it is not set.
+// A value that does not parse is recorded as an error.
 func (l *loader) integer(section, key string, fallback int) int {
 	v, ok := l.value(section, key)
 	if !ok {
@@ -377,6 +379,9 @@ func (l *loader) integer(section, key string, fallback int) int {
 	return n
 }
 
+// duration : Returns the setting parsed as a time.Duration, or fallback if it
+// is not set. A value that does not parse, or is negative, is recorded as an
+// error.
 func (l *loader) duration(section, key string, fallback time.Duration) time.Duration {
 	v, ok := l.value(section, key)
 	if !ok {
@@ -394,6 +399,8 @@ func (l *loader) duration(section, key string, fallback time.Duration) time.Dura
 	return d
 }
 
+// boolean : Returns the setting parsed as a bool, or fallback if it is not set.
+// A value that does not parse is recorded as an error.
 func (l *loader) boolean(section, key string, fallback bool) bool {
 	v, ok := l.value(section, key)
 	if !ok {

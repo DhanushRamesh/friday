@@ -11,7 +11,7 @@ import (
 	"github.com/DhanushRamesh/friday/internal/logging"
 )
 
-// newTestLogger returns a logger writing JSON into buf.
+// newTestLogger : Returns a logger writing JSON into buf.
 func newTestLogger(t *testing.T, cfg logging.Config) (*logging.Logger, *bytes.Buffer) {
 	t.Helper()
 	buf := &bytes.Buffer{}
@@ -22,7 +22,7 @@ func newTestLogger(t *testing.T, cfg logging.Config) (*logging.Logger, *bytes.Bu
 	return logger, buf
 }
 
-// decode parses the single record written to buf.
+// decode : Parses the single record written to buf.
 func decode(t *testing.T, buf *bytes.Buffer) map[string]any {
 	t.Helper()
 	line := strings.TrimSpace(buf.String())
