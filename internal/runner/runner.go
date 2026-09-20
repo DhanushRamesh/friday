@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DhanushRamesh/friday/internal/logging"
 	"github.com/DhanushRamesh/friday/internal/provider"
 	"github.com/DhanushRamesh/friday/internal/task"
 )
@@ -140,18 +141,40 @@ func (r *Runner) Recover(ctx context.Context) error {
 //
 // The task must already be stored. It reports an error only if the Runner is
 // shutting down.
+//
+// The Runner works on its own copy. The caller keeps the task it passed and is
+// free to go on reading it, which a handler does when rendering its response;
+// sharing one would have two goroutines reading and writing the same struct.
 func (r *Runner) Submit(t *task.Task) error {
+	own := *t
+
+	ctx := logging.WithAttrs(r.base,
+		slog.String("task_id", t.ID),
+		slog.String("provider", r.provider.Name()))
+	lifeCtx, stopLife := context.WithCancel(ctx)
+
 	r.mu.Lock()
 	if r.shuttingDown {
 		r.mu.Unlock()
+		stopLife()
 		return errors.New("runner: shutting down")
 	}
+	// Registered here rather than inside the goroutine, so that a task is
+	// cancellable the moment Submit returns. Registering later leaves a
+	// window in which a cancellation silently does nothing.
+	r.active[t.ID] = &activeTask{cancel: stopLife}
 	r.wg.Add(1)
 	r.mu.Unlock()
 
 	go func() {
 		defer r.wg.Done()
-		r.execute(t)
+		defer stopLife()
+		defer func() {
+			r.mu.Lock()
+			delete(r.active, t.ID)
+			r.mu.Unlock()
+		}()
+		r.execute(ctx, lifeCtx, &own)
 	}()
 	return nil
 }

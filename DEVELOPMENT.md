@@ -551,9 +551,9 @@ Everything below the API layer is built and tested. `✅` is done, `⬜` is not.
   =========+=================================================+=============
            v                                                 |
   +----------------------+                     +-------------------------+
-  |  internal/api        | ✅ server, routing, |  SSE endpoint           | ⬜
-  |  /health  /ready     |    middleware, logs |  pushes each message    |
-  |  /v1/tasks ...       | ⬜ task endpoints   +-------------^-----------+
+  |  internal/api     ✅ |                     |  SSE endpoint           | ⬜
+  |  /health  /ready     |                     |  pushes each message    |
+  |  /v1/tasks ...    ✅ |                     +-------------^-----------+
   +----------+-----------+                                   |
              | Submit(task)                                  |
              v                                               |
@@ -601,14 +601,15 @@ Everything below the API layer is built and tested. `✅` is done, `⬜` is not.
 What `cmd/server` wires today:
 
 ```
-config.LoadFromEnv()  ✅  ->  logging.New()  ✅  ->  storage.Open()  ✅
-  ->  storage.Migrate()  ✅  ->  api.New()  ✅  ->  serve()  ✅
-
-runner.New()          ⬜      written and tested, but nothing constructs it
+config.LoadFromEnv()  ✅  ->  logging.New()      ✅  ->  storage.Open()  ✅
+  ->  storage.Migrate()  ✅  ->  taskmysql.NewRepository()  ✅
+  ->  runner.New()       ✅  ->  runner.Recover()           ✅
+  ->  api.New()          ✅  ->  serve()                    ✅
 ```
 
-The runner is complete and unreached: nothing submits a task, because there is
-no `POST /v1/tasks` yet. Closing that gap is the next step.
+A prompt submitted over HTTP is now stored, run by the stub provider, and its
+answer returned. What remains for the voice path is pushing each message to a
+client as it happens rather than only recording it.
 
 **Built**
 
@@ -632,12 +633,15 @@ no `POST /v1/tasks` yet. Closing that gap is the next step.
 - `internal/runner` — executes tasks: reads a provider's stream, stores each
   transient message, records the result, and handles cancellation, deadlines
   and recovery of tasks interrupted by a restart
+- The task API: create, fetch, list, read messages, cancel. `cmd/server` wires
+  the repository and runner together, so a prompt submitted over HTTP is
+  answered by the stub provider and stored
 - `GET /health` (liveness, no dependencies) and `GET /ready` (checks the
   database, 503 when it is unreachable)
 
 **Not built**
 
-- The task API, and the stream that pushes messages to a client
+- The stream that pushes messages to a client as they happen
 - The task API and the runner that executes tasks
 - Agent loop, tools, permissions, events
 - Authentication
@@ -645,8 +649,10 @@ no `POST /v1/tasks` yet. Closing that gap is the next step.
 
 **Known loose ends**
 
-- The runner is written but not wired into the server; nothing submits a task
-  because there is no API yet.
+- Nothing pushes messages to a client. `?wait` polls the database, which is
+  adequate for using the API by hand but useless for speech: a caller hears
+  silence and then everything at once.
+- The only provider is the stub.
 - FRIDAY refuses to start when the database is unreachable. That is deliberate
   for now, but means a database restart takes the server down with it.
 

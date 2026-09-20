@@ -14,6 +14,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+
+	"github.com/DhanushRamesh/friday/internal/task"
 )
 
 // DefaultRequestTimeout : The per-request deadline applied when Options does
@@ -25,12 +27,28 @@ type Pinger interface {
 	Ping(ctx context.Context) error
 }
 
+// Runner : The part of the task runner that the API requires.
+//
+// Taking an interface rather than the concrete runner keeps the handlers
+// testable without executing anything.
+type Runner interface {
+	// Submit : Starts running a stored task in the background.
+	Submit(t *task.Task) error
+	// Cancel : Stops a queued or running task, reporting whether one was
+	// found.
+	Cancel(id string) bool
+}
+
 // Options : The dependencies and settings a Server is built from.
 type Options struct {
 	// Logger : Receives request records and handler errors. Required.
 	Logger *slog.Logger
 	// DB : Checked by the readiness endpoint. Required.
 	DB Pinger
+	// Tasks : Stores and retrieves tasks. Required.
+	Tasks task.Repository
+	// Runner : Executes tasks. Required.
+	Runner Runner
 	// RequestTimeout : The per-request deadline. Zero selects
 	// DefaultRequestTimeout.
 	RequestTimeout time.Duration
@@ -40,6 +58,8 @@ type Options struct {
 type Server struct {
 	logger         *slog.Logger
 	db             Pinger
+	tasks          task.Repository
+	runner         Runner
 	requestTimeout time.Duration
 	router         chi.Router
 }
@@ -53,6 +73,8 @@ func New(opts Options) *Server {
 	s := &Server{
 		logger:         opts.Logger,
 		db:             opts.DB,
+		tasks:          opts.Tasks,
+		runner:         opts.Runner,
 		requestTimeout: opts.RequestTimeout,
 		router:         chi.NewRouter(),
 	}
@@ -80,4 +102,12 @@ func (s *Server) routes() {
 
 	s.router.Get("/health", s.handleHealth)
 	s.router.Get("/ready", s.handleReady)
+
+	s.router.Route("/v1/tasks", func(r chi.Router) {
+		r.Post("/", s.handleCreateTask)
+		r.Get("/", s.handleListTasks)
+		r.Get("/{id}", s.handleGetTask)
+		r.Get("/{id}/messages", s.handleGetTaskMessages)
+		r.Post("/{id}/cancel", s.handleCancelTask)
+	})
 }

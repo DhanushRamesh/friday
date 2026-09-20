@@ -385,3 +385,39 @@ func (refusingProvider) Name() string { return "refusing" }
 func (refusingProvider) Run(context.Context, provider.Request) (<-chan provider.Message, error) {
 	return nil, errors.New("refusing: no credentials configured")
 }
+
+// A task waiting for a slot must be cancellable, not only one already
+// running. Saying "stop" should work whichever it is.
+func TestCancelStopsAQueuedTask(t *testing.T) {
+	h := newHarness(t, &provider.Stub{
+		Updates: []string{"a", "b", "c"},
+		Delay:   80 * time.Millisecond,
+	}, runner.Options{MaxConcurrent: 1})
+
+	// The first task takes the only slot.
+	blocker := h.submit(t, "holds the slot")
+	h.await(t, blocker.ID, task.StatusRunning)
+
+	queued := h.submit(t, "waits behind it")
+
+	// It must still be pending, and cancelling it must work.
+	got, err := h.repo.Get(context.Background(), queued.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status != task.StatusPending {
+		t.Fatalf("Status = %q, want pending while waiting for a slot", got.Status)
+	}
+
+	if !h.runner.Cancel(queued.ID) {
+		t.Fatal("Cancel reported nothing to stop for a queued task")
+	}
+
+	done := h.await(t, queued.ID, task.StatusCancelled, task.StatusRunning, task.StatusCompleted)
+	if done.Status != task.StatusCancelled {
+		t.Errorf("Status = %q, want cancelled", done.Status)
+	}
+	if done.StartedAt != nil {
+		t.Error("a task cancelled before running has a start time")
+	}
+}

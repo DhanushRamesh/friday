@@ -19,3 +19,16 @@ func writeJSON(ctx context.Context, w http.ResponseWriter, status int, body any)
 			slog.Any("error", err))
 	}
 }
+
+// writeError : Writes a failing response carrying a message for whoever reads
+// it. The message may be spoken aloud, so it is written in plain language and
+// never carries internal detail.
+func writeError(ctx context.Context, w http.ResponseWriter, status int, message string) {
+	writeJSON(ctx, w, status, errorResponse{Error: message})
+}
+
+// fail : Records an internal failure and answers 500 without revealing it.
+func (s *Server) fail(ctx context.Context, w http.ResponseWriter, doing string, err error) {
+	s.logger.ErrorContext(ctx, doing+" failed", slog.Any("error", err))
+	writeError(ctx, w, http.StatusInternalServerError, "Something went wrong on my end.")
+}

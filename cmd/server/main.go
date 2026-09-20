@@ -16,7 +16,10 @@ import (
 	"github.com/DhanushRamesh/friday/internal/api"
 	"github.com/DhanushRamesh/friday/internal/config"
 	"github.com/DhanushRamesh/friday/internal/logging"
+	"github.com/DhanushRamesh/friday/internal/provider"
+	"github.com/DhanushRamesh/friday/internal/runner"
 	"github.com/DhanushRamesh/friday/internal/storage"
+	taskmysql "github.com/DhanushRamesh/friday/internal/task/mysql"
 )
 
 // main : Starts the server and exits non-zero if it cannot run.
@@ -75,9 +78,29 @@ func run() error {
 		}
 	}
 
+	tasks := taskmysql.NewRepository(db)
+
+	// The stub answers from a script. A real provider replaces it behind the
+	// same interface.
+	taskRunner, err := runner.New(runner.Options{
+		Repository: tasks,
+		Provider:   &provider.Stub{Delay: 300 * time.Millisecond},
+		Logger:     logger.Logger,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Tasks the previous process was running are no longer being worked on.
+	if err := taskRunner.Recover(context.Background()); err != nil {
+		return err
+	}
+
 	handler := api.New(api.Options{
 		Logger:         logger.Logger,
 		DB:             db,
+		Tasks:          tasks,
+		Runner:         taskRunner,
 		RequestTimeout: cfg.Server.RequestTimeout,
 	})
 
@@ -88,12 +111,12 @@ func run() error {
 		IdleTimeout:       cfg.Server.IdleTimeout,
 	}
 
-	return serve(srv, logger, cfg.Server.ShutdownTimeout)
+	return serve(srv, taskRunner, logger, cfg.Server.ShutdownTimeout)
 }
 
 // serve : Starts srv and blocks until an interrupt arrives, then drains
 // in-flight requests before returning.
-func serve(srv *http.Server, logger *logging.Logger, shutdownTimeout time.Duration) error {
+func serve(srv *http.Server, taskRunner *runner.Runner, logger *logging.Logger, shutdownTimeout time.Duration) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -119,8 +142,14 @@ func serve(srv *http.Server, logger *logging.Logger, shutdownTimeout time.Durati
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
+	// Stop accepting requests first, then let running tasks record where they
+	// got to. A task cut off without that is left reading running for ever.
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("graceful shutdown failed", slog.Any("error", err))
+		return err
+	}
+	if err := taskRunner.Shutdown(shutdownCtx); err != nil {
+		logger.Error("running tasks did not stop cleanly", slog.Any("error", err))
 		return err
 	}
 

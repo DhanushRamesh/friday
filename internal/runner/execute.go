@@ -6,40 +6,29 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/DhanushRamesh/friday/internal/logging"
 	"github.com/DhanushRamesh/friday/internal/provider"
 	"github.com/DhanushRamesh/friday/internal/task"
 )
 
 // execute : Runs one task from start to a terminal status.
 //
-// It waits for a slot before starting, so a queued task stays pending rather
-// than appearing to run while it waits.
-func (r *Runner) execute(t *task.Task) {
-	ctx := logging.WithAttrs(r.base,
-		slog.String("task_id", t.ID),
-		slog.String("provider", r.provider.Name()))
-
+// ctx carries the task's logging attributes and outlives the run, so that a
+// stopped task can still record why. lifeCtx is cancelled to stop the task and
+// covers the wait for a slot as well as the run itself.
+func (r *Runner) execute(ctx, lifeCtx context.Context, t *task.Task) {
 	select {
 	case r.slots <- struct{}{}:
 		defer func() { <-r.slots }()
-	case <-ctx.Done():
-		// Shutting down before this task ever started.
-		r.finishWith(ctx, t, func() error { return t.Cancel() })
+	case <-lifeCtx.Done():
+		// Stopped before it ever started. It never ran, so no deadline can
+		// have passed.
+		r.finishStopped(ctx, t, nil)
 		return
 	}
 
-	runCtx, cancel := context.WithTimeout(ctx, r.taskTimeout)
-	defer cancel()
-
-	r.mu.Lock()
-	r.active[t.ID] = &activeTask{cancel: cancel}
-	r.mu.Unlock()
-	defer func() {
-		r.mu.Lock()
-		delete(r.active, t.ID)
-		r.mu.Unlock()
-	}()
+	// The deadline covers the run itself, not the wait for a slot.
+	runCtx, stopRun := context.WithTimeout(lifeCtx, r.taskTimeout)
+	defer stopRun()
 
 	if err := t.Start(); err != nil {
 		r.logger.ErrorContext(ctx, "cannot start task", slog.Any("error", err))
