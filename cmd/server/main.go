@@ -69,6 +69,12 @@ func run() error {
 		}
 	}()
 
+	if cfg.Database.AutoMigrate {
+		if err := storage.Migrate(context.Background(), db, logger.Logger); err != nil {
+			return err
+		}
+	}
+
 	handler := api.New(api.Options{
 		Logger:         logger.Logger,
 		DB:             db,

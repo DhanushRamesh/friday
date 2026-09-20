@@ -92,6 +92,10 @@ type Database struct {
 	MaxIdleConns    int
 	ConnMaxLifetime time.Duration
 	ConnectTimeout  time.Duration
+
+	// AutoMigrate : Whether to apply outstanding migrations at startup.
+	// Turning it off leaves the schema to be migrated by a separate step.
+	AutoMigrate bool
 }
 
 // DSN : Returns the connection string for go-sql-driver/mysql.
@@ -135,6 +139,7 @@ func (c Config) LogValue() slog.Value {
 		slog.String("log.format", string(c.Log.Format)),
 		slog.String("database.addr", c.Database.SafeAddr()),
 		slog.Int("database.max_open_conns", c.Database.MaxOpenConns),
+		slog.Bool("database.auto_migrate", c.Database.AutoMigrate),
 	)
 }
 
@@ -216,6 +221,7 @@ func Load(path string, lookup Lookup) (Config, error) {
 			MaxIdleConns:    l.integer("database", "max_idle_conns", 5),
 			ConnMaxLifetime: l.duration("database", "conn_max_lifetime", 5*time.Minute),
 			ConnectTimeout:  l.duration("database", "connect_timeout", 5*time.Second),
+			AutoMigrate:     l.boolean("database", "auto_migrate", true),
 		},
 	}
 

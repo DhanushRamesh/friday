@@ -132,6 +132,7 @@ FRIDAY_DATABASE_PASSWORD=... ./friday
 | `database` | `user` | `friday` | |
 | `database` | `password` | empty | Required when `env = production` |
 | `database` | `name` | `friday` | |
+| `database` | `auto_migrate` | `true` | Apply outstanding migrations at startup |
 | `database` | `max_open_conns` | `25` | |
 | `database` | `max_idle_conns` | `5` | Must not exceed `max_open_conns` |
 | `database` | `conn_max_lifetime` | `5m` | |

@@ -28,7 +28,50 @@ used that name; it was discarded.
 
 ---
 
-## 2. Working agreement
+## 2. What FRIDAY is for
+
+The primary interface is voice, through earbuds or a smart speaker. Everything
+else follows from that.
+
+```
+  spoken                "Friday, check my merge requests"
+     ↓
+  earbuds → phone       speech recognised as text
+     ↓  POST /v1/tasks
+  FRIDAY                runs the task
+     ↓  pushed as they happen
+  "Let me take a look."         → spoken
+  "Found four, reading them."   → spoken
+  "Two look risky. …"           → spoken, and the task is done
+```
+
+Three requirements follow, and they are not negotiable:
+
+**Messages are pushed, not polled.** A client that has to ask repeatedly stands
+in silence while FRIDAY works and then hears everything at once. The transient
+messages exist so that the user hears something within a second of asking.
+
+**Messages are whole utterances, not tokens.** Token-by-token streaming is
+useless to a speech synthesiser, which needs complete, well-formed sentences.
+A provider emits `"Let me take a look at that."` as one message, and the
+client's rule is simply that each message it receives is spoken. This is why
+`Provider.Run` streams messages rather than text fragments.
+
+**A message is written to be spoken aloud.** Not `Calling GitLab.getMergeRequests`
+but `Let me check your merge requests`. Anything a user hears, including the
+text of a failure, is phrased as speech.
+
+Interruption follows too: saying "stop" while FRIDAY is speaking must cancel
+the task, so cancellation has to work mid-run rather than only between steps.
+
+Server-sent events carry this, with the cancel endpoint as the return path.
+WebSocket is not needed for it and earns its place only if audio is one day
+streamed upward instead of being recognised on the phone. Alexa is a different
+shape, being request-response with a deadline of a few seconds and unable to
+hold a stream open at all; it needs its own approach and should not shape the
+earbuds path, which is the primary one.
+
+## 3. Working agreement
 
 How the owner wants work done. Violating these is worse than writing no code.
 
@@ -60,7 +103,7 @@ as illustrative. Ask before implementing anything from it.
 
 ---
 
-## 3. Decisions already made
+## 4. Decisions already made
 
 Do not reopen these without being asked. The rationale is recorded so a later
 reader can tell a decision from an accident.
@@ -90,7 +133,7 @@ changes; do not introduce anything architecture-specific.
 
 ---
 
-## 4. Code conventions
+## 5. Code conventions
 
 ### Testing
 
@@ -205,7 +248,7 @@ time, so history comes back ordered from an index scan without a sort.
 
 ---
 
-## 5. Tasks
+## 6. Tasks
 
 The design agreed before any of it was built. Not yet implemented.
 
@@ -394,7 +437,7 @@ lifecycle, cancellation and streaming can be debugged on their own. A real
 provider then replaces it behind the same interface without anything else
 changing.
 
-## 6. Configuration
+## 7. Configuration
 
 Three layers, each overriding the one before:
 
@@ -413,7 +456,7 @@ how secrets reach a deployed machine without editing files.
 
 ---
 
-## 7. Database
+## 8. Database
 
 MySQL 8. Local development database and user are created by hand; see
 `README.md`.
@@ -424,16 +467,27 @@ MySQL 8. Local development database and user are created by hand; see
   accounts. Create both for local development.
 - Storage goes behind a repository interface so the engine stays swappable.
 
-Migrations are not set up yet. GORM's `AutoMigrate` is **not** a substitute: it
-adds tables and columns but never drops, renames or transforms, so a schema
-evolved with it drifts from what a fresh database produces. When migrations are
-built, the intended approach is `goose` used **as a library** with `embed.FS`,
-so they compile into the binary and deployment stays a single file. Confirm
-with the owner before building it.
+Migrations live in `internal/storage/migrations` as numbered `.sql` files and
+are applied by `goose` used as a library. `embed.FS` compiles them into the
+binary, so deployment stays a single file with no directory of SQL to keep
+beside it.
+
+`storage.Migrate` runs at startup when `[database] auto_migrate` is true, which
+it is by default. goose records what it has applied, so running it on every
+start is safe. This is correct while FRIDAY is a single process; more than one
+starting at once would need a lock so that two do not attempt the same
+migration together.
+
+GORM's `AutoMigrate` is **not** used and is not a substitute. It adds tables
+and columns but never drops, renames or transforms, so a schema evolved with it
+drifts from what a fresh database produces.
+
+Adding a migration means a new numbered file. Existing files are never edited
+once applied anywhere, because goose will not reapply them.
 
 ---
 
-## 8. Environment notes
+## 9. Environment notes
 
 Facts about the owner's machine that have already caused confusion:
 
@@ -449,7 +503,7 @@ Facts about the owner's machine that have already caused confusion:
 
 ---
 
-## 9. Current state
+## 10. Current state
 
 Keep this honest. An inaccurate status here is worse than none.
 
@@ -468,12 +522,13 @@ Keep this honest. An inaccurate status here is worse than none.
   touches neither the database nor HTTP
 - `internal/provider` — the Provider interface, its message types, and the
   stub implementation. Pure Go; no network
+- Migrations for `tasks` and `task_messages`, applied at startup
 - `GET /health` (liveness, no dependencies) and `GET /ready` (checks the
   database, 503 when it is unreachable)
 
 **Not built**
 
-- Migrations, the tasks table, and the repository
+- The repository: nothing reads or writes the tables yet
 - The task API and the runner that executes tasks
 - Agent loop, tools, permissions, events
 - Authentication
@@ -481,14 +536,13 @@ Keep this honest. An inaccurate status here is worse than none.
 
 **Known loose ends**
 
-- The connection is open but nothing uses it: there are no tables, no
-  migrations and no repositories.
+- The tables exist but nothing reads or writes them yet.
 - FRIDAY refuses to start when the database is unreachable. That is deliberate
   for now, but means a database restart takes the server down with it.
 
 ---
 
-## 10. Maintaining this file
+## 11. Maintaining this file
 
 When the owner states a preference, makes a decision, or corrects something,
 **record it here** in the same turn. That is the point of the file: a fresh
