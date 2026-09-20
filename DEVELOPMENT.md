@@ -386,6 +386,8 @@ and their results will be recorded the same way.
 
 ### The first provider is a stub
 
+Implemented in `internal/provider`.
+
 It emits a couple of fixed updates and a final message. That makes the whole
 pipeline visible end to end with no API key and no network, so the task
 lifecycle, cancellation and streaming can be debugged on their own. A real
@@ -464,6 +466,8 @@ Keep this honest. An inaccurate status here is worse than none.
 - `internal/api` — the HTTP interface: routing, middleware and handlers
 - `internal/task` — the Task type and its status state machine. Pure Go; it
   touches neither the database nor HTTP
+- `internal/provider` — the Provider interface, its message types, and the
+  stub implementation. Pure Go; no network
 - `GET /health` (liveness, no dependencies) and `GET /ready` (checks the
   database, 503 when it is unreachable)
 
