@@ -15,6 +15,7 @@ import (
 
 	"github.com/DhanushRamesh/friday/internal/api"
 	"github.com/DhanushRamesh/friday/internal/config"
+	"github.com/DhanushRamesh/friday/internal/events"
 	"github.com/DhanushRamesh/friday/internal/logging"
 	"github.com/DhanushRamesh/friday/internal/provider"
 	"github.com/DhanushRamesh/friday/internal/runner"
@@ -80,12 +81,17 @@ func run() error {
 
 	tasks := taskmysql.NewRepository(db)
 
+	// Carries a task's messages to whoever is listening for them.
+	bus := events.NewBus(logger.Logger)
+	defer bus.Close()
+
 	// The stub answers from a script. A real provider replaces it behind the
 	// same interface.
 	taskRunner, err := runner.New(runner.Options{
 		Repository: tasks,
 		Provider:   &provider.Stub{Delay: 300 * time.Millisecond},
 		Logger:     logger.Logger,
+		Publisher:  bus,
 	})
 	if err != nil {
 		return err
@@ -101,6 +107,7 @@ func run() error {
 		DB:             db,
 		Tasks:          tasks,
 		Runner:         taskRunner,
+		Events:         bus,
 		RequestTimeout: cfg.Server.RequestTimeout,
 	})
 

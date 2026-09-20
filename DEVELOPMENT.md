@@ -456,6 +456,26 @@ reading the messages and then the task's own result.
 `kind` is kept even though only updates are written today, because tool calls
 and their results will be recorded the same way.
 
+### Streaming to a client
+
+`GET /v1/tasks/{id}/stream` sends server-sent events. Every message a client
+receives is one whole sentence, ready to be spoken.
+
+The handler subscribes to the bus **before** reading the task. Reading first
+leaves a gap in which a task can finish unheard, and the client then waits for
+a message that was already sent. Having subscribed, it replays the messages
+already stored, sends the outcome and closes if the task has finished, and
+otherwise follows the live stream, skipping anything it already replayed.
+
+A client reconnecting sends `Last-Event-ID` and resumes from there, so a phone
+on mobile data does not hear the same sentence twice.
+
+Publishing never blocks. A client that has stopped reading loses events rather
+than delaying the task producing them; the database holds the durable record
+either way. Comments are sent on an idle stream, because proxies and mobile
+networks close a silent connection and a real agent will think for minutes
+without speaking.
+
 ### The first provider is a stub
 
 Implemented in `internal/provider`.
@@ -551,7 +571,7 @@ Everything below the API layer is built and tested. `✅` is done, `⬜` is not.
   =========+=================================================+=============
            v                                                 |
   +----------------------+                     +-------------------------+
-  |  internal/api     ✅ |                     |  SSE endpoint           | ⬜
+  |  internal/api     ✅ |                     |  SSE endpoint        ✅ |
   |  /health  /ready     |                     |  pushes each message    |
   |  /v1/tasks ...    ✅ |                     +-------------^-----------+
   +----------+-----------+                                   |
@@ -607,9 +627,10 @@ config.LoadFromEnv()  ✅  ->  logging.New()      ✅  ->  storage.Open()  ✅
   ->  api.New()          ✅  ->  serve()                    ✅
 ```
 
-A prompt submitted over HTTP is now stored, run by the stub provider, and its
-answer returned. What remains for the voice path is pushing each message to a
-client as it happens rather than only recording it.
+A prompt submitted over HTTP is stored, run by the stub provider, and its
+answer returned. Each message is pushed to listening clients as it is produced.
+The path a voice client needs is complete, end to end, with a stub in place of
+a model.
 
 **Built**
 
@@ -636,12 +657,18 @@ client as it happens rather than only recording it.
 - The task API: create, fetch, list, read messages, cancel. `cmd/server` wires
   the repository and runner together, so a prompt submitted over HTTP is
   answered by the stub provider and stored
+- `internal/events` — an in-process bus carrying a task's messages from the
+  runner to whoever is listening
+- `GET /v1/tasks/{id}/stream` — server-sent events, delivering each message as
+  it is produced. This is the voice path
 - `GET /health` (liveness, no dependencies) and `GET /ready` (checks the
   database, 503 when it is unreachable)
 
 **Not built**
 
-- The stream that pushes messages to a client as they happen
+- Any real provider. The stub is the only one
+- Authentication. Every endpoint is open
+- The Android client, tools, memory and the agent loop
 - The task API and the runner that executes tasks
 - Agent loop, tools, permissions, events
 - Authentication
@@ -649,10 +676,11 @@ client as it happens rather than only recording it.
 
 **Known loose ends**
 
-- Nothing pushes messages to a client. `?wait` polls the database, which is
-  adequate for using the API by hand but useless for speech: a caller hears
-  silence and then everything at once.
-- The only provider is the stub.
+- `?wait` still polls the database. It is a convenience for using the API by
+  hand; the stream is what a client should use, and could serve `?wait` too.
+- The event bus is in-process. A second process would not see another's
+  events, and clients would hear nothing from tasks it was running.
+- Nothing authenticates. Anyone who can reach the port can submit tasks.
 - FRIDAY refuses to start when the database is unreachable. That is deliberate
   for now, but means a database restart takes the server down with it.
 

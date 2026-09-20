@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/DhanushRamesh/friday/internal/events"
 	"github.com/DhanushRamesh/friday/internal/provider"
 	"github.com/DhanushRamesh/friday/internal/task"
 )
@@ -104,6 +105,7 @@ func (r *Runner) complete(ctx context.Context, t *task.Task, text string) {
 	if err := r.save(ctx, t); err != nil {
 		return
 	}
+	r.announceOutcome(t)
 	r.logger.InfoContext(ctx, "task completed",
 		slog.Duration("took", t.Duration()),
 		slog.Int("response_bytes", len(t.Response)))
@@ -138,16 +140,54 @@ func (r *Runner) finishWith(ctx context.Context, t *task.Task, transition func()
 		return
 	}
 	_ = r.save(ctx, t)
+	r.announceOutcome(t)
 }
 
-// record : Stores one transient message.
+// record : Stores one transient message and announces it.
 //
 // A message that cannot be stored does not fail the task: the answer still
-// matters, and losing a line of progress is not worth discarding it for.
+// matters, and losing a line of progress is not worth discarding it for. It is
+// still announced, so a listener hears it even when the record of it was lost.
 func (r *Runner) record(ctx context.Context, taskID string, msg provider.Message) {
-	if _, err := r.repo.AppendMessage(ctx, taskID, string(msg.Kind), msg.Text); err != nil {
+	stored, err := r.repo.AppendMessage(ctx, taskID, string(msg.Kind), msg.Text)
+	if err != nil {
 		r.logger.ErrorContext(ctx, "cannot store message", slog.Any("error", err))
 	}
+	r.publish(events.Event{
+		TaskID: taskID,
+		Kind:   events.KindUpdate,
+		Seq:    stored.Seq,
+		Text:   msg.Text,
+		At:     msg.At,
+	})
+}
+
+// publish : Announces an event, if there is anywhere to announce it.
+func (r *Runner) publish(ev events.Event) {
+	if r.publisher == nil {
+		return
+	}
+	if ev.At.IsZero() {
+		ev.At = time.Now().UTC()
+	}
+	r.publisher.Publish(ev)
+}
+
+// announceOutcome : Tells listeners how a task ended, so a stream can close
+// rather than waiting for a message that will never come.
+func (r *Runner) announceOutcome(t *task.Task) {
+	ev := events.Event{TaskID: t.ID, At: t.UpdatedAt}
+	switch t.Status {
+	case task.StatusCompleted:
+		ev.Kind, ev.Text = events.KindFinal, t.Response
+	case task.StatusFailed:
+		ev.Kind, ev.Text = events.KindError, t.Error
+	case task.StatusCancelled:
+		ev.Kind, ev.Text = events.KindCancelled, ""
+	default:
+		return
+	}
+	r.publish(ev)
 }
 
 // save : Writes a task's current state, using a context that outlives the

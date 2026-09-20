@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DhanushRamesh/friday/internal/events"
 	"github.com/DhanushRamesh/friday/internal/logging"
 	"github.com/DhanushRamesh/friday/internal/provider"
 	"github.com/DhanushRamesh/friday/internal/runner"
@@ -39,10 +40,14 @@ func newTaskServer(t *testing.T, db Pinger, p provider.Provider) (*Server, *byte
 	}
 
 	repo := newMemRepo()
+	bus := events.NewBus(logger.Logger)
+	t.Cleanup(bus.Close)
+
 	r, err := runner.New(runner.Options{
 		Repository: repo,
 		Provider:   p,
 		Logger:     logger.Logger,
+		Publisher:  bus,
 	})
 	if err != nil {
 		t.Fatalf("runner.New: %v", err)
@@ -53,7 +58,7 @@ func newTaskServer(t *testing.T, db Pinger, p provider.Provider) (*Server, *byte
 		_ = r.Shutdown(ctx)
 	})
 
-	srv := New(Options{Logger: logger.Logger, DB: db, Tasks: repo, Runner: r})
+	srv := New(Options{Logger: logger.Logger, DB: db, Tasks: repo, Runner: r, Events: bus})
 	return srv, buf, repo, r
 }
 

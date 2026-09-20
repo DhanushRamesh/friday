@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DhanushRamesh/friday/internal/events"
 	"github.com/DhanushRamesh/friday/internal/logging"
 	"github.com/DhanushRamesh/friday/internal/provider"
 	"github.com/DhanushRamesh/friday/internal/task"
@@ -40,6 +41,12 @@ const (
 	shutdownReason = "FRIDAY shut down before this finished."
 )
 
+// Publisher : Somewhere to announce what a task is doing.
+type Publisher interface {
+	// Publish : Delivers an event to whoever is listening. It must not block.
+	Publish(ev events.Event)
+}
+
 // Options : The dependencies and settings a Runner is built from.
 type Options struct {
 	// Repository : Stores tasks and their messages. Required.
@@ -48,6 +55,10 @@ type Options struct {
 	Provider provider.Provider
 	// Logger : Receives execution records. Required.
 	Logger *slog.Logger
+	// Publisher : Receives a task's messages as they happen, for clients
+	// listening to it. Optional; without one a task still runs and is still
+	// recorded, but nothing hears it until it is read back.
+	Publisher Publisher
 	// TaskTimeout : How long a task may run. Zero selects
 	// DefaultTaskTimeout.
 	TaskTimeout time.Duration
@@ -62,6 +73,7 @@ type Options struct {
 type Runner struct {
 	repo        task.Repository
 	provider    provider.Provider
+	publisher   Publisher
 	logger      *slog.Logger
 	taskTimeout time.Duration
 
@@ -112,6 +124,7 @@ func New(opts Options) (*Runner, error) {
 	return &Runner{
 		repo:        opts.Repository,
 		provider:    opts.Provider,
+		publisher:   opts.Publisher,
 		logger:      opts.Logger,
 		taskTimeout: opts.TaskTimeout,
 		slots:       make(chan struct{}, opts.MaxConcurrent),

@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/DhanushRamesh/friday/internal/events"
 	"github.com/DhanushRamesh/friday/internal/task"
 )
 
@@ -39,6 +40,13 @@ type Runner interface {
 	Cancel(id string) bool
 }
 
+// Subscriber : Somewhere to listen for a task's messages as they happen.
+type Subscriber interface {
+	// Subscribe : Returns a channel of a task's events and a function that
+	// ends the subscription.
+	Subscribe(taskID string) (<-chan events.Event, func())
+}
+
 // Options : The dependencies and settings a Server is built from.
 type Options struct {
 	// Logger : Receives request records and handler errors. Required.
@@ -49,6 +57,9 @@ type Options struct {
 	Tasks task.Repository
 	// Runner : Executes tasks. Required.
 	Runner Runner
+	// Events : Carries a task's messages to clients listening for them.
+	// Required for streaming.
+	Events Subscriber
 	// RequestTimeout : The per-request deadline. Zero selects
 	// DefaultRequestTimeout.
 	RequestTimeout time.Duration
@@ -60,6 +71,7 @@ type Server struct {
 	db             Pinger
 	tasks          task.Repository
 	runner         Runner
+	events         Subscriber
 	requestTimeout time.Duration
 	router         chi.Router
 }
@@ -75,6 +87,7 @@ func New(opts Options) *Server {
 		db:             opts.DB,
 		tasks:          opts.Tasks,
 		runner:         opts.Runner,
+		events:         opts.Events,
 		requestTimeout: opts.RequestTimeout,
 		router:         chi.NewRouter(),
 	}
@@ -108,6 +121,7 @@ func (s *Server) routes() {
 		r.Get("/", s.handleListTasks)
 		r.Get("/{id}", s.handleGetTask)
 		r.Get("/{id}/messages", s.handleGetTaskMessages)
+		r.Get("/{id}/stream", s.handleStreamTask)
 		r.Post("/{id}/cancel", s.handleCancelTask)
 	})
 }
