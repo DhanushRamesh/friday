@@ -16,35 +16,32 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/DhanushRamesh/friday/internal/config"
 	"github.com/DhanushRamesh/friday/internal/logging"
 )
 
 func main() {
 	if err := run(); err != nil {
-		// The logger may not exist yet, so report startup failures plainly.
+		// Configuration is read before the logger exists, so a startup failure
+		// has nowhere structured to go and is reported plainly instead.
 		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
 		os.Exit(1)
 	}
 }
 
 func run() error {
-	env := getenv("FRIDAY_ENV", "dev")
-
-	format := logging.FormatJSON
-	if env == "dev" {
-		format = logging.FormatText
-	}
-	if f := os.Getenv("FRIDAY_LOG_FORMAT"); f != "" {
-		format = logging.Format(f)
+	cfg, err := config.LoadFromEnv()
+	if err != nil {
+		return err
 	}
 
 	logger, err := logging.New(os.Stdout, logging.Config{
-		Level:     getenv("FRIDAY_LOG_LEVEL", "info"),
-		Format:    format,
-		AddSource: env == "dev",
+		Level:     cfg.Log.Level,
+		Format:    cfg.Log.Format,
+		AddSource: cfg.Log.AddSource,
 		Service:   "friday",
 		Version:   version(),
-		Env:       env,
+		Env:       string(cfg.Env),
 	})
 	if err != nil {
 		return err
@@ -53,20 +50,24 @@ func run() error {
 	// produce records in the configured format.
 	slog.SetDefault(logger.Logger)
 
-	addr := getenv("FRIDAY_ADDR", ":8080")
+	// Record the effective configuration once at startup. Config redacts the
+	// database password, so this is safe to emit. The first question about any
+	// misbehaving deployment is which settings it actually loaded.
+	logger.Info("configuration loaded", slog.Any("config", cfg))
+
 	srv := &http.Server{
-		Addr:              addr,
-		Handler:           routes(logger.Logger),
-		ReadHeaderTimeout: 5 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		Addr:              cfg.Server.Addr,
+		Handler:           routes(logger.Logger, cfg.Server.RequestTimeout),
+		ReadHeaderTimeout: cfg.Server.ReadHeaderTimeout,
+		IdleTimeout:       cfg.Server.IdleTimeout,
 	}
 
-	return serve(srv, logger)
+	return serve(srv, logger, cfg.Server.ShutdownTimeout)
 }
 
 // serve starts the server and blocks until an interrupt arrives, then drains
 // in-flight requests before returning.
-func serve(srv *http.Server, logger *logging.Logger) error {
+func serve(srv *http.Server, logger *logging.Logger, shutdownTimeout time.Duration) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -85,10 +86,11 @@ func serve(srv *http.Server, logger *logging.Logger) error {
 	case err := <-errCh:
 		return err
 	case <-ctx.Done():
-		logger.Info("shutdown signal received, draining")
+		logger.Info("shutdown signal received, draining",
+			slog.Duration("grace_period", shutdownTimeout))
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
@@ -100,7 +102,7 @@ func serve(srv *http.Server, logger *logging.Logger) error {
 	return nil
 }
 
-func routes(logger *slog.Logger) http.Handler {
+func routes(logger *slog.Logger, requestTimeout time.Duration) http.Handler {
 	r := chi.NewRouter()
 
 	// Order matters: RequestID must precede requestContext, which must precede
@@ -110,7 +112,7 @@ func routes(logger *slog.Logger) http.Handler {
 	r.Use(requestContext)
 	r.Use(requestLogger(logger))
 	r.Use(recoverer(logger))
-	r.Use(middleware.Timeout(30 * time.Second))
+	r.Use(middleware.Timeout(requestTimeout))
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(r.Context(), w, http.StatusOK, map[string]string{"status": "ok"})
@@ -127,13 +129,6 @@ func writeJSON(ctx context.Context, w http.ResponseWriter, status int, body any)
 		logging.FromContext(ctx).ErrorContext(ctx, "failed to write response body",
 			slog.Any("error", err))
 	}
-}
-
-func getenv(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
 }
 
 // version reports the VCS revision stamped into the binary by the Go toolchain.

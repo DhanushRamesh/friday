@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
 
@@ -159,7 +160,7 @@ func TestHealthEndpoint(t *testing.T) {
 	logger, _ := testLogger(t)
 
 	rec := httptest.NewRecorder()
-	routes(logger).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
+	routes(logger, 30*time.Second).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)

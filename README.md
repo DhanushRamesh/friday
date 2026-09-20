@@ -15,14 +15,13 @@ This is early. What exists today:
 |---|---|
 | HTTP server, graceful shutdown | working |
 | Structured logging, redaction, request tracing | working |
-| Configuration from `config.ini` + environment | working, **not yet wired into the server** |
+| Configuration from `config.ini` + environment | working, drives the server |
 | MySQL connection | verified by hand, not yet used by the server |
 | Task API, agent, tools | not started |
 
-The server currently serves one endpoint, `GET /health`, and reads a few
-settings directly from the environment. Connecting it to the `config` package
-is the next step, after which the environment variable names below become the
-only ones it understands.
+The server currently serves one endpoint, `GET /health`. It is configured
+entirely through `config.ini` and the environment variables below, and refuses
+to start if either is invalid.
 
 > Working on this codebase, with an AI agent or otherwise? Read
 > [`DEVELOPMENT.md`](DEVELOPMENT.md) first. It records the decisions already

@@ -217,7 +217,8 @@ Keep this honest. An inaccurate status here is worse than none.
   panic recovery
 - `internal/logging` — structured logging, context-carried attributes,
   credential redaction, runtime-adjustable level
-- `internal/config` — three-layer configuration, validation, secret handling
+- `internal/config` — three-layer configuration, validation, secret handling,
+  wired into the server
 
 **Not built**
 
@@ -229,10 +230,8 @@ Keep this honest. An inaccurate status here is worse than none.
 
 **Known loose ends**
 
-- `internal/config` is written and tested but **not wired into `cmd/server`**.
-  `main.go` still reads `os.Getenv` directly, using older variable names
-  (`FRIDAY_ADDR` rather than `FRIDAY_SERVER_ADDR`). These disagree until the
-  wiring is done.
+- Nothing reads or writes the database yet. `config.Database` is validated and
+  a DSN is produced, but no connection is opened by the server.
 
 ---
 
