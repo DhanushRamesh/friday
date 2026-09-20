@@ -18,6 +18,7 @@ import (
 	"github.com/DhanushRamesh/friday/internal/events"
 	"github.com/DhanushRamesh/friday/internal/logging"
 	"github.com/DhanushRamesh/friday/internal/provider"
+	"github.com/DhanushRamesh/friday/internal/provider/platformai"
 	"github.com/DhanushRamesh/friday/internal/runner"
 	"github.com/DhanushRamesh/friday/internal/storage"
 	taskmysql "github.com/DhanushRamesh/friday/internal/task/mysql"
@@ -85,11 +86,15 @@ func run() error {
 	bus := events.NewBus(logger.Logger)
 	defer bus.Close()
 
-	// The stub answers from a script. A real provider replaces it behind the
-	// same interface.
+	answerer, err := buildProvider(cfg, logger.Logger)
+	if err != nil {
+		return err
+	}
+	logger.Info("provider selected", slog.String("provider", answerer.Name()))
+
 	taskRunner, err := runner.New(runner.Options{
 		Repository: tasks,
-		Provider:   &provider.Stub{Delay: 300 * time.Millisecond},
+		Provider:   answerer,
 		Logger:     logger.Logger,
 		Publisher:  bus,
 	})
@@ -119,6 +124,33 @@ func run() error {
 	}
 
 	return serve(srv, taskRunner, logger, cfg.Server.ShutdownTimeout)
+}
+
+// buildProvider : Returns the engine that answers tasks, as configuration
+// selects it.
+func buildProvider(cfg config.Config, logger *slog.Logger) (provider.Provider, error) {
+	switch cfg.Provider.Name {
+	case config.ProviderPlatformAI:
+		return platformai.New(platformai.Config{
+			ClientID:           cfg.PlatformAI.ClientID,
+			ClientSecret:       cfg.PlatformAI.ClientSecret,
+			RefreshToken:       cfg.PlatformAI.RefreshToken,
+			PortalID:           cfg.PlatformAI.PortalID,
+			TokenURL:           cfg.PlatformAI.TokenURL,
+			ChatURL:            cfg.PlatformAI.ChatURL,
+			Scope:              cfg.PlatformAI.Scope,
+			RedirectURI:        cfg.PlatformAI.RedirectURI,
+			Vendor:             cfg.PlatformAI.Vendor,
+			Model:              cfg.PlatformAI.Model,
+			Timeout:            cfg.PlatformAI.Timeout,
+			InsecureSkipVerify: cfg.PlatformAI.InsecureSkipVerify,
+		}, logger)
+
+	default:
+		// Answers from a script, so everything around an answer can be worked
+		// on without credentials or a network.
+		return &provider.Stub{Delay: 300 * time.Millisecond}, nil
+	}
 }
 
 // serve : Starts srv and blocks until an interrupt arrives, then drains

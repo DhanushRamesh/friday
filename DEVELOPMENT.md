@@ -476,6 +476,54 @@ either way. Comments are sent on an idle stream, because proxies and mobile
 networks close a silent connection and a real agent will think for minutes
 without speaking.
 
+### Platform AI
+
+`internal/provider/platformai` answers using Zoho Platform AI, selected with
+`[provider] name = platformai`. It was written from the working client in
+`~/workspace/ulaa_defter/product_package/go_src/project_assistant`.
+
+The service is request and response: one call returns one complete answer, with
+nothing in between. FRIDAY's interface streams because a user listening through
+earbuds needs to hear something long before the answer arrives, so this
+provider produces its own progress: an acknowledgement at once, a reassurance
+every fifteen seconds while the call is outstanding, then the reply as the
+final message. Silence is the thing to avoid, not a shortage of detail.
+
+The system prompt asks for plain spoken sentences and forbids markdown,
+headings and code fences. They are noise when heard rather than read.
+
+Three things about the service are easy to get wrong:
+
+- The system prompt is sent in a field named `context`, not `content`.
+- A reply's content arrives either as a plain string or as an array of blocks
+  each carrying text, and both must be handled.
+- An error envelope carries a message the service wrote to be read, so that
+  reaches the user. Anything else — transport, decoding, an HTML error page —
+  is reported in general terms, because it means nothing to a listener and can
+  carry internal detail.
+
+**Credentials must be scrubbed from transport errors.** The token endpoint
+takes the client secret and refresh token as query parameters, and a
+`*url.Error` carries the whole URL, so wrapping one as it comes writes the
+credentials into the log in plain text. This happened and was fixed. Redaction
+in `internal/logging` cannot catch it: that matches attribute keys, and this is
+a secret buried inside an error's text. `scrubURL` removes the query string
+while keeping the operation, host and cause.
+
+**Use the public endpoints**, `accounts.zoho.com` and `platformai.zoho.com`.
+They serve the same paths as the internal ones and are reachable from
+anywhere, so FRIDAY can use this provider from a cloud host. The internal
+addresses are reachable only from the corporate network and are not used.
+
+Credentials are realm-specific. The ones issued on the internal accounts
+domain are rejected with `invalid_client` against `accounts.zoho.com`; a
+Self Client on api-console.zoho.com, with scope
+`PlatformAI.organizations.all`, is what works. Certificate verification stays
+on, since the public endpoints present ordinary certificates.
+
+Credentials live in `config.ini`, which is git-ignored, or in
+`FRIDAY_PLATFORMAI_CLIENT_SECRET` and `FRIDAY_PLATFORMAI_REFRESH_TOKEN`.
+
 ### The first provider is a stub
 
 Implemented in `internal/provider`.
@@ -596,7 +644,7 @@ Everything below the API layer is built and tested. `✅` is done, `⬜` is not.
   |  Provider interface |   |  Task + Status       |
   |  Message / Kind     |   |  state machine       |
   |  Stub            ✅ |   |  Repository interface|
-  |  Claude / GPT    ⬜ |   +----------+-----------+
+  |  Platform AI     ✅ |   +----------+-----------+
   +---------------------+              |
                                        v
                             +-----------------------+
@@ -627,10 +675,11 @@ config.LoadFromEnv()  ✅  ->  logging.New()      ✅  ->  storage.Open()  ✅
   ->  api.New()          ✅  ->  serve()                    ✅
 ```
 
-A prompt submitted over HTTP is stored, run by the stub provider, and its
-answer returned. Each message is pushed to listening clients as it is produced.
-The path a voice client needs is complete, end to end, with a stub in place of
-a model.
+A prompt submitted over HTTP is stored, answered by a real model through
+Platform AI, and streamed back message by message. Verified against the live
+service: a question asked over HTTP was answered by Claude in about three
+seconds, with the acknowledgement heard immediately. The path a voice client
+needs is complete, end to end.
 
 **Built**
 
@@ -659,14 +708,14 @@ a model.
   answered by the stub provider and stored
 - `internal/events` — an in-process bus carrying a task's messages from the
   runner to whoever is listening
+- `internal/provider/platformai` — answers using Zoho Platform AI, selected by
+  `[provider] name`
 - `GET /v1/tasks/{id}/stream` — server-sent events, delivering each message as
   it is produced. This is the voice path
 - `GET /health` (liveness, no dependencies) and `GET /ready` (checks the
   database, 503 when it is unreachable)
 
 **Not built**
-
-- Any real provider. The stub is the only one
 - Authentication. Every endpoint is open
 - The Android client, tools, memory and the agent loop
 - The task API and the runner that executes tasks
@@ -681,6 +730,10 @@ a model.
 - The event bus is in-process. A second process would not see another's
   events, and clients would hear nothing from tasks it was running.
 - Nothing authenticates. Anyone who can reach the port can submit tasks.
+- Platform AI's reassurance interval is fifteen seconds, and answers commonly
+  arrive in three to nine, so most tasks send only the opening
+  acknowledgement. That is fine now, but if answers get slower the interval is
+  worth shortening: silence is what to avoid when listening.
 - FRIDAY refuses to start when the database is unreachable. That is deliberate
   for now, but means a database restart takes the server down with it.
 

@@ -53,10 +53,12 @@ func (e Environment) IsProduction() bool { return e == EnvProduction }
 
 // Config : The fully resolved configuration for one process.
 type Config struct {
-	Env      Environment
-	Server   Server
-	Log      Log
-	Database Database
+	Env        Environment
+	Server     Server
+	Log        Log
+	Database   Database
+	Provider   Provider
+	PlatformAI PlatformAI
 
 	// Source : The path of the file the configuration was read from, or
 	// empty if no file was read.
@@ -77,6 +79,45 @@ type Log struct {
 	Level     string
 	Format    logging.Format
 	AddSource bool
+}
+
+// ProviderName : Which engine answers a task.
+type ProviderName string
+
+const (
+	// ProviderStub : Answers from a script, needing no credentials and no
+	// network. Useful for working on everything around the answer.
+	ProviderStub ProviderName = "stub"
+	// ProviderPlatformAI : Answers using Zoho Platform AI.
+	ProviderPlatformAI ProviderName = "platformai"
+)
+
+// Provider : Chooses which engine answers tasks.
+type Provider struct {
+	// Name : Which provider to use.
+	Name ProviderName
+}
+
+// PlatformAI : Credentials and endpoints for Zoho Platform AI. Read only when
+// it is the selected provider.
+type PlatformAI struct {
+	ClientID     string
+	ClientSecret logging.Secret
+	RefreshToken logging.Secret
+	PortalID     string
+
+	TokenURL    string
+	ChatURL     string
+	Scope       string
+	RedirectURI string
+
+	Vendor string
+	Model  string
+
+	Timeout time.Duration
+	// InsecureSkipVerify : Skips certificate verification. Needed only for the
+	// internal endpoints, whose certificates come from an internal authority.
+	InsecureSkipVerify bool
 }
 
 // Database : Configures the MySQL connection. The password is held separately
@@ -140,6 +181,8 @@ func (c Config) LogValue() slog.Value {
 		slog.String("database.addr", c.Database.SafeAddr()),
 		slog.Int("database.max_open_conns", c.Database.MaxOpenConns),
 		slog.Bool("database.auto_migrate", c.Database.AutoMigrate),
+		slog.String("provider.name", string(c.Provider.Name)),
+		slog.String("platformai.model", c.PlatformAI.Model),
 	)
 }
 
@@ -222,6 +265,23 @@ func Load(path string, lookup Lookup) (Config, error) {
 			ConnMaxLifetime: l.duration("database", "conn_max_lifetime", 5*time.Minute),
 			ConnectTimeout:  l.duration("database", "connect_timeout", 5*time.Second),
 			AutoMigrate:     l.boolean("database", "auto_migrate", true),
+		},
+		Provider: Provider{
+			Name: ProviderName(l.str("provider", "name", string(ProviderStub))),
+		},
+		PlatformAI: PlatformAI{
+			ClientID:           l.str("platformai", "client_id", ""),
+			ClientSecret:       logging.Secret(l.str("platformai", "client_secret", "")),
+			RefreshToken:       logging.Secret(l.str("platformai", "refresh_token", "")),
+			PortalID:           l.str("platformai", "portal_id", ""),
+			TokenURL:           l.str("platformai", "token_url", ""),
+			ChatURL:            l.str("platformai", "chat_url", ""),
+			Scope:              l.str("platformai", "scope", ""),
+			RedirectURI:        l.str("platformai", "redirect_uri", ""),
+			Vendor:             l.str("platformai", "vendor", ""),
+			Model:              l.str("platformai", "model", ""),
+			Timeout:            l.duration("platformai", "timeout", 120*time.Second),
+			InsecureSkipVerify: l.boolean("platformai", "insecure_skip_verify", false),
 		},
 	}
 

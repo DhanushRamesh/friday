@@ -137,6 +137,17 @@ FRIDAY_DATABASE_PASSWORD=... ./friday
 | `database` | `max_idle_conns` | `5` | Must not exceed `max_open_conns` |
 | `database` | `conn_max_lifetime` | `5m` | |
 | `database` | `connect_timeout` | `5s` | |
+| `provider` | `name` | `stub` | `stub` or `platformai` |
+| `platformai` | `client_id` | | OAuth client |
+| `platformai` | `client_secret` | | OAuth client secret |
+| `platformai` | `refresh_token` | | Long-lived token that access tokens are minted from |
+| `platformai` | `portal_id` | | Identifies the calling portal |
+| `platformai` | `vendor` | `anthropic` | |
+| `platformai` | `model` | `claude-sonnet-4-6` | |
+| `platformai` | `token_url` | `https://accounts.zoho.com/oauth/v2/token` | |
+| `platformai` | `chat_url` | `https://platformai.zoho.com/internalapi/v2/ai/chat` | |
+| `platformai` | `timeout` | `120s` | How long one call may take |
+| `platformai` | `insecure_skip_verify` | `false` | Only needed for the internal endpoints |
 
 Point at a different file with `FRIDAY_CONFIG=/path/to/config.ini`. When that
 variable is set the file must exist; a plain missing `config.ini` is fine and
