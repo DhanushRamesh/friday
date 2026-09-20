@@ -144,7 +144,8 @@ FRIDAY starts on defaults and environment variables alone.
 ## Layout
 
 ```
-cmd/server/          entry point, routing, HTTP middleware
+cmd/server/          entry point: configuration, dependencies, lifecycle
+internal/api/        HTTP server: routing, middleware, handlers
 internal/config/     configuration loading and validation
 internal/logging/    structured logging, context propagation, redaction
 internal/storage/    database connection, pool, GORM logging bridge

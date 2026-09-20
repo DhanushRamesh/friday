@@ -1,8 +1,8 @@
+// Command server runs FRIDAY.
 package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,9 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-
+	"github.com/DhanushRamesh/friday/internal/api"
 	"github.com/DhanushRamesh/friday/internal/config"
 	"github.com/DhanushRamesh/friday/internal/logging"
 	"github.com/DhanushRamesh/friday/internal/storage"
@@ -71,9 +69,15 @@ func run() error {
 		}
 	}()
 
+	handler := api.New(api.Options{
+		Logger:         logger.Logger,
+		DB:             db,
+		RequestTimeout: cfg.Server.RequestTimeout,
+	})
+
 	srv := &http.Server{
 		Addr:              cfg.Server.Addr,
-		Handler:           routes(logger.Logger, cfg.Server.RequestTimeout, db),
+		Handler:           handler,
 		ReadHeaderTimeout: cfg.Server.ReadHeaderTimeout,
 		IdleTimeout:       cfg.Server.IdleTimeout,
 	}
@@ -81,7 +85,7 @@ func run() error {
 	return serve(srv, logger, cfg.Server.ShutdownTimeout)
 }
 
-// serve : Starts the server and blocks until an interrupt arrives, then drains
+// serve : Starts srv and blocks until an interrupt arrives, then drains
 // in-flight requests before returning.
 func serve(srv *http.Server, logger *logging.Logger, shutdownTimeout time.Duration) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -118,79 +122,8 @@ func serve(srv *http.Server, logger *logging.Logger, shutdownTimeout time.Durati
 	return nil
 }
 
-// pinger : The part of a database handle that the readiness check requires.
-type pinger interface {
-	Ping(ctx context.Context) error
-}
-
-// routes : Builds the HTTP handler, applying the middleware stack in the
-// order every request passes through it.
-func routes(logger *slog.Logger, requestTimeout time.Duration, db pinger) http.Handler {
-	r := chi.NewRouter()
-
-	// Order matters: RequestID must precede requestContext, which must precede
-	// anything that logs, so every record downstream carries the request ID.
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-	r.Use(requestContext)
-	r.Use(requestLogger(logger))
-	r.Use(recoverer(logger))
-	r.Use(middleware.Timeout(requestTimeout))
-
-	// Liveness. Touches no dependencies, so a dependency outage cannot cause
-	// a supervisor to restart a working process.
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(r.Context(), w, http.StatusOK, map[string]string{"status": "ok"})
-	})
-
-	// Readiness.
-	r.Get("/ready", readyHandler(logger, db))
-
-	return r
-}
-
-// readinessTimeout : Bounds the dependency checks made by readyHandler.
-const readinessTimeout = 2 * time.Second
-
-// readyHandler : Reports whether FRIDAY's dependencies are usable, answering
-// 503 when any check fails.
-func readyHandler(logger *slog.Logger, db pinger) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), readinessTimeout)
-		defer cancel()
-
-		checks := map[string]string{"database": "ok"}
-		status := http.StatusOK
-
-		if err := db.Ping(ctx); err != nil {
-			// The cause goes to the log, not to the caller.
-			checks["database"] = "unreachable"
-			status = http.StatusServiceUnavailable
-			logger.ErrorContext(ctx, "readiness check failed",
-				slog.String("check", "database"),
-				slog.Any("error", err))
-		}
-
-		body := map[string]any{"status": "ready", "checks": checks}
-		if status != http.StatusOK {
-			body["status"] = "not ready"
-		}
-		writeJSON(ctx, w, status, body)
-	}
-}
-
-// writeJSON : Writes body as a JSON response with the given status code.
-func writeJSON(ctx context.Context, w http.ResponseWriter, status int, body any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(body); err != nil {
-		// The status line is already sent, so this can only be reported, not fixed.
-		logging.FromContext(ctx).ErrorContext(ctx, "failed to write response body",
-			slog.Any("error", err))
-	}
-}
-
-// version : Reports the VCS revision stamped into the binary by the Go toolchain.
+// version : Returns the VCS revision stamped into the binary by the Go
+// toolchain, or a placeholder when it is unavailable.
 func version() string {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {

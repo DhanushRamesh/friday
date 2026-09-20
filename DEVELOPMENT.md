@@ -140,6 +140,22 @@ Use `internal/logging`. Do not construct `slog` handlers elsewhere.
   redacted automatically; for anything else wrap the value in `logging.Secret`.
 - Log levels: 5xx responses at error, 4xx at warn, health checks at debug.
 
+### Structure
+
+`cmd/server` wires the process together and owns its lifecycle: configuration,
+logger, dependencies, HTTP server, graceful shutdown. It holds no routes and
+no handlers.
+
+Endpoints live in `internal/api`, on a `Server` that carries the dependencies
+its handlers need. Handlers are methods on it, so a new endpoint gains access
+to the logger and database without another parameter being threaded through.
+Keeping them out of package main is what allows the whole interface to be
+exercised in tests without starting a process.
+
+Startup does not use `init()`. It cannot return an error, so a failure to read
+configuration or reach the database could only panic or exit, losing the clear
+message. `main` calls `run() error` and reports what it returns.
+
 ### Comments
 
 Follow Go doc comment convention.
@@ -258,6 +274,7 @@ Keep this honest. An inaccurate status here is worse than none.
   wired into the server
 - `internal/storage` — MySQL connection through GORM, pool configuration,
   GORM logging routed into `internal/logging`, opened at startup
+- `internal/api` — the HTTP interface: routing, middleware and handlers
 - `GET /health` (liveness, no dependencies) and `GET /ready` (checks the
   database, 503 when it is unreachable)
 
