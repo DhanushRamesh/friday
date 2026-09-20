@@ -21,6 +21,20 @@ func discard() *slog.Logger { return slog.New(slog.NewJSONHandler(io.Discard, ni
 type harness struct {
 	runner *runner.Runner
 	repo   *memRepo
+	convID string
+}
+
+// conversation : Returns the harness's conversation, creating it on first use.
+func (h *harness) conversation(t *testing.T) string {
+	t.Helper()
+	if h.convID == "" {
+		c := task.NewConversation()
+		if err := h.repo.CreateConversation(context.Background(), c); err != nil {
+			t.Fatalf("CreateConversation: %v", err)
+		}
+		h.convID = c.ID
+	}
+	return h.convID
 }
 
 // newHarness : Builds a runner around the given provider.
@@ -47,7 +61,7 @@ func newHarness(t *testing.T, p provider.Provider, opts runner.Options) *harness
 // submit : Creates and stores a task, then starts it running.
 func (h *harness) submit(t *testing.T, prompt string) *task.Task {
 	t.Helper()
-	tk, err := task.New(prompt)
+	tk, err := task.New(h.conversation(t), prompt)
 	if err != nil {
 		t.Fatalf("task.New: %v", err)
 	}
@@ -223,7 +237,7 @@ func TestShutdownStopsAndRecordsRunningTasks(t *testing.T) {
 		t.Fatalf("runner.New: %v", err)
 	}
 
-	tk, err := task.New("interrupted by shutdown")
+	tk, err := task.New("", "interrupted by shutdown")
 	if err != nil {
 		t.Fatalf("task.New: %v", err)
 	}
@@ -271,7 +285,7 @@ func TestRecoverFailsTasksLeftRunning(t *testing.T) {
 	h := newHarness(t, &provider.Stub{}, runner.Options{})
 	ctx := context.Background()
 
-	stranded, err := task.New("was running when the process died")
+	stranded, err := task.New("", "was running when the process died")
 	if err != nil {
 		t.Fatalf("task.New: %v", err)
 	}

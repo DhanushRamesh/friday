@@ -2,10 +2,13 @@ package storage
 
 import (
 	"context"
+	"database/sql"
 	"embed"
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/pressly/goose/v3"
 )
@@ -19,6 +22,25 @@ var migrationsFS embed.FS
 // migrationsDir : The path within migrationsFS holding the migration files.
 const migrationsDir = "migrations"
 
+const (
+	// migrationLockName : The advisory lock held while migrating, so that two
+	// processes starting together cannot run the same migration at once.
+	//
+	// MySQL does not roll back DDL, so a migration interrupted halfway leaves
+	// the schema in a state no later run can repair: the second process finds
+	// a table its own CREATE has not recorded, and fails for ever after.
+	migrationLockName = "friday_schema_migration"
+
+	// migrationLockTimeout : How long to wait for another process to finish
+	// migrating before giving up.
+	migrationLockTimeout = 30 * time.Second
+)
+
+// migrateMu : Serialises migration within one process. The advisory lock
+// covers separate processes; this covers goose's package-level configuration,
+// which two goroutines would otherwise set concurrently.
+var migrateMu sync.Mutex
+
 // Migrate : Applies every migration the database has not already run.
 //
 // It is safe to call on every start: goose records what it has applied and
@@ -26,6 +48,15 @@ const migrationsDir = "migrations"
 // is a single process; more than one starting at once would need a lock so
 // that they do not attempt the same migration together.
 func Migrate(ctx context.Context, db *DB, logger *slog.Logger) error {
+	migrateMu.Lock()
+	defer migrateMu.Unlock()
+
+	release, err := lockForMigration(ctx, db)
+	if err != nil {
+		return err
+	}
+	defer release()
+
 	goose.SetBaseFS(migrationsFS)
 	goose.SetLogger(&gooseLogger{logger: logger})
 	if err := goose.SetDialect("mysql"); err != nil {
@@ -54,6 +85,39 @@ func Migrate(ctx context.Context, db *DB, logger *slog.Logger) error {
 			slog.Int64("schema_version_to", after))
 	}
 	return nil
+}
+
+// lockForMigration : Takes the advisory lock and returns the function that
+// releases it.
+//
+// The lock is held on one dedicated connection, because MySQL scopes GET_LOCK
+// to the connection that took it. Taking it from the pool would risk releasing
+// it from a different connection, which does nothing.
+func lockForMigration(ctx context.Context, db *DB) (func(), error) {
+	conn, err := db.sqlDB.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("storage: reserving a connection to migrate: %w", err)
+	}
+
+	var acquired sql.NullInt64
+	err = conn.QueryRowContext(ctx, "SELECT GET_LOCK(?, ?)",
+		migrationLockName, int(migrationLockTimeout.Seconds())).Scan(&acquired)
+	if err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("storage: taking the migration lock: %w", err)
+	}
+	if !acquired.Valid || acquired.Int64 != 1 {
+		conn.Close()
+		return nil, fmt.Errorf("storage: another process held the migration lock for longer than %s",
+			migrationLockTimeout)
+	}
+
+	return func() {
+		// Released without the caller's context, which may already be done.
+		_, _ = conn.ExecContext(context.WithoutCancel(ctx),
+			"SELECT RELEASE_LOCK(?)", migrationLockName)
+		conn.Close()
+	}, nil
 }
 
 // SchemaVersion : Returns the number of the most recent migration applied.

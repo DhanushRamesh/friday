@@ -35,7 +35,8 @@ func (r *Repository) Create(ctx context.Context, t *task.Task) error {
 		}
 		return fmt.Errorf("task: creating %s: %w", t.ID, err)
 	}
-	return nil
+	// So that listing conversations brings the most recently used to the top.
+	return r.touchConversation(ctx, t.ConversationID, t.CreatedAt)
 }
 
 // Get : Returns the task with the given identifier, including its response.
@@ -104,6 +105,9 @@ func (r *Repository) List(ctx context.Context, f task.Filter) ([]task.Summary, e
 
 	if f.Status != "" {
 		query = query.Where("status = ?", string(f.Status))
+	}
+	if f.ConversationID != "" {
+		query = query.Where("conversation_id = ?", f.ConversationID)
 	}
 
 	var rows []summaryRow
@@ -189,3 +193,131 @@ func (r *Repository) FailRunning(ctx context.Context, reason string) (int64, err
 
 // Repository implements the interface the rest of FRIDAY depends on.
 var _ task.Repository = (*Repository)(nil)
+
+// CreateConversation : Stores a new conversation.
+func (r *Repository) CreateConversation(ctx context.Context, c *task.Conversation) error {
+	row := &conversationRow{ID: c.ID, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt}
+	if err := r.db.WithContext(ctx).Create(row).Error; err != nil {
+		return fmt.Errorf("task: creating conversation %s: %w", c.ID, err)
+	}
+	return nil
+}
+
+// GetConversation : Returns a conversation.
+func (r *Repository) GetConversation(ctx context.Context, id string) (*task.Conversation, error) {
+	var row conversationRow
+	err := r.db.WithContext(ctx).First(&row, "id = ?", id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, task.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("task: reading conversation %s: %w", id, err)
+	}
+	conversation := row.toConversation()
+	return &conversation, nil
+}
+
+// ListConversations : Returns conversations, most recently used first.
+func (r *Repository) ListConversations(ctx context.Context, limit int) ([]task.Conversation, error) {
+	if limit <= 0 {
+		limit = task.DefaultListLimit
+	}
+	if limit > task.MaxListLimit {
+		limit = task.MaxListLimit
+	}
+
+	var rows []conversationRow
+	err := r.db.WithContext(ctx).
+		Model(&conversationRow{}).
+		Order("updated_at DESC").
+		Limit(limit).
+		Find(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("task: listing conversations: %w", err)
+	}
+
+	out := make([]task.Conversation, len(rows))
+	for i := range rows {
+		out[i] = rows[i].toConversation()
+	}
+	return out, nil
+}
+
+// touchConversation : Records that a conversation was used, so listing brings
+// the most recent to the top.
+func (r *Repository) touchConversation(ctx context.Context, id string, at time.Time) error {
+	if id == "" {
+		return nil
+	}
+	err := r.db.WithContext(ctx).
+		Model(&conversationRow{}).
+		Where("id = ?", id).
+		Update("updated_at", at).Error
+	if err != nil {
+		return fmt.Errorf("task: touching conversation %s: %w", id, err)
+	}
+	return nil
+}
+
+// historyRow : The columns History needs from a task.
+type historyRow struct {
+	Prompt   string  `gorm:"column:prompt"`
+	Response *string `gorm:"column:response"`
+}
+
+// History : Returns a conversation's turns, oldest first.
+//
+// A task that was cancelled or failed contributes its prompt with no answer.
+// That is deliberate: it is what lets "no, make it four" be understood, since
+// the question it corrects was cancelled the moment the correction arrived.
+func (r *Repository) History(ctx context.Context, conversationID string, turns int) ([]task.Turn, error) {
+	if conversationID == "" {
+		return nil, nil
+	}
+	if turns <= 0 {
+		turns = task.DefaultHistoryTurns
+	}
+
+	// Two turns per task at most, so half as many tasks are needed. Read the
+	// most recent and reverse, rather than reading the whole exchange.
+	var rows []historyRow
+	err := r.db.WithContext(ctx).
+		Model(&taskRow{}).
+		Select("prompt", "response").
+		Where("conversation_id = ?", conversationID).
+		Order("id DESC").
+		Limit((turns + 1) / 2).
+		Find(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("task: reading history of %s: %w", conversationID, err)
+	}
+
+	history := make([]task.Turn, 0, len(rows)*2)
+	for i := len(rows) - 1; i >= 0; i-- {
+		history = append(history, task.Turn{Role: task.RoleUser, Text: rows[i].Prompt})
+		if answer := value(rows[i].Response); answer != "" {
+			history = append(history, task.Turn{Role: task.RoleAssistant, Text: answer})
+		}
+	}
+	return task.MergeTurns(history), nil
+}
+
+// Unfinished : Returns the identifiers of a conversation's tasks that have not
+// reached a terminal status, oldest first.
+func (r *Repository) Unfinished(ctx context.Context, conversationID string) ([]string, error) {
+	if conversationID == "" {
+		return nil, nil
+	}
+
+	var ids []string
+	err := r.db.WithContext(ctx).
+		Model(&taskRow{}).
+		Where("conversation_id = ? AND status IN ?", conversationID,
+			[]string{string(task.StatusPending), string(task.StatusRunning)}).
+		Order("id ASC").
+		Pluck("id", &ids).Error
+	if err != nil {
+		return nil, fmt.Errorf("task: reading unfinished tasks of %s: %w", conversationID, err)
+	}
+	return ids, nil
+}

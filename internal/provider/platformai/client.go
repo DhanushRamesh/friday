@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/DhanushRamesh/friday/internal/provider"
 )
 
 // tokenRefreshMargin : How long before expiry a cached token is replaced,
@@ -123,18 +125,25 @@ func (p *Provider) accessToken(ctx context.Context) (string, error) {
 	return p.token, nil
 }
 
-// chat : Sends one prompt and returns the assistant's reply.
-func (p *Provider) chat(ctx context.Context, prompt string) (string, error) {
+// chat : Sends a prompt, preceded by what was said earlier, and returns the
+// assistant's reply.
+func (p *Provider) chat(ctx context.Context, prompt string, history []provider.Turn) (string, error) {
 	token, err := p.accessToken(ctx)
 	if err != nil {
 		return "", err
 	}
 
+	messages := make([]chatMessage, 0, len(history)+1)
+	for _, turn := range history {
+		messages = append(messages, chatMessage{Role: string(turn.Role), Content: turn.Text})
+	}
+	messages = append(messages, chatMessage{Role: string(provider.RoleUser), Content: prompt})
+
 	body, err := json.Marshal(chatRequest{
 		Vendor:   p.cfg.Vendor,
 		Model:    p.cfg.Model,
 		Context:  p.cfg.SystemPrompt,
-		Messages: []chatMessage{{Role: "user", Content: prompt}},
+		Messages: messages,
 	})
 	if err != nil {
 		return "", fmt.Errorf("platformai: building chat request: %w", err)

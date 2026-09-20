@@ -2,6 +2,7 @@ package runner_test
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"time"
 
@@ -11,9 +12,10 @@ import (
 // memRepo : An in-memory task.Repository, so the runner's logic can be tested
 // without a database.
 type memRepo struct {
-	mu       sync.Mutex
-	tasks    map[string]*task.Task
-	messages map[string][]task.Message
+	mu            sync.Mutex
+	tasks         map[string]*task.Task
+	messages      map[string][]task.Message
+	conversations map[string]task.Conversation
 
 	// updateErr : When set, every Update fails with it.
 	updateErr error
@@ -26,8 +28,9 @@ type memRepo struct {
 // newMemRepo : Returns an empty repository.
 func newMemRepo() *memRepo {
 	return &memRepo{
-		tasks:    map[string]*task.Task{},
-		messages: map[string][]task.Message{},
+		tasks:         map[string]*task.Task{},
+		messages:      map[string][]task.Message{},
+		conversations: map[string]task.Conversation{},
 	}
 }
 
@@ -80,7 +83,18 @@ func (m *memRepo) List(_ context.Context, f task.Filter) ([]task.Summary, error)
 		if f.Status != "" && t.Status != f.Status {
 			continue
 		}
-		out = append(out, task.Summary{ID: t.ID, Prompt: t.Prompt, Status: t.Status})
+		if f.ConversationID != "" && t.ConversationID != f.ConversationID {
+			continue
+		}
+		out = append(out, task.Summary{
+			ID: t.ID, ConversationID: t.ConversationID, Prompt: t.Prompt, Status: t.Status,
+		})
+	}
+	// Newest first, as the real repository returns them. A fake that returns
+	// an arbitrary order lets ordering bugs through.
+	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID })
+	if f.Limit > 0 && len(out) > f.Limit {
+		out = out[:f.Limit]
 	}
 	return out, nil
 }
@@ -141,3 +155,88 @@ func (m *memRepo) texts(taskID string) []string {
 }
 
 var _ task.Repository = (*memRepo)(nil)
+
+// CreateConversation : Stores a new conversation.
+func (m *memRepo) CreateConversation(_ context.Context, c *task.Conversation) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.conversations == nil {
+		m.conversations = map[string]task.Conversation{}
+	}
+	m.conversations[c.ID] = *c
+	return nil
+}
+
+// GetConversation : Returns a stored conversation.
+func (m *memRepo) GetConversation(_ context.Context, id string) (*task.Conversation, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	c, ok := m.conversations[id]
+	if !ok {
+		return nil, task.ErrNotFound
+	}
+	return &c, nil
+}
+
+// ListConversations : Returns stored conversations.
+func (m *memRepo) ListConversations(_ context.Context, limit int) ([]task.Conversation, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []task.Conversation
+	for _, c := range m.conversations {
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt.After(out[j].UpdatedAt) })
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+// History : Returns a conversation's turns, oldest first.
+func (m *memRepo) History(_ context.Context, conversationID string, turns int) ([]task.Turn, error) {
+	if conversationID == "" {
+		return nil, nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var ids []string
+	for id, t := range m.tasks {
+		if t.ConversationID == conversationID {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids) // ULIDs order by creation time
+
+	var history []task.Turn
+	for _, id := range ids {
+		t := m.tasks[id]
+		history = append(history, task.Turn{Role: task.RoleUser, Text: t.Prompt})
+		if t.Response != "" {
+			history = append(history, task.Turn{Role: task.RoleAssistant, Text: t.Response})
+		}
+	}
+	if turns > 0 && len(history) > turns {
+		history = history[len(history)-turns:]
+	}
+	return task.MergeTurns(history), nil
+}
+
+// Unfinished : Returns a conversation's tasks that have not finished.
+func (m *memRepo) Unfinished(_ context.Context, conversationID string) ([]string, error) {
+	if conversationID == "" {
+		return nil, nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var ids []string
+	for id, t := range m.tasks {
+		if t.ConversationID == conversationID && !t.Status.IsTerminal() {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	return ids, nil
+}

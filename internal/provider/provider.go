@@ -68,10 +68,30 @@ func Failure(text string) Message {
 	return Message{Kind: KindError, Text: text, At: time.Now().UTC()}
 }
 
+// Role : Who said something in a conversation.
+type Role string
+
+const (
+	// RoleUser : The person asking.
+	RoleUser Role = "user"
+	// RoleAssistant : FRIDAY answering.
+	RoleAssistant Role = "assistant"
+)
+
+// Turn : One thing said earlier in the same conversation.
+type Turn struct {
+	Role Role
+	Text string
+}
+
 // Request : What a provider is asked to do.
 type Request struct {
 	// Prompt : What the user asked for.
 	Prompt string
+	// History : What was said earlier in the same conversation, oldest first,
+	// excluding this prompt. Without it a correction such as "no, make it
+	// four" reaches the model with nothing to make four.
+	History []Turn
 }
 
 // Provider : An engine that answers a prompt as a stream of messages.

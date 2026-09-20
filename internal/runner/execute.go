@@ -49,7 +49,18 @@ func (r *Runner) execute(ctx, lifeCtx context.Context, t *task.Task) {
 // it and is used for the final write, because a cancelled context cannot be
 // used to record that the task was cancelled.
 func (r *Runner) consume(runCtx, ctx context.Context, t *task.Task) {
-	stream, err := r.provider.Run(runCtx, provider.Request{Prompt: t.Prompt})
+	// What was said earlier in this conversation, so a follow-up or a
+	// correction can be understood. A failure to read it is not worth
+	// abandoning the task for; the prompt alone still often makes sense.
+	history, err := r.repo.History(ctx, t.ConversationID, r.historyTurns)
+	if err != nil {
+		r.logger.ErrorContext(ctx, "cannot read conversation history", slog.Any("error", err))
+	}
+
+	stream, err := r.provider.Run(runCtx, provider.Request{
+		Prompt:  t.Prompt,
+		History: toProviderTurns(history),
+	})
 	if err != nil {
 		r.logger.ErrorContext(ctx, "provider would not start", slog.Any("error", err))
 		r.finishWith(ctx, t, func() error {
@@ -84,6 +95,16 @@ func (r *Runner) consume(runCtx, ctx context.Context, t *task.Task) {
 		// contract says means the run was stopped rather than finished.
 		r.finishStopped(ctx, t, runCtx.Err())
 	}
+}
+
+// toProviderTurns : Converts a conversation's turns into the form a provider
+// takes.
+func toProviderTurns(turns []task.Turn) []provider.Turn {
+	out := make([]provider.Turn, len(turns))
+	for i, turn := range turns {
+		out[i] = provider.Turn{Role: provider.Role(turn.Role), Text: turn.Text}
+	}
+	return out
 }
 
 // complete : Records a task's result, failing it instead if the result cannot

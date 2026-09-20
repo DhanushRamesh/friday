@@ -95,6 +95,24 @@ curl localhost:8080/ready
 # {"checks":{"database":"ok"},"status":"ready"}
 ```
 
+Endpoints:
+
+```
+POST /v1/tasks                    create a task; ?wait=30s holds for the answer
+GET  /v1/tasks/{id}               one task
+GET  /v1/tasks                    recent tasks, without response bodies
+GET  /v1/tasks/{id}/messages      what a task said while it ran
+GET  /v1/tasks/{id}/stream        server-sent events, as they happen
+POST /v1/tasks/{id}/cancel        stop a task
+
+GET  /v1/conversations            recent conversations
+GET  /v1/conversations/{id}       a conversation and its tasks
+```
+
+Creating a task starts a conversation unless one is named. Passing
+`conversation_id` continues it, so a follow-up is understood in the light of
+what came before, and a new prompt supersedes whatever is still running there.
+
 `/health` is liveness: it reports whether the process is up and deliberately
 touches no dependencies, so a database blip cannot cause a supervisor to
 restart a healthy server. `/ready` is readiness: it checks the database and

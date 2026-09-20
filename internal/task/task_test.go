@@ -12,7 +12,7 @@ import (
 // mustNew : Creates a task, failing the test if the prompt is rejected.
 func mustNew(t *testing.T, prompt string) *task.Task {
 	t.Helper()
-	tk, err := task.New(prompt)
+	tk, err := task.New("", prompt)
 	if err != nil {
 		t.Fatalf("New(%q): %v", prompt, err)
 	}
@@ -47,16 +47,16 @@ func TestNewTaskStartsPending(t *testing.T) {
 
 func TestNewRejectsBadPrompts(t *testing.T) {
 	for _, prompt := range []string{"", "   ", "\n\t "} {
-		if _, err := task.New(prompt); !errors.Is(err, task.ErrEmptyPrompt) {
+		if _, err := task.New("", prompt); !errors.Is(err, task.ErrEmptyPrompt) {
 			t.Errorf("New(%q) error = %v, want ErrEmptyPrompt", prompt, err)
 		}
 	}
 
-	if _, err := task.New(strings.Repeat("a", task.MaxPromptRunes+1)); !errors.Is(err, task.ErrPromptTooLong) {
+	if _, err := task.New("", strings.Repeat("a", task.MaxPromptRunes+1)); !errors.Is(err, task.ErrPromptTooLong) {
 		t.Errorf("oversized prompt error = %v, want ErrPromptTooLong", err)
 	}
 	// The limit counts runes, so a multi-byte prompt at the limit is accepted.
-	if _, err := task.New(strings.Repeat("こ", task.MaxPromptRunes)); err != nil {
+	if _, err := task.New("", strings.Repeat("こ", task.MaxPromptRunes)); err != nil {
 		t.Errorf("prompt of exactly MaxPromptRunes runes rejected: %v", err)
 	}
 }

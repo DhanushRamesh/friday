@@ -338,6 +338,33 @@ serves the runner's query, oldest pending first.
 Deliberately absent until something needs them: `user_id`, the model used,
 token counts, retry counts.
 
+### Conversations
+
+A task belongs to a conversation, and the provider is given what was said
+earlier in it. Without that, a second prompt arrives with nothing before it:
+"no, make it four" reached the model with nothing to make four, and it said so.
+
+`POST /v1/tasks` creates a conversation when the caller names none, and returns
+its identifier so a follow-up can continue it.
+
+**A new prompt supersedes whatever is still running in that conversation.**
+Someone who speaks over an answer wants the new thing rather than both, and two
+answers cannot be listened to at once. The superseded task is cancelled, not
+deleted: everything it said is still stored, it is simply never spoken.
+
+**A cancelled task still contributes its prompt to history.** This is what makes
+a correction work at all. The question being corrected was cancelled the instant
+the correction arrived, so a history of only completed tasks would omit the very
+thing the correction refers to.
+
+Consecutive turns by the same speaker are joined into one. A cancelled task
+contributes a prompt with no answer, so two questions can end up adjacent, and
+models that require alternating roles reject that. Joining also reads correctly:
+a question followed by its correction becomes a single request.
+
+History is limited to the most recent turns, defaulting to twenty, so a long
+exchange does not send everything on every request.
+
 ### Running a task
 
 `internal/runner` owns execution. Two details of it are load-bearing.
@@ -571,9 +598,14 @@ beside it.
 
 `storage.Migrate` runs at startup when `[database] auto_migrate` is true, which
 it is by default. goose records what it has applied, so running it on every
-start is safe. This is correct while FRIDAY is a single process; more than one
-starting at once would need a lock so that two do not attempt the same
-migration together.
+start does nothing when there is nothing to do.
+
+Migrating takes an advisory lock, held on a dedicated connection because MySQL
+scopes `GET_LOCK` to the connection that took it. Two processes starting
+together would otherwise run the same migration at once, and MySQL does not
+roll back DDL: the loser finds a table its own `CREATE` never recorded, and
+fails on every start thereafter. This was not hypothetical — parallel test
+packages sharing one database hit it.
 
 GORM's `AutoMigrate` is **not** used and is not a substitute. It adds tables
 and columns but never drops, renames or transforms, so a schema evolved with it
@@ -710,6 +742,8 @@ needs is complete, end to end.
   runner to whoever is listening
 - `internal/provider/platformai` — answers using Zoho Platform AI, selected by
   `[provider] name`
+- Conversations: tasks are grouped, history reaches the provider, and a new
+  prompt supersedes whatever is still running in the same conversation
 - `GET /v1/tasks/{id}/stream` — server-sent events, delivering each message as
   it is produced. This is the voice path
 - `GET /health` (liveness, no dependencies) and `GET /ready` (checks the

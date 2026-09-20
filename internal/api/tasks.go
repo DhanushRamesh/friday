@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -55,7 +56,22 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	t, err := task.New(req.Prompt)
+	conversationID, err := s.resolveConversation(ctx, req.ConversationID)
+	if err != nil {
+		if errors.Is(err, task.ErrNotFound) {
+			writeError(ctx, w, http.StatusNotFound, "No such conversation.")
+			return
+		}
+		s.fail(ctx, w, "starting conversation", err)
+		return
+	}
+
+	// Speaking again supersedes whatever is still running in this
+	// conversation. Someone who talks over an answer wants the new thing, not
+	// both, and two answers cannot be listened to at once.
+	s.supersede(ctx, conversationID)
+
+	t, err := task.New(conversationID, req.Prompt)
 	switch {
 	case errors.Is(err, task.ErrEmptyPrompt):
 		writeError(ctx, w, http.StatusBadRequest, "A prompt is required.")
@@ -92,6 +108,124 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(ctx, w, http.StatusAccepted, viewOf(t))
+}
+
+// resolveConversation : Returns the conversation to attach a task to,
+// creating one when the caller named none.
+func (s *Server) resolveConversation(ctx context.Context, requested string) (string, error) {
+	if requested != "" {
+		if !task.ValidConversationID(requested) {
+			return "", task.ErrNotFound
+		}
+		if _, err := s.tasks.GetConversation(ctx, requested); err != nil {
+			return "", err
+		}
+		return requested, nil
+	}
+
+	conversation := task.NewConversation()
+	if err := s.tasks.CreateConversation(ctx, conversation); err != nil {
+		return "", err
+	}
+	return conversation.ID, nil
+}
+
+// supersede : Stops whatever is still running in a conversation.
+//
+// A failure here is logged rather than refused: the new prompt matters more
+// than tidying the old one, and a task left running will still reach a
+// terminal status on its own.
+func (s *Server) supersede(ctx context.Context, conversationID string) {
+	unfinished, err := s.tasks.Unfinished(ctx, conversationID)
+	if err != nil {
+		s.logger.ErrorContext(ctx, "cannot find tasks to supersede", slog.Any("error", err))
+		return
+	}
+
+	for _, id := range unfinished {
+		if s.runner.Cancel(id) {
+			s.logger.InfoContext(ctx, "superseded by a new prompt", slog.String("task_id", id))
+			continue
+		}
+		// Nothing is working on it, which happens to a task left behind by a
+		// process that stopped. Stop it here instead.
+		t, err := s.tasks.Get(ctx, id)
+		if err != nil || t.Status.IsTerminal() {
+			continue
+		}
+		if err := t.Cancel(); err == nil {
+			_ = s.tasks.Update(ctx, t)
+		}
+	}
+}
+
+// handleListConversations : Returns conversations, most recently used first.
+func (s *Server) handleListConversations(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	limit := 0
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 {
+			writeError(ctx, w, http.StatusBadRequest, "The limit must be a positive whole number.")
+			return
+		}
+		limit = parsed
+	}
+
+	conversations, err := s.tasks.ListConversations(ctx, limit)
+	if err != nil {
+		s.fail(ctx, w, "listing conversations", err)
+		return
+	}
+
+	views := make([]conversationView, len(conversations))
+	for i, c := range conversations {
+		views[i] = viewOfConversation(c)
+	}
+	writeJSON(ctx, w, http.StatusOK, listConversationsResponse{Conversations: views})
+}
+
+// handleGetConversation : Returns a conversation with the tasks belonging to
+// it, oldest first.
+func (s *Server) handleGetConversation(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+
+	if !task.ValidConversationID(id) {
+		writeError(ctx, w, http.StatusNotFound, "No such conversation.")
+		return
+	}
+
+	conversation, err := s.tasks.GetConversation(ctx, id)
+	if errors.Is(err, task.ErrNotFound) {
+		writeError(ctx, w, http.StatusNotFound, "No such conversation.")
+		return
+	}
+	if err != nil {
+		s.fail(ctx, w, "reading conversation", err)
+		return
+	}
+
+	summaries, err := s.tasks.List(ctx, task.Filter{ConversationID: id, Limit: task.MaxListLimit})
+	if err != nil {
+		s.fail(ctx, w, "listing conversation tasks", err)
+		return
+	}
+
+	// Oldest first, so the exchange reads in the order it happened. Sorted
+	// here rather than relying on the order a listing happens to return:
+	// identifiers are ULIDs, so sorting them sorts by creation time.
+	sort.Slice(summaries, func(i, j int) bool { return summaries[i].ID < summaries[j].ID })
+
+	views := make([]summaryView, len(summaries))
+	for i, summary := range summaries {
+		views[i] = viewOfSummary(summary)
+	}
+	writeJSON(ctx, w, http.StatusOK, conversationDetailResponse{
+		Conversation: viewOfConversation(*conversation),
+		Tasks:        views,
+	})
 }
 
 // handleGetTask : Returns one task, including its response once it has one.

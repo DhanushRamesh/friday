@@ -216,7 +216,7 @@ func (p *Provider) Run(ctx context.Context, req provider.Request) (<-chan provid
 		}
 		done := make(chan result, 1)
 		go func() {
-			text, err := p.chat(ctx, req.Prompt)
+			text, err := p.chat(ctx, req.Prompt, req.History)
 			done <- result{text: text, err: err}
 		}()
 

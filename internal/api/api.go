@@ -124,4 +124,9 @@ func (s *Server) routes() {
 		r.Get("/{id}/stream", s.handleStreamTask)
 		r.Post("/{id}/cancel", s.handleCancelTask)
 	})
+
+	s.router.Route("/v1/conversations", func(r chi.Router) {
+		r.Get("/", s.handleListConversations)
+		r.Get("/{id}", s.handleGetConversation)
+	})
 }

@@ -27,25 +27,35 @@ type Message struct {
 	CreatedAt time.Time
 }
 
+// ConversationSummary : A conversation with the tasks belonging to it.
+type ConversationSummary struct {
+	Conversation Conversation
+	Tasks        []Summary
+}
+
 // Summary : A task without its response body.
 //
 // Listing tasks and checking on one both read far more often than they need
 // the answer itself, and a response can run to megabytes.
 type Summary struct {
-	ID         string
-	Prompt     string
-	Status     Status
-	Error      string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-	StartedAt  *time.Time
-	FinishedAt *time.Time
+	ID             string
+	ConversationID string
+	Prompt         string
+	Status         Status
+	Error          string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	StartedAt      *time.Time
+	FinishedAt     *time.Time
 }
 
 // Filter : Narrows a listing of tasks.
 type Filter struct {
 	// Status : Restricts the listing to one status. Empty means any.
 	Status Status
+	// ConversationID : Restricts the listing to one conversation. Empty means
+	// any.
+	ConversationID string
 	// Limit : The greatest number of tasks to return. Zero selects
 	// DefaultListLimit.
 	Limit int
@@ -88,6 +98,25 @@ type Repository interface {
 
 	// Messages : Returns a task's messages in the order they were produced.
 	Messages(ctx context.Context, taskID string) ([]Message, error)
+
+	// CreateConversation : Stores a new conversation.
+	CreateConversation(ctx context.Context, c *Conversation) error
+
+	// GetConversation : Returns a conversation. It reports ErrNotFound if
+	// there is none.
+	GetConversation(ctx context.Context, id string) (*Conversation, error)
+
+	// ListConversations : Returns conversations, most recently used first.
+	ListConversations(ctx context.Context, limit int) ([]Conversation, error)
+
+	// History : Returns a conversation's turns, oldest first, limited to the
+	// most recent turns. A task that was cancelled or failed contributes its
+	// prompt but no answer, which is what lets a correction be understood.
+	History(ctx context.Context, conversationID string, turns int) ([]Turn, error)
+
+	// Unfinished : Returns the identifiers of a conversation's tasks that
+	// have not reached a terminal status, oldest first.
+	Unfinished(ctx context.Context, conversationID string) ([]string, error)
 
 	// FailRunning : Marks every task still recorded as running as failed,
 	// with the given explanation, and reports how many were changed.

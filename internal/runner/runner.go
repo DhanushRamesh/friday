@@ -65,17 +65,21 @@ type Options struct {
 	// MaxConcurrent : How many tasks may run at once. Zero selects
 	// DefaultMaxConcurrent.
 	MaxConcurrent int
+	// HistoryTurns : How many turns of a conversation are sent to the
+	// provider. Zero selects task.DefaultHistoryTurns.
+	HistoryTurns int
 }
 
 // Runner : Executes tasks in the background.
 //
 // It is safe for concurrent use.
 type Runner struct {
-	repo        task.Repository
-	provider    provider.Provider
-	publisher   Publisher
-	logger      *slog.Logger
-	taskTimeout time.Duration
+	repo         task.Repository
+	provider     provider.Provider
+	publisher    Publisher
+	logger       *slog.Logger
+	taskTimeout  time.Duration
+	historyTurns int
 
 	// slots : Limits how many tasks run at once. A task holds one for the
 	// whole of its run.
@@ -119,18 +123,22 @@ func New(opts Options) (*Runner, error) {
 	if opts.MaxConcurrent <= 0 {
 		opts.MaxConcurrent = DefaultMaxConcurrent
 	}
+	if opts.HistoryTurns <= 0 {
+		opts.HistoryTurns = task.DefaultHistoryTurns
+	}
 
 	base, stop := context.WithCancel(context.Background())
 	return &Runner{
-		repo:        opts.Repository,
-		provider:    opts.Provider,
-		publisher:   opts.Publisher,
-		logger:      opts.Logger,
-		taskTimeout: opts.TaskTimeout,
-		slots:       make(chan struct{}, opts.MaxConcurrent),
-		base:        base,
-		stopBase:    stop,
-		active:      map[string]*activeTask{},
+		repo:         opts.Repository,
+		provider:     opts.Provider,
+		publisher:    opts.Publisher,
+		logger:       opts.Logger,
+		taskTimeout:  opts.TaskTimeout,
+		historyTurns: opts.HistoryTurns,
+		slots:        make(chan struct{}, opts.MaxConcurrent),
+		base:         base,
+		stopBase:     stop,
+		active:       map[string]*activeTask{},
 	}, nil
 }
 

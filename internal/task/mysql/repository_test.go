@@ -49,10 +49,20 @@ func newRepository(t *testing.T) *taskmysql.Repository {
 	return taskmysql.NewRepository(db)
 }
 
+// storedConversation : Creates a conversation for a test to attach tasks to.
+func storedConversation(t *testing.T, r *taskmysql.Repository) string {
+	t.Helper()
+	c := task.NewConversation()
+	if err := r.CreateConversation(context.Background(), c); err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+	return c.ID
+}
+
 // storedTask : Creates a task, stores it, and removes it when the test ends.
 func storedTask(t *testing.T, r *taskmysql.Repository, prompt string) *task.Task {
 	t.Helper()
-	tk, err := task.New(prompt)
+	tk, err := task.New(storedConversation(t, r), prompt)
 	if err != nil {
 		t.Fatalf("task.New: %v", err)
 	}
@@ -185,7 +195,7 @@ func TestGetAndUpdateReportMissingTasks(t *testing.T) {
 		t.Errorf("Get on a missing task: error = %v, want ErrNotFound", err)
 	}
 
-	ghost, err := task.New("never stored")
+	ghost, err := task.New("", "never stored")
 	if err != nil {
 		t.Fatalf("task.New: %v", err)
 	}
