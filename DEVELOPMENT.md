@@ -205,7 +205,194 @@ time, so history comes back ordered from an index scan without a sort.
 
 ---
 
-## 5. Configuration
+## 5. Tasks
+
+The design agreed before any of it was built. Not yet implemented.
+
+### Shape of the API
+
+A request is a task. Submitting one returns immediately; the work continues in
+the background.
+
+```
+POST /v1/tasks            {"prompt": "..."}   -> 202, the task with id and status
+POST /v1/tasks?wait=30s                       -> holds the connection up to 30s,
+                                                 returning the finished task if it
+                                                 lands in time, else the pending one
+GET  /v1/tasks/{id}                           -> the task, with its response once done
+GET  /v1/tasks                                -> recent tasks, without response bodies
+POST /v1/tasks/{id}/cancel                    -> stops a task that has not finished
+```
+
+`wait` is a convenience for testing by hand, not a second execution mode. The
+task is created and run the same way either way.
+
+### States
+
+```
+pending ──→ running ──→ completed
+   │           ├──────→ failed
+   └───────────┴──────→ cancelled
+```
+
+`completed`, `failed` and `cancelled` are terminal; nothing moves a task out
+of them. `waiting_approval` joins this set when tools need permission.
+
+### Model
+
+Implemented in `internal/task`.
+
+```go
+type Task struct {
+    ID     string   // "task_" + ULID
+    Prompt string
+
+    Status   Status
+    Response string  // set when completed
+    Error    string  // set when failed, written for a user to read
+
+    CreatedAt  time.Time
+    UpdatedAt  time.Time
+    StartedAt  *time.Time  // nil until it runs
+    FinishedAt *time.Time  // nil until terminal
+}
+```
+
+`StartedAt` and `FinishedAt` are pointers because "has not started" is a
+different fact from "started at the zero time".
+
+```sql
+CREATE TABLE tasks (
+  id          CHAR(31)    NOT NULL,   -- 'task_' + 26-char ULID
+  prompt      TEXT        NOT NULL,
+  status      VARCHAR(20) NOT NULL,
+  response    MEDIUMTEXT  NULL,
+  error       TEXT        NULL,
+  created_at  DATETIME(3) NOT NULL,
+  updated_at  DATETIME(3) NOT NULL,
+  started_at  DATETIME(3) NULL,
+  finished_at DATETIME(3) NULL,
+  PRIMARY KEY (id),
+  KEY idx_tasks_status_created (status, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+`DATETIME(3)` keeps milliseconds, which plain `DATETIME` truncates away. The
+identifier is stored with its prefix and readable, rather than as a `BINARY(16)`
+ULID, so the table can be read directly during development. A ULID primary key
+already orders by creation time, so listing needs no sort. The secondary index
+serves the runner's query, oldest pending first.
+
+Deliberately absent until something needs them: `user_id`, the model used,
+token counts, retry counts.
+
+### Consequences of tasks being long-running
+
+- **Startup recovers orphans.** A process that dies mid-task leaves a row
+  reading `running` that nothing will ever move. At startup every `running`
+  task is failed with an explanation, which is exact while FRIDAY is a single
+  process. More than one process would instead need a `heartbeat_at` column
+  and a reaper for stale rows.
+- **A task has a deadline.** Past a maximum duration the runner cancels it and
+  records the failure, so a wedged call cannot occupy a slot indefinitely.
+
+### Consequences of responses being large
+
+- **Reads come in two shapes.** One selects the small columns, for listing and
+  for polling; one selects everything, for fetching a finished result. A plain
+  `SELECT *` through GORM would drag every response body along with it.
+- **`response` holds the final answer only.** Intermediate steps, tool calls
+  and progress belong in a separate table, or the column becomes a transcript
+  that grows and is paid for on every read.
+
+### Providers
+
+A task is carried out by a provider: Claude, GPT, or another. Which one runs a
+given task is a routing decision; the task does not care.
+
+A provider run is a stream. It yields zero or more transient messages, then
+exactly one final message or one error, then ends.
+
+```
+pending ──→ provider running ──────────────────────────→ ended
+                 "Checking your merge requests…"    update
+                 "Found 4, reading the diffs…"      update
+                 "Here is what I found: …"          final
+```
+
+```go
+// Kind : Whether a message is progress, the result, or a failure.
+type Kind string
+
+const (
+    KindUpdate Kind = "update"  // transient; more will follow
+    KindFinal  Kind = "final"   // the result; the stream ends
+    KindError  Kind = "error"   // the run failed; the stream ends
+)
+
+type Message struct {
+    Kind Kind
+    Text string
+    At   time.Time
+}
+
+type Provider interface {
+    Name() string
+    Run(ctx context.Context, req Request) (<-chan Message, error)
+}
+```
+
+The contract is part of the interface: the provider owns the channel and
+closes it, a stream ends after exactly one `final` or one `error`, and
+cancelling the context ends the run. A final message completes the task; an
+error fails it. Cancellation is what will serve both `POST /tasks/{id}/cancel`
+and interrupting FRIDAY mid-sentence by voice.
+
+A channel was chosen over an iterator because it is what a Go reader expects
+and selects naturally against cancellation. The cost is that a caller must
+drain the stream or cancel the context, or the provider's goroutine leaks;
+that obligation belongs in the doc comment on Run.
+
+The provider's own running and ended states are the lifetime of the stream and
+are not stored. The task's `running` and terminal statuses already record it.
+
+### Transient messages are stored
+
+They are not merely streamed. A client that reconnects mid-task can catch up,
+a finished task can be asked what it said while working, and a poor answer can
+be examined step by step. Streamed and forgotten, they are gone whenever
+nobody happens to be listening, which with a voice client is most of the time.
+
+```sql
+CREATE TABLE task_messages (
+  task_id    CHAR(31)    NOT NULL,
+  seq        INT         NOT NULL,
+  kind       VARCHAR(16) NOT NULL,
+  text       MEDIUMTEXT  NOT NULL,
+  created_at DATETIME(3) NOT NULL,
+  PRIMARY KEY (task_id, seq),
+  CONSTRAINT fk_task_messages_task
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+The primary key orders a task's messages and stores them together. The final
+message is **not** duplicated here: it lives in `tasks.response`, and an error
+in `tasks.error`, so a large answer is stored once. Replaying a run means
+reading the messages and then the task's own result.
+
+`kind` is kept even though only updates are written today, because tool calls
+and their results will be recorded the same way.
+
+### The first provider is a stub
+
+It emits a couple of fixed updates and a final message. That makes the whole
+pipeline visible end to end with no API key and no network, so the task
+lifecycle, cancellation and streaming can be debugged on their own. A real
+provider then replaces it behind the same interface without anything else
+changing.
+
+## 6. Configuration
 
 Three layers, each overriding the one before:
 
@@ -224,7 +411,7 @@ how secrets reach a deployed machine without editing files.
 
 ---
 
-## 6. Database
+## 7. Database
 
 MySQL 8. Local development database and user are created by hand; see
 `README.md`.
@@ -244,7 +431,7 @@ with the owner before building it.
 
 ---
 
-## 7. Environment notes
+## 8. Environment notes
 
 Facts about the owner's machine that have already caused confusion:
 
@@ -260,7 +447,7 @@ Facts about the owner's machine that have already caused confusion:
 
 ---
 
-## 8. Current state
+## 9. Current state
 
 Keep this honest. An inaccurate status here is worse than none.
 
@@ -275,13 +462,15 @@ Keep this honest. An inaccurate status here is worse than none.
 - `internal/storage` — MySQL connection through GORM, pool configuration,
   GORM logging routed into `internal/logging`, opened at startup
 - `internal/api` — the HTTP interface: routing, middleware and handlers
+- `internal/task` — the Task type and its status state machine. Pure Go; it
+  touches neither the database nor HTTP
 - `GET /health` (liveness, no dependencies) and `GET /ready` (checks the
   database, 503 when it is unreachable)
 
 **Not built**
 
-- Task model and task API
-- Migrations, and any table or repository
+- Migrations, the tasks table, and the repository
+- The task API and the runner that executes tasks
 - Agent loop, tools, permissions, events
 - Authentication
 - Any client
@@ -295,7 +484,7 @@ Keep this honest. An inaccurate status here is worse than none.
 
 ---
 
-## 9. Maintaining this file
+## 10. Maintaining this file
 
 When the owner states a preference, makes a decision, or corrects something,
 **record it here** in the same turn. That is the point of the file: a fresh
