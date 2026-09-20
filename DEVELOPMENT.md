@@ -338,6 +338,26 @@ serves the runner's query, oldest pending first.
 Deliberately absent until something needs them: `user_id`, the model used,
 token counts, retry counts.
 
+### Running a task
+
+`internal/runner` owns execution. Two details of it are load-bearing.
+
+A task's lifetime is **not** derived from the request that submitted it. An
+HTTP request's context ends when its response is sent, which would cancel the
+task at the moment the caller was told it had started. The runner holds its own
+context instead.
+
+The final write uses a context that **outlives the run**, via
+`context.WithoutCancel`. Recording that a task was cancelled is itself a
+database write, and a cancelled context cannot make one, so a naive
+implementation leaves cancelled tasks stuck reading `running` forever.
+
+Concurrency is capped. A task waits for a slot before it starts, so a queued
+task stays `pending` rather than appearing to run while it waits.
+
+A transient message that cannot be stored is logged and the run continues. The
+answer is what matters; losing a line of progress is not worth discarding it.
+
 ### Consequences of tasks being long-running
 
 - **Startup recovers orphans.** A process that dies mid-task leaves a row
@@ -516,6 +536,80 @@ Facts about the owner's machine that have already caused confusion:
 
 Keep this honest. An inaccurate status here is worse than none.
 
+### How the pieces fit
+
+Everything below the API layer is built and tested. `✅` is done, `⬜` is not.
+
+```
+        spoken                                                   heard
+           |                                                       ^
+           v                                                       |
+  +----------------------------------------------------------------------+
+  |  Android phone     STT --> text              text --> TTS            | ⬜
+  +--------+-------------------------------------------------^-----------+
+           | POST /v1/tasks                  GET .../stream  | SSE
+  =========+=================================================+=============
+           v                                                 |
+  +----------------------+                     +-------------------------+
+  |  internal/api        | ✅ server, routing, |  SSE endpoint           | ⬜
+  |  /health  /ready     |    middleware, logs |  pushes each message    |
+  |  /v1/tasks ...       | ⬜ task endpoints   +-------------^-----------+
+  +----------+-----------+                                   |
+             | Submit(task)                                  |
+             v                                               |
+  +----------------------------------------------+           |
+  |  internal/runner                           ✅ |           |
+  |                                              |           |
+  |   wait for slot --> Start() --> running      |           |
+  |        |                                     |           |
+  |        +--> provider.Run(ctx) --> stream     |           |
+  |        |         |                           |           |
+  |        |         +- update --> store --------+-----------+
+  |        |         +- final  --> Complete()    |
+  |        |         +- error  --> Fail()        |
+  |        |         +- closed --> Cancel/timeout|
+  +--------+-------------------------+-----------+
+           |                         |
+           v                         v
+  +---------------------+   +----------------------+
+  | internal/provider ✅ |   | internal/task     ✅ |
+  |  Provider interface |   |  Task + Status       |
+  |  Message / Kind     |   |  state machine       |
+  |  Stub            ✅ |   |  Repository interface|
+  |  Claude / GPT    ⬜ |   +----------+-----------+
+  +---------------------+              |
+                                       v
+                            +-----------------------+
+                            | internal/task/mysql ✅ |
+                            |  rows <-> domain      |
+                            |  two read paths       |
+                            +----------+------------+
+                                       v
+                            +----------------------+
+                            | internal/storage  ✅ |
+                            |  GORM + pool         |
+                            |  migrations          |
+                            +----------+-----------+
+                                       v
+                               +---------------+
+                               |    MySQL   ✅ |
+                               |  tasks        |
+                               |  task_messages|
+                               +---------------+
+```
+
+What `cmd/server` wires today:
+
+```
+config.LoadFromEnv()  ✅  ->  logging.New()  ✅  ->  storage.Open()  ✅
+  ->  storage.Migrate()  ✅  ->  api.New()  ✅  ->  serve()  ✅
+
+runner.New()          ⬜      written and tested, but nothing constructs it
+```
+
+The runner is complete and unreached: nothing submits a task, because there is
+no `POST /v1/tasks` yet. Closing that gap is the next step.
+
 **Built**
 
 - `cmd/server` — chi server, graceful shutdown, `GET /health`, request logging,
@@ -535,12 +629,15 @@ Keep this honest. An inaccurate status here is worse than none.
 - `internal/task/mysql` — the task repository. The `Repository` interface is
   declared in `internal/task`, which stays free of GORM; every mapping between
   a domain type and a row happens in the implementation beside it
+- `internal/runner` — executes tasks: reads a provider's stream, stores each
+  transient message, records the result, and handles cancellation, deadlines
+  and recovery of tasks interrupted by a restart
 - `GET /health` (liveness, no dependencies) and `GET /ready` (checks the
   database, 503 when it is unreachable)
 
 **Not built**
 
-- The runner that executes tasks, and the task API
+- The task API, and the stream that pushes messages to a client
 - The task API and the runner that executes tasks
 - Agent loop, tools, permissions, events
 - Authentication
@@ -548,7 +645,8 @@ Keep this honest. An inaccurate status here is worse than none.
 
 **Known loose ends**
 
-- The repository exists but nothing calls it: no runner and no API yet.
+- The runner is written but not wired into the server; nothing submits a task
+  because there is no API yet.
 - FRIDAY refuses to start when the database is unreachable. That is deliberate
   for now, but means a database restart takes the server down with it.
 
