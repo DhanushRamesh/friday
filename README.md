@@ -24,6 +24,10 @@ settings directly from the environment. Connecting it to the `config` package
 is the next step, after which the environment variable names below become the
 only ones it understands.
 
+> Working on this codebase, with an AI agent or otherwise? Read
+> [`DEVELOPMENT.md`](DEVELOPMENT.md) first. It records the decisions already
+> made and how work on this project is expected to be carried out.
+
 ## Requirements
 
 - Go 1.25 or newer
