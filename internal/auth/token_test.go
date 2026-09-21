@@ -34,7 +34,7 @@ func TestNewTokenIsUniqueAndWellFormed(t *testing.T) {
 }
 
 // The stored form must not contain the token, or a database dump hands over
-// every device.
+// every client.
 func TestHashDoesNotRevealTheToken(t *testing.T) {
 	token, hash, err := auth.NewToken()
 	if err != nil {

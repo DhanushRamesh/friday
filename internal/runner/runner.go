@@ -65,7 +65,7 @@ type Options struct {
 	// MaxConcurrent : How many tasks may run at once. Zero selects
 	// DefaultMaxConcurrent.
 	MaxConcurrent int
-	// HistoryTurns : How many turns of a conversation are sent to the
+	// HistoryTurns : How many turns of a session are sent to the
 	// provider. Zero selects task.DefaultHistoryTurns.
 	HistoryTurns int
 }

@@ -9,13 +9,13 @@ import (
 var (
 	// ErrNotFound : Nothing exists with the given identifier.
 	ErrNotFound = errors.New("task: not found")
-	// ErrRevoked : The device exists but may no longer authenticate.
-	ErrRevoked = errors.New("task: device is revoked")
+	// ErrRevoked : The client exists but may no longer authenticate.
+	ErrRevoked = errors.New("task: client is revoked")
 	// ErrNotOwned : It exists but belongs to a different user.
 	//
 	// Distinguished from ErrNotFound inside FRIDAY so that a mistake is
 	// diagnosable; at the edge both are answered the same way, because
-	// telling one user that another's conversation exists reveals more than
+	// telling one user that another's session exists reveals more than
 	// it should.
 	ErrNotOwned = errors.New("task: belongs to another user")
 )
@@ -38,10 +38,10 @@ type Message struct {
 	CreatedAt time.Time
 }
 
-// ConversationSummary : A conversation with the tasks belonging to it.
-type ConversationSummary struct {
-	Conversation Conversation
-	Tasks        []Summary
+// SessionSummary : A session with the tasks belonging to it.
+type SessionSummary struct {
+	Session Session
+	Tasks   []Summary
 }
 
 // Summary : A task without its response body.
@@ -49,24 +49,24 @@ type ConversationSummary struct {
 // Listing tasks and checking on one both read far more often than they need
 // the answer itself, and a response can run to megabytes.
 type Summary struct {
-	ID             string
-	ConversationID string
-	Prompt         string
-	Status         Status
-	Error          string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	StartedAt      *time.Time
-	FinishedAt     *time.Time
+	ID         string
+	SessionID  string
+	Prompt     string
+	Status     Status
+	Error      string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	StartedAt  *time.Time
+	FinishedAt *time.Time
 }
 
 // Filter : Narrows a listing of tasks.
 type Filter struct {
 	// Status : Restricts the listing to one status. Empty means any.
 	Status Status
-	// ConversationID : Restricts the listing to one conversation. Empty means
+	// SessionID : Restricts the listing to one session. Empty means
 	// any.
-	ConversationID string
+	SessionID string
 	// UserID : Restricts the listing to one user's tasks. Empty means any.
 	UserID string
 	// Limit : The greatest number of tasks to return. Zero selects
@@ -124,48 +124,48 @@ type Repository interface {
 	// there is none.
 	GetUser(ctx context.Context, id string) (*User, error)
 
-	// CreateDevice : Stores a new device.
-	CreateDevice(ctx context.Context, d *Device) error
+	// CreateClient : Stores a new client.
+	CreateClient(ctx context.Context, d *Client) error
 
-	// DeviceByTokenHash : Returns the device authenticating with the given
+	// ClientByTokenHash : Returns the client authenticating with the given
 	// token hash. It reports ErrNotFound if there is none, and ErrRevoked if
-	// the device was revoked.
-	DeviceByTokenHash(ctx context.Context, tokenHash string) (*Device, error)
+	// the client was revoked.
+	ClientByTokenHash(ctx context.Context, tokenHash string) (*Client, error)
 
-	// ListDevices : Returns a user's devices, newest first, including
+	// ListClients : Returns a user's clients, newest first, including
 	// revoked ones so that a revocation is visible.
-	ListDevices(ctx context.Context, userID string) ([]Device, error)
+	ListClients(ctx context.Context, userID string) ([]Client, error)
 
-	// RevokeDevice : Stops a device authenticating. It reports ErrNotFound if
+	// RevokeClient : Stops a client authenticating. It reports ErrNotFound if
 	// there is none, and ErrNotOwned if it belongs to another user. Revoking
 	// one already revoked changes nothing.
-	RevokeDevice(ctx context.Context, userID, deviceID string) error
+	RevokeClient(ctx context.Context, userID, clientID string) error
 
-	// SetActiveConversation : Makes a conversation the one a prompt from this
-	// device lands in. It reports ErrNotFound if either does not exist, and
-	// ErrNotOwned if the conversation belongs to another user.
-	SetActiveConversation(ctx context.Context, userID, deviceID, conversationID string) error
+	// SetActiveSession : Makes a session the one a prompt from this
+	// client lands in. It reports ErrNotFound if either does not exist, and
+	// ErrNotOwned if the session belongs to another user.
+	SetActiveSession(ctx context.Context, userID, clientID, sessionID string) error
 
-	// CreateConversation : Stores a new conversation.
-	CreateConversation(ctx context.Context, c *Conversation) error
+	// CreateSession : Stores a new session.
+	CreateSession(ctx context.Context, c *Session) error
 
-	// GetConversation : Returns a conversation. It reports ErrNotFound if
+	// GetSession : Returns a session. It reports ErrNotFound if
 	// there is none.
-	GetConversation(ctx context.Context, id string) (*Conversation, error)
+	GetSession(ctx context.Context, id string) (*Session, error)
 
-	// ListConversations : Returns a user's conversations, most recently used
-	// first. They belong to the person, so every one of their devices sees
+	// ListSessions : Returns a user's sessions, most recently used
+	// first. They belong to the person, so every one of their clients sees
 	// all of them.
-	ListConversations(ctx context.Context, userID string, limit int) ([]Conversation, error)
+	ListSessions(ctx context.Context, userID string, limit int) ([]Session, error)
 
-	// History : Returns a conversation's turns, oldest first, limited to the
+	// History : Returns a session's turns, oldest first, limited to the
 	// most recent turns. A task that was cancelled or failed contributes its
 	// prompt but no answer, which is what lets a correction be understood.
-	History(ctx context.Context, conversationID string, turns int) ([]Turn, error)
+	History(ctx context.Context, sessionID string, turns int) ([]Turn, error)
 
-	// Unfinished : Returns the identifiers of a conversation's tasks that
+	// Unfinished : Returns the identifiers of a session's tasks that
 	// have not reached a terminal status, oldest first.
-	Unfinished(ctx context.Context, conversationID string) ([]string, error)
+	Unfinished(ctx context.Context, sessionID string) ([]string, error)
 
 	// FailRunning : Marks every task still recorded as running as failed,
 	// with the given explanation, and reports how many were changed.

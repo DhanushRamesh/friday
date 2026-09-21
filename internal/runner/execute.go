@@ -49,12 +49,12 @@ func (r *Runner) execute(ctx, lifeCtx context.Context, t *task.Task) {
 // it and is used for the final write, because a cancelled context cannot be
 // used to record that the task was cancelled.
 func (r *Runner) consume(runCtx, ctx context.Context, t *task.Task) {
-	// What was said earlier in this conversation, so a follow-up or a
+	// What was said earlier in this session, so a follow-up or a
 	// correction can be understood. A failure to read it is not worth
 	// abandoning the task for; the prompt alone still often makes sense.
-	history, err := r.repo.History(ctx, t.ConversationID, r.historyTurns)
+	history, err := r.repo.History(ctx, t.SessionID, r.historyTurns)
 	if err != nil {
-		r.logger.ErrorContext(ctx, "cannot read conversation history", slog.Any("error", err))
+		r.logger.ErrorContext(ctx, "cannot read session history", slog.Any("error", err))
 	}
 
 	stream, err := r.provider.Run(runCtx, provider.Request{
@@ -97,7 +97,7 @@ func (r *Runner) consume(runCtx, ctx context.Context, t *task.Task) {
 	}
 }
 
-// toProviderTurns : Converts a conversation's turns into the form a provider
+// toProviderTurns : Converts a session's turns into the form a provider
 // takes.
 func toProviderTurns(turns []task.Turn) []provider.Turn {
 	out := make([]provider.Turn, len(turns))

@@ -56,10 +56,10 @@ func createUser(username string, db *storageDB) error {
 	}
 
 	fmt.Printf("created user %s (%s)\n", user.Username, user.ID)
-	fmt.Println("log in from a device with:")
+	fmt.Println("log in from a client with:")
 	fmt.Printf("  curl -X POST localhost:8080/v1/auth/login \\\n")
 	fmt.Printf("    -H 'Content-Type: application/json' \\\n")
-	fmt.Printf("    -d '{\"username\":%q,\"password\":\"...\",\"device_name\":\"my phone\"}'\n", user.Username)
+	fmt.Printf("    -d '{\"username\":%q,\"password\":\"...\",\"client_name\":\"my phone\"}'\n", user.Username)
 	return nil
 }
 

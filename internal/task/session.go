@@ -8,27 +8,27 @@ import (
 )
 
 const (
-	// ConversationIDPrefix : Marks an identifier as belonging to a
-	// conversation.
-	ConversationIDPrefix = "conv_"
-	// conversationIDLen : The length of a prefixed conversation identifier.
-	conversationIDLen = len(ConversationIDPrefix) + ulid.EncodedSize
+	// SessionIDPrefix : Marks an identifier as belonging to a
+	// session.
+	SessionIDPrefix = "sess_"
+	// sessionIDLen : The length of a prefixed session identifier.
+	sessionIDLen = len(SessionIDPrefix) + ulid.EncodedSize
 
-	// DefaultHistoryTurns : How many turns of a conversation are sent to a
+	// DefaultHistoryTurns : How many turns of a session are sent to a
 	// provider by default. Enough for a correction or a follow-up to make
 	// sense, without paying for the whole exchange on every request.
 	DefaultHistoryTurns = 20
 )
 
-// Conversation : One exchange, grouping the tasks that belong to it.
+// Session : One exchange, grouping the tasks that belong to it.
 //
 // It exists so that a follow-up or a correction can be understood in the light
 // of what came before it. Without one, "no, make it four" reaches a model with
 // nothing to make four.
-type Conversation struct {
-	// ID : The identifier, a ConversationIDPrefix followed by a ULID.
+type Session struct {
+	// ID : The identifier, a SessionIDPrefix followed by a ULID.
 	ID string
-	// UserID : Whose conversation it is. Empty only for one created before
+	// UserID : Whose session it is. Empty only for one created before
 	// users existed, which is therefore unreachable.
 	UserID string
 	// Title : What to call it in a listing. May be empty.
@@ -39,14 +39,14 @@ type Conversation struct {
 	UpdatedAt time.Time
 }
 
-// NewConversation : Creates a conversation belonging to a user.
+// NewSession : Creates a session belonging to a user.
 //
-// It belongs to the person rather than to the device they happened to be
+// It belongs to the person rather than to the client they happened to be
 // using, so an exchange begun on a phone can be continued at a desk.
-func NewConversation(userID, title string) *Conversation {
+func NewSession(userID, title string) *Session {
 	started := now()
-	return &Conversation{
-		ID:        NewConversationID(),
+	return &Session{
+		ID:        NewSessionID(),
 		UserID:    userID,
 		Title:     strings.TrimSpace(title),
 		CreatedAt: started,
@@ -54,20 +54,20 @@ func NewConversation(userID, title string) *Conversation {
 	}
 }
 
-// NewConversationID : Returns a fresh conversation identifier.
-func NewConversationID() string { return ConversationIDPrefix + ulid.Make().String() }
+// NewSessionID : Returns a fresh session identifier.
+func NewSessionID() string { return SessionIDPrefix + ulid.Make().String() }
 
-// ValidConversationID : Reports whether id is shaped like a conversation
-// identifier. It checks the form only; no such conversation need exist.
-func ValidConversationID(id string) bool {
-	if len(id) != conversationIDLen || !strings.HasPrefix(id, ConversationIDPrefix) {
+// ValidSessionID : Reports whether id is shaped like a session
+// identifier. It checks the form only; no such session need exist.
+func ValidSessionID(id string) bool {
+	if len(id) != sessionIDLen || !strings.HasPrefix(id, SessionIDPrefix) {
 		return false
 	}
-	_, err := ulid.ParseStrict(strings.TrimPrefix(id, ConversationIDPrefix))
+	_, err := ulid.ParseStrict(strings.TrimPrefix(id, SessionIDPrefix))
 	return err == nil
 }
 
-// Role : Who said something in a conversation.
+// Role : Who said something in a session.
 type Role string
 
 const (
@@ -77,7 +77,7 @@ const (
 	RoleAssistant Role = "assistant"
 )
 
-// Turn : One thing said in a conversation.
+// Turn : One thing said in a session.
 type Turn struct {
 	Role Role
 	Text string

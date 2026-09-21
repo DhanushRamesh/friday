@@ -35,8 +35,8 @@ func (r *Repository) Create(ctx context.Context, t *task.Task) error {
 		}
 		return fmt.Errorf("task: creating %s: %w", t.ID, err)
 	}
-	// So that listing conversations brings the most recently used to the top.
-	return r.touchConversation(ctx, t.ConversationID, t.CreatedAt)
+	// So that listing sessions brings the most recently used to the top.
+	return r.touchSession(ctx, t.SessionID, t.CreatedAt)
 }
 
 // Get : Returns the task with the given identifier, including its response.
@@ -106,13 +106,13 @@ func (r *Repository) List(ctx context.Context, f task.Filter) ([]task.Summary, e
 	if f.Status != "" {
 		query = query.Where("status = ?", string(f.Status))
 	}
-	if f.ConversationID != "" {
-		query = query.Where("conversation_id = ?", f.ConversationID)
+	if f.SessionID != "" {
+		query = query.Where("session_id = ?", f.SessionID)
 	}
 	if f.UserID != "" {
 		// One user must never see another's tasks.
-		query = query.Where("conversation_id IN (?)",
-			r.db.Model(&conversationRow{}).Select("id").Where("user_id = ?", f.UserID))
+		query = query.Where("session_id IN (?)",
+			r.db.Model(&sessionRow{}).Select("id").Where("user_id = ?", f.UserID))
 	}
 
 	var rows []summaryRow
@@ -243,78 +243,78 @@ func (r *Repository) GetUser(ctx context.Context, id string) (*task.User, error)
 	return row.toUser(), nil
 }
 
-// CreateDevice : Stores a new device.
-func (r *Repository) CreateDevice(ctx context.Context, d *task.Device) error {
-	row := &deviceRow{
-		ID:                   d.ID,
-		UserID:               nullable(d.UserID),
-		Name:                 d.Name,
-		TokenHash:            nullable(d.TokenHash),
-		ActiveConversationID: nullable(d.ActiveConversationID),
-		CreatedAt:            d.CreatedAt,
-		UpdatedAt:            d.UpdatedAt,
+// CreateClient : Stores a new client.
+func (r *Repository) CreateClient(ctx context.Context, d *task.Client) error {
+	row := &clientRow{
+		ID:              d.ID,
+		UserID:          nullable(d.UserID),
+		Name:            d.Name,
+		TokenHash:       nullable(d.TokenHash),
+		ActiveSessionID: nullable(d.ActiveSessionID),
+		CreatedAt:       d.CreatedAt,
+		UpdatedAt:       d.UpdatedAt,
 	}
 	if err := r.db.WithContext(ctx).Create(row).Error; err != nil {
-		return fmt.Errorf("task: creating device %s: %w", d.ID, err)
+		return fmt.Errorf("task: creating client %s: %w", d.ID, err)
 	}
 	return nil
 }
 
-// DeviceByTokenHash : Returns the device authenticating with the given token
+// ClientByTokenHash : Returns the client authenticating with the given token
 // hash.
-func (r *Repository) DeviceByTokenHash(ctx context.Context, tokenHash string) (*task.Device, error) {
+func (r *Repository) ClientByTokenHash(ctx context.Context, tokenHash string) (*task.Client, error) {
 	if tokenHash == "" {
 		return nil, task.ErrNotFound
 	}
 
-	var row deviceRow
+	var row clientRow
 	err := r.db.WithContext(ctx).First(&row, "token_hash = ?", tokenHash).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, task.ErrNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("task: reading device by token: %w", err)
+		return nil, fmt.Errorf("task: reading client by token: %w", err)
 	}
 
-	device := row.toDevice()
-	if device.Revoked() {
+	client := row.toClient()
+	if client.Revoked() {
 		return nil, task.ErrRevoked
 	}
-	// A device with no user cannot authenticate: it predates users and
+	// A client with no user cannot authenticate: it predates users and
 	// belongs to nobody.
-	if device.UserID == "" {
+	if client.UserID == "" {
 		return nil, task.ErrNotFound
 	}
-	return device, nil
+	return client, nil
 }
 
-// ListDevices : Returns a user's devices, newest first.
-func (r *Repository) ListDevices(ctx context.Context, userID string) ([]task.Device, error) {
-	var rows []deviceRow
+// ListClients : Returns a user's clients, newest first.
+func (r *Repository) ListClients(ctx context.Context, userID string) ([]task.Client, error) {
+	var rows []clientRow
 	err := r.db.WithContext(ctx).
 		Where("user_id = ?", userID).
 		Order("id DESC").
 		Find(&rows).Error
 	if err != nil {
-		return nil, fmt.Errorf("task: listing devices: %w", err)
+		return nil, fmt.Errorf("task: listing clients: %w", err)
 	}
 
-	out := make([]task.Device, len(rows))
+	out := make([]task.Client, len(rows))
 	for i := range rows {
-		out[i] = *rows[i].toDevice()
+		out[i] = *rows[i].toClient()
 	}
 	return out, nil
 }
 
-// RevokeDevice : Stops a device authenticating.
-func (r *Repository) RevokeDevice(ctx context.Context, userID, deviceID string) error {
-	var row deviceRow
-	err := r.db.WithContext(ctx).First(&row, "id = ?", deviceID).Error
+// RevokeClient : Stops a client authenticating.
+func (r *Repository) RevokeClient(ctx context.Context, userID, clientID string) error {
+	var row clientRow
+	err := r.db.WithContext(ctx).First(&row, "id = ?", clientID).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return task.ErrNotFound
 	}
 	if err != nil {
-		return fmt.Errorf("task: reading device %s: %w", deviceID, err)
+		return fmt.Errorf("task: reading client %s: %w", clientID, err)
 	}
 	if value(row.UserID) != userID {
 		return task.ErrNotOwned
@@ -325,44 +325,44 @@ func (r *Repository) RevokeDevice(ctx context.Context, userID, deviceID string) 
 
 	now := time.Now().UTC().Truncate(task.StoredPrecision)
 	err = r.db.WithContext(ctx).
-		Model(&deviceRow{}).
-		Where("id = ?", deviceID).
+		Model(&clientRow{}).
+		Where("id = ?", clientID).
 		Updates(map[string]any{"revoked_at": now, "updated_at": now}).Error
 	if err != nil {
-		return fmt.Errorf("task: revoking device %s: %w", deviceID, err)
+		return fmt.Errorf("task: revoking client %s: %w", clientID, err)
 	}
 	return nil
 }
 
-// SetActiveConversation : Makes a conversation the one a prompt from this
-// device lands in.
+// SetActiveSession : Makes a session the one a prompt from this
+// client lands in.
 //
-// The conversation must belong to the device's user, not to the device: a
-// person may switch any device to any of their conversations.
-func (r *Repository) SetActiveConversation(ctx context.Context, userID, deviceID, conversationID string) error {
-	conversation, err := r.GetConversation(ctx, conversationID)
+// The session must belong to the client's user, not to the client: a
+// person may switch any client to any of their sessions.
+func (r *Repository) SetActiveSession(ctx context.Context, userID, clientID, sessionID string) error {
+	session, err := r.GetSession(ctx, sessionID)
 	if err != nil {
 		return err
 	}
-	if conversation.UserID != userID {
+	if session.UserID != userID {
 		return task.ErrNotOwned
 	}
 
 	result := r.db.WithContext(ctx).
-		Model(&deviceRow{}).
-		Where("id = ? AND user_id = ?", deviceID, userID).
+		Model(&clientRow{}).
+		Where("id = ? AND user_id = ?", clientID, userID).
 		Updates(map[string]any{
-			"active_conversation_id": conversationID,
-			"updated_at":             time.Now().UTC().Truncate(task.StoredPrecision),
+			"active_session_id": sessionID,
+			"updated_at":        time.Now().UTC().Truncate(task.StoredPrecision),
 		})
 	if result.Error != nil {
-		return fmt.Errorf("task: activating conversation %s: %w", conversationID, result.Error)
+		return fmt.Errorf("task: activating session %s: %w", sessionID, result.Error)
 	}
 	if result.RowsAffected == 0 {
 		var exists int64
-		if err := r.db.WithContext(ctx).Model(&deviceRow{}).
-			Where("id = ? AND user_id = ?", deviceID, userID).Count(&exists).Error; err != nil {
-			return fmt.Errorf("task: activating conversation %s: %w", conversationID, err)
+		if err := r.db.WithContext(ctx).Model(&clientRow{}).
+			Where("id = ? AND user_id = ?", clientID, userID).Count(&exists).Error; err != nil {
+			return fmt.Errorf("task: activating session %s: %w", sessionID, err)
 		}
 		if exists == 0 {
 			return task.ErrNotFound
@@ -371,9 +371,9 @@ func (r *Repository) SetActiveConversation(ctx context.Context, userID, deviceID
 	return nil
 }
 
-// CreateConversation : Stores a new conversation.
-func (r *Repository) CreateConversation(ctx context.Context, c *task.Conversation) error {
-	row := &conversationRow{
+// CreateSession : Stores a new session.
+func (r *Repository) CreateSession(ctx context.Context, c *task.Session) error {
+	row := &sessionRow{
 		ID:        c.ID,
 		UserID:    nullable(c.UserID),
 		Title:     c.Title,
@@ -381,28 +381,28 @@ func (r *Repository) CreateConversation(ctx context.Context, c *task.Conversatio
 		UpdatedAt: c.UpdatedAt,
 	}
 	if err := r.db.WithContext(ctx).Create(row).Error; err != nil {
-		return fmt.Errorf("task: creating conversation %s: %w", c.ID, err)
+		return fmt.Errorf("task: creating session %s: %w", c.ID, err)
 	}
 	return nil
 }
 
-// GetConversation : Returns a conversation.
-func (r *Repository) GetConversation(ctx context.Context, id string) (*task.Conversation, error) {
-	var row conversationRow
+// GetSession : Returns a session.
+func (r *Repository) GetSession(ctx context.Context, id string) (*task.Session, error) {
+	var row sessionRow
 	err := r.db.WithContext(ctx).First(&row, "id = ?", id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, task.ErrNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("task: reading conversation %s: %w", id, err)
+		return nil, fmt.Errorf("task: reading session %s: %w", id, err)
 	}
-	conversation := row.toConversation()
-	return &conversation, nil
+	session := row.toSession()
+	return &session, nil
 }
 
-// ListConversations : Returns a user's conversations, most recently used
+// ListSessions : Returns a user's sessions, most recently used
 // first.
-func (r *Repository) ListConversations(ctx context.Context, userID string, limit int) ([]task.Conversation, error) {
+func (r *Repository) ListSessions(ctx context.Context, userID string, limit int) ([]task.Session, error) {
 	if limit <= 0 {
 		limit = task.DefaultListLimit
 	}
@@ -410,36 +410,36 @@ func (r *Repository) ListConversations(ctx context.Context, userID string, limit
 		limit = task.MaxListLimit
 	}
 
-	var rows []conversationRow
+	var rows []sessionRow
 	err := r.db.WithContext(ctx).
-		Model(&conversationRow{}).
+		Model(&sessionRow{}).
 		Where("user_id = ?", userID).
 		Order("updated_at DESC").
 		Limit(limit).
 		Find(&rows).Error
 	if err != nil {
-		return nil, fmt.Errorf("task: listing conversations: %w", err)
+		return nil, fmt.Errorf("task: listing sessions: %w", err)
 	}
 
-	out := make([]task.Conversation, len(rows))
+	out := make([]task.Session, len(rows))
 	for i := range rows {
-		out[i] = rows[i].toConversation()
+		out[i] = rows[i].toSession()
 	}
 	return out, nil
 }
 
-// touchConversation : Records that a conversation was used, so listing brings
+// touchSession : Records that a session was used, so listing brings
 // the most recent to the top.
-func (r *Repository) touchConversation(ctx context.Context, id string, at time.Time) error {
+func (r *Repository) touchSession(ctx context.Context, id string, at time.Time) error {
 	if id == "" {
 		return nil
 	}
 	err := r.db.WithContext(ctx).
-		Model(&conversationRow{}).
+		Model(&sessionRow{}).
 		Where("id = ?", id).
 		Update("updated_at", at).Error
 	if err != nil {
-		return fmt.Errorf("task: touching conversation %s: %w", id, err)
+		return fmt.Errorf("task: touching session %s: %w", id, err)
 	}
 	return nil
 }
@@ -450,13 +450,13 @@ type historyRow struct {
 	Response *string `gorm:"column:response"`
 }
 
-// History : Returns a conversation's turns, oldest first.
+// History : Returns a session's turns, oldest first.
 //
 // A task that was cancelled or failed contributes its prompt with no answer.
 // That is deliberate: it is what lets "no, make it four" be understood, since
 // the question it corrects was cancelled the moment the correction arrived.
-func (r *Repository) History(ctx context.Context, conversationID string, turns int) ([]task.Turn, error) {
-	if conversationID == "" {
+func (r *Repository) History(ctx context.Context, sessionID string, turns int) ([]task.Turn, error) {
+	if sessionID == "" {
 		return nil, nil
 	}
 	if turns <= 0 {
@@ -469,12 +469,12 @@ func (r *Repository) History(ctx context.Context, conversationID string, turns i
 	err := r.db.WithContext(ctx).
 		Model(&taskRow{}).
 		Select("prompt", "response").
-		Where("conversation_id = ?", conversationID).
+		Where("session_id = ?", sessionID).
 		Order("id DESC").
 		Limit((turns + 1) / 2).
 		Find(&rows).Error
 	if err != nil {
-		return nil, fmt.Errorf("task: reading history of %s: %w", conversationID, err)
+		return nil, fmt.Errorf("task: reading history of %s: %w", sessionID, err)
 	}
 
 	history := make([]task.Turn, 0, len(rows)*2)
@@ -487,22 +487,22 @@ func (r *Repository) History(ctx context.Context, conversationID string, turns i
 	return task.MergeTurns(history), nil
 }
 
-// Unfinished : Returns the identifiers of a conversation's tasks that have not
+// Unfinished : Returns the identifiers of a session's tasks that have not
 // reached a terminal status, oldest first.
-func (r *Repository) Unfinished(ctx context.Context, conversationID string) ([]string, error) {
-	if conversationID == "" {
+func (r *Repository) Unfinished(ctx context.Context, sessionID string) ([]string, error) {
+	if sessionID == "" {
 		return nil, nil
 	}
 
 	var ids []string
 	err := r.db.WithContext(ctx).
 		Model(&taskRow{}).
-		Where("conversation_id = ? AND status IN ?", conversationID,
+		Where("session_id = ? AND status IN ?", sessionID,
 			[]string{string(task.StatusPending), string(task.StatusRunning)}).
 		Order("id ASC").
 		Pluck("id", &ids).Error
 	if err != nil {
-		return nil, fmt.Errorf("task: reading unfinished tasks of %s: %w", conversationID, err)
+		return nil, fmt.Errorf("task: reading unfinished tasks of %s: %w", sessionID, err)
 	}
 	return ids, nil
 }

@@ -37,7 +37,7 @@ var (
 
 // User : The person FRIDAY belongs to.
 //
-// Conversations belong to a user rather than to any one device, so an
+// Sessions belong to a user rather than to any one client, so an
 // exchange begun on a phone can be continued at a desk.
 type User struct {
 	// ID : The identifier, a UserIDPrefix followed by a ULID.

@@ -14,12 +14,12 @@ import (
 // memRepo : An in-memory task.Repository, so the runner's logic can be tested
 // without a database.
 type memRepo struct {
-	mu            sync.Mutex
-	tasks         map[string]*task.Task
-	messages      map[string][]task.Message
-	conversations map[string]task.Conversation
-	devices       map[string]task.Device
-	users         map[string]task.User
+	mu       sync.Mutex
+	tasks    map[string]*task.Task
+	messages map[string][]task.Message
+	sessions map[string]task.Session
+	clients  map[string]task.Client
+	users    map[string]task.User
 
 	// updateErr : When set, every Update fails with it.
 	updateErr error
@@ -32,11 +32,11 @@ type memRepo struct {
 // newMemRepo : Returns an empty repository.
 func newMemRepo() *memRepo {
 	return &memRepo{
-		tasks:         map[string]*task.Task{},
-		messages:      map[string][]task.Message{},
-		conversations: map[string]task.Conversation{},
-		devices:       map[string]task.Device{},
-		users:         map[string]task.User{},
+		tasks:    map[string]*task.Task{},
+		messages: map[string][]task.Message{},
+		sessions: map[string]task.Session{},
+		clients:  map[string]task.Client{},
+		users:    map[string]task.User{},
 	}
 }
 
@@ -89,17 +89,17 @@ func (m *memRepo) List(_ context.Context, f task.Filter) ([]task.Summary, error)
 		if f.Status != "" && t.Status != f.Status {
 			continue
 		}
-		if f.ConversationID != "" && t.ConversationID != f.ConversationID {
+		if f.SessionID != "" && t.SessionID != f.SessionID {
 			continue
 		}
 		if f.UserID != "" {
-			owner, ok := m.conversations[t.ConversationID]
+			owner, ok := m.sessions[t.SessionID]
 			if !ok || owner.UserID != f.UserID {
 				continue
 			}
 		}
 		out = append(out, task.Summary{
-			ID: t.ID, ConversationID: t.ConversationID, Prompt: t.Prompt, Status: t.Status,
+			ID: t.ID, SessionID: t.SessionID, Prompt: t.Prompt, Status: t.Status,
 		})
 	}
 	// Newest first, as the real repository returns them. A fake that returns
@@ -168,34 +168,34 @@ func (m *memRepo) texts(taskID string) []string {
 
 var _ task.Repository = (*memRepo)(nil)
 
-// CreateConversation : Stores a new conversation.
-func (m *memRepo) CreateConversation(_ context.Context, c *task.Conversation) error {
+// CreateSession : Stores a new session.
+func (m *memRepo) CreateSession(_ context.Context, c *task.Session) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.conversations == nil {
-		m.conversations = map[string]task.Conversation{}
+	if m.sessions == nil {
+		m.sessions = map[string]task.Session{}
 	}
-	m.conversations[c.ID] = *c
+	m.sessions[c.ID] = *c
 	return nil
 }
 
-// GetConversation : Returns a stored conversation.
-func (m *memRepo) GetConversation(_ context.Context, id string) (*task.Conversation, error) {
+// GetSession : Returns a stored session.
+func (m *memRepo) GetSession(_ context.Context, id string) (*task.Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	c, ok := m.conversations[id]
+	c, ok := m.sessions[id]
 	if !ok {
 		return nil, task.ErrNotFound
 	}
 	return &c, nil
 }
 
-// ListConversations : Returns stored conversations.
-func (m *memRepo) ListConversations(_ context.Context, userID string, limit int) ([]task.Conversation, error) {
+// ListSessions : Returns stored sessions.
+func (m *memRepo) ListSessions(_ context.Context, userID string, limit int) ([]task.Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var out []task.Conversation
-	for _, c := range m.conversations {
+	var out []task.Session
+	for _, c := range m.sessions {
 		if c.UserID != userID {
 			continue
 		}
@@ -246,22 +246,22 @@ func (m *memRepo) UserByUsername(_ context.Context, username string) (*task.User
 	return nil, task.ErrNotFound
 }
 
-// CreateDevice : Stores a new device.
-func (m *memRepo) CreateDevice(_ context.Context, d *task.Device) error {
+// CreateClient : Stores a new client.
+func (m *memRepo) CreateClient(_ context.Context, d *task.Client) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.devices[d.ID] = *d
+	m.clients[d.ID] = *d
 	return nil
 }
 
-// DeviceByTokenHash : Returns the device authenticating with a token hash.
-func (m *memRepo) DeviceByTokenHash(_ context.Context, tokenHash string) (*task.Device, error) {
+// ClientByTokenHash : Returns the client authenticating with a token hash.
+func (m *memRepo) ClientByTokenHash(_ context.Context, tokenHash string) (*task.Client, error) {
 	if tokenHash == "" {
 		return nil, task.ErrNotFound
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for _, d := range m.devices {
+	for _, d := range m.clients {
 		if d.TokenHash == tokenHash {
 			if d.Revoked() {
 				return nil, task.ErrRevoked
@@ -273,12 +273,12 @@ func (m *memRepo) DeviceByTokenHash(_ context.Context, tokenHash string) (*task.
 	return nil, task.ErrNotFound
 }
 
-// ListDevices : Returns a user's devices, newest first.
-func (m *memRepo) ListDevices(_ context.Context, userID string) ([]task.Device, error) {
+// ListClients : Returns a user's clients, newest first.
+func (m *memRepo) ListClients(_ context.Context, userID string) ([]task.Client, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var out []task.Device
-	for _, d := range m.devices {
+	var out []task.Client
+	for _, d := range m.clients {
 		if d.UserID == userID {
 			out = append(out, d)
 		}
@@ -287,11 +287,11 @@ func (m *memRepo) ListDevices(_ context.Context, userID string) ([]task.Device, 
 	return out, nil
 }
 
-// RevokeDevice : Stops a device authenticating.
-func (m *memRepo) RevokeDevice(_ context.Context, userID, deviceID string) error {
+// RevokeClient : Stops a client authenticating.
+func (m *memRepo) RevokeClient(_ context.Context, userID, clientID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	d, ok := m.devices[deviceID]
+	d, ok := m.clients[clientID]
 	if !ok {
 		return task.ErrNotFound
 	}
@@ -301,35 +301,35 @@ func (m *memRepo) RevokeDevice(_ context.Context, userID, deviceID string) error
 	if d.RevokedAt == nil {
 		at := time.Now().UTC()
 		d.RevokedAt = &at
-		m.devices[deviceID] = d
+		m.clients[clientID] = d
 	}
 	return nil
 }
 
-// SetActiveConversation : Points a device at a conversation its user owns.
-func (m *memRepo) SetActiveConversation(_ context.Context, userID, deviceID, conversationID string) error {
+// SetActiveSession : Points a client at a session its user owns.
+func (m *memRepo) SetActiveSession(_ context.Context, userID, clientID, sessionID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	conversation, ok := m.conversations[conversationID]
+	session, ok := m.sessions[sessionID]
 	if !ok {
 		return task.ErrNotFound
 	}
-	if conversation.UserID != userID {
+	if session.UserID != userID {
 		return task.ErrNotOwned
 	}
-	d, ok := m.devices[deviceID]
+	d, ok := m.clients[clientID]
 	if !ok || d.UserID != userID {
 		return task.ErrNotFound
 	}
-	d.ActiveConversationID = conversationID
-	m.devices[deviceID] = d
+	d.ActiveSessionID = sessionID
+	m.clients[clientID] = d
 	return nil
 }
 
-// History : Returns a conversation's turns, oldest first.
-func (m *memRepo) History(_ context.Context, conversationID string, turns int) ([]task.Turn, error) {
-	if conversationID == "" {
+// History : Returns a session's turns, oldest first.
+func (m *memRepo) History(_ context.Context, sessionID string, turns int) ([]task.Turn, error) {
+	if sessionID == "" {
 		return nil, nil
 	}
 	m.mu.Lock()
@@ -337,7 +337,7 @@ func (m *memRepo) History(_ context.Context, conversationID string, turns int) (
 
 	var ids []string
 	for id, t := range m.tasks {
-		if t.ConversationID == conversationID {
+		if t.SessionID == sessionID {
 			ids = append(ids, id)
 		}
 	}
@@ -357,9 +357,9 @@ func (m *memRepo) History(_ context.Context, conversationID string, turns int) (
 	return task.MergeTurns(history), nil
 }
 
-// Unfinished : Returns a conversation's tasks that have not finished.
-func (m *memRepo) Unfinished(_ context.Context, conversationID string) ([]string, error) {
-	if conversationID == "" {
+// Unfinished : Returns a session's tasks that have not finished.
+func (m *memRepo) Unfinished(_ context.Context, sessionID string) ([]string, error) {
+	if sessionID == "" {
 		return nil, nil
 	}
 	m.mu.Lock()
@@ -367,7 +367,7 @@ func (m *memRepo) Unfinished(_ context.Context, conversationID string) ([]string
 
 	var ids []string
 	for id, t := range m.tasks {
-		if t.ConversationID == conversationID && !t.Status.IsTerminal() {
+		if t.SessionID == sessionID && !t.Status.IsTerminal() {
 			ids = append(ids, id)
 		}
 	}

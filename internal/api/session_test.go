@@ -11,12 +11,12 @@ import (
 	"github.com/DhanushRamesh/friday/internal/task"
 )
 
-// createIn : Submits a prompt, optionally continuing a conversation.
-func createIn(t *testing.T, s *Server, conversationID, prompt, query string) taskView {
+// createIn : Submits a prompt, optionally continuing a session.
+func createIn(t *testing.T, s *Server, sessionID, prompt, query string) taskView {
 	t.Helper()
 	body := map[string]string{"prompt": prompt}
-	if conversationID != "" {
-		body["conversation_id"] = conversationID
+	if sessionID != "" {
+		body["session_id"] = sessionID
 	}
 	encoded, _ := json.Marshal(body)
 
@@ -29,29 +29,29 @@ func createIn(t *testing.T, s *Server, conversationID, prompt, query string) tas
 	return view
 }
 
-// A task created without naming a conversation starts one, and the caller is
+// A task created without naming a session starts one, and the caller is
 // told which, so a follow-up can continue it.
-func TestCreatingATaskStartsAConversation(t *testing.T) {
+func TestCreatingATaskStartsASession(t *testing.T) {
 	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 
 	created := createIn(t, s, "", "first question", "")
 
-	if created.ConversationID == "" {
-		t.Fatal("no conversation returned, so a follow-up has nothing to continue")
+	if created.SessionID == "" {
+		t.Fatal("no session returned, so a follow-up has nothing to continue")
 	}
-	if !task.ValidConversationID(created.ConversationID) {
-		t.Errorf("conversation id = %q, want a valid identifier", created.ConversationID)
+	if !task.ValidSessionID(created.SessionID) {
+		t.Errorf("session id = %q, want a valid identifier", created.SessionID)
 	}
 }
 
-func TestTasksInTheSameConversationShareIt(t *testing.T) {
+func TestTasksInTheSameSessionShareIt(t *testing.T) {
 	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 
 	first := createIn(t, s, "", "first question", "?wait=5s")
-	second := createIn(t, s, first.ConversationID, "second question", "?wait=5s")
+	second := createIn(t, s, first.SessionID, "second question", "?wait=5s")
 
-	if second.ConversationID != first.ConversationID {
-		t.Errorf("conversation = %q, want %q", second.ConversationID, first.ConversationID)
+	if second.SessionID != first.SessionID {
+		t.Errorf("session = %q, want %q", second.SessionID, first.SessionID)
 	}
 }
 
@@ -62,7 +62,7 @@ func TestHistoryReachesTheProvider(t *testing.T) {
 	s, _, _, _ := newTaskServer(t, stubPinger{}, recorder)
 
 	first := createIn(t, s, "", "List three programming languages.", "?wait=5s")
-	createIn(t, s, first.ConversationID, "No, make it four.", "?wait=5s")
+	createIn(t, s, first.SessionID, "No, make it four.", "?wait=5s")
 
 	seen := recorder.lastHistory()
 	if len(seen) == 0 {
@@ -87,7 +87,7 @@ func TestANewPromptSupersedesARunningTask(t *testing.T) {
 	first := createIn(t, s, "", "List three programming languages.", "")
 	awaitStatus(t, s, first.ID, string(task.StatusRunning))
 
-	createIn(t, s, first.ConversationID, "No, make it four.", "")
+	createIn(t, s, first.SessionID, "No, make it four.", "")
 
 	superseded := awaitStatus(t, s, first.ID,
 		string(task.StatusCancelled), string(task.StatusCompleted), string(task.StatusFailed))
@@ -96,37 +96,37 @@ func TestANewPromptSupersedesARunningTask(t *testing.T) {
 	}
 }
 
-// A prompt in one conversation must not disturb a task running in another.
-func TestSupersedingIsScopedToOneConversation(t *testing.T) {
+// A prompt in one session must not disturb a task running in another.
+func TestSupersedingIsScopedToOneSession(t *testing.T) {
 	s, _, _, _ := newTaskServer(t, stubPinger{},
 		&provider.Stub{Updates: []string{"a", "b", "c", "d"}, Delay: 50 * time.Millisecond})
 
-	// A task running in the conversation that is active to begin with.
+	// A task running in the session that is active to begin with.
 	elsewhere := createIn(t, s, "", "a question over here", "")
 	awaitStatus(t, s, elsewhere.ID, string(task.StatusRunning))
 
-	// A second conversation, which becomes the active one.
-	rec := do(t, s, http.MethodPost, "/v1/conversations", `{"title":"another"}`)
+	// A second session, which becomes the active one.
+	rec := do(t, s, http.MethodPost, "/v1/sessions", `{"title":"another"}`)
 	if rec.Code != http.StatusCreated {
-		t.Fatalf("create conversation: status %d: %s", rec.Code, rec.Body)
+		t.Fatalf("create session: status %d: %s", rec.Code, rec.Body)
 	}
-	var second conversationView
+	var second sessionView
 	decodeInto(t, rec, &second)
-	if second.ID == elsewhere.ConversationID {
-		t.Fatal("the new conversation is the old one, so this proves nothing")
+	if second.ID == elsewhere.SessionID {
+		t.Fatal("the new session is the old one, so this proves nothing")
 	}
 
-	// A prompt now lands in the second conversation.
+	// A prompt now lands in the second session.
 	landed := createIn(t, s, "", "a question over there", "")
-	if landed.ConversationID != second.ID {
-		t.Fatalf("prompt landed in %s, want the newly activated %s", landed.ConversationID, second.ID)
+	if landed.SessionID != second.ID {
+		t.Fatalf("prompt landed in %s, want the newly activated %s", landed.SessionID, second.ID)
 	}
 
-	// The task in the other conversation must be untouched.
+	// The task in the other session must be untouched.
 	finished := awaitStatus(t, s, elsewhere.ID,
 		string(task.StatusCompleted), string(task.StatusCancelled), string(task.StatusFailed))
 	if finished.Status == string(task.StatusCancelled) {
-		t.Error("a task was cancelled by a prompt in a different conversation")
+		t.Error("a task was cancelled by a prompt in a different session")
 	}
 }
 
@@ -139,7 +139,7 @@ func TestASupersededPromptStaysInHistory(t *testing.T) {
 	first := createIn(t, s, "", "List three programming languages.", "")
 	awaitStatus(t, s, first.ID, string(task.StatusRunning))
 
-	second := createIn(t, s, first.ConversationID, "No, make it four.", "")
+	second := createIn(t, s, first.SessionID, "No, make it four.", "")
 	awaitStatus(t, s, second.ID,
 		string(task.StatusCompleted), string(task.StatusFailed), string(task.StatusCancelled))
 
@@ -152,34 +152,34 @@ func TestASupersededPromptStaysInHistory(t *testing.T) {
 	}
 }
 
-func TestUnknownConversationIsRejected(t *testing.T) {
+func TestUnknownSessionIsRejected(t *testing.T) {
 	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 
-	for _, id := range []string{task.NewConversationID(), "not-an-id"} {
-		body, _ := json.Marshal(map[string]string{"prompt": "hello", "conversation_id": id})
+	for _, id := range []string{task.NewSessionID(), "not-an-id"} {
+		body, _ := json.Marshal(map[string]string{"prompt": "hello", "session_id": id})
 		rec := do(t, s, http.MethodPost, "/v1/tasks", string(body))
 		if rec.Code != http.StatusNotFound {
-			t.Errorf("conversation %q: status = %d, want 404", id, rec.Code)
+			t.Errorf("session %q: status = %d, want 404", id, rec.Code)
 		}
 	}
 }
 
-func TestConversationCanBeReadBack(t *testing.T) {
+func TestSessionCanBeReadBack(t *testing.T) {
 	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 
 	first := createIn(t, s, "", "first question", "?wait=5s")
-	createIn(t, s, first.ConversationID, "second question", "?wait=5s")
+	createIn(t, s, first.SessionID, "second question", "?wait=5s")
 
-	rec := do(t, s, http.MethodGet, "/v1/conversations/"+first.ConversationID, "")
+	rec := do(t, s, http.MethodGet, "/v1/sessions/"+first.SessionID, "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
 	}
 
-	var detail conversationDetailResponse
+	var detail sessionDetailResponse
 	decodeInto(t, rec, &detail)
 
-	if detail.Conversation.ID != first.ConversationID {
-		t.Errorf("conversation id = %q", detail.Conversation.ID)
+	if detail.Session.ID != first.SessionID {
+		t.Errorf("session id = %q", detail.Session.ID)
 	}
 	if len(detail.Tasks) != 2 {
 		t.Fatalf("got %d tasks, want 2: %+v", len(detail.Tasks), detail.Tasks)
@@ -190,37 +190,37 @@ func TestConversationCanBeReadBack(t *testing.T) {
 	}
 }
 
-func TestConversationsCanBeListed(t *testing.T) {
+func TestSessionsCanBeListed(t *testing.T) {
 	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 
 	created := createIn(t, s, "", "a question", "?wait=5s")
 
-	rec := do(t, s, http.MethodGet, "/v1/conversations", "")
+	rec := do(t, s, http.MethodGet, "/v1/sessions", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
 	}
 
-	var list listConversationsResponse
+	var list listSessionsResponse
 	decodeInto(t, rec, &list)
 
 	var found bool
-	for _, c := range list.Conversations {
-		if c.ID == created.ConversationID {
+	for _, c := range list.Sessions {
+		if c.ID == created.SessionID {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("conversation %s missing from the listing", created.ConversationID)
+		t.Errorf("session %s missing from the listing", created.SessionID)
 	}
 }
 
-func TestUnknownConversationReadIsNotFound(t *testing.T) {
+func TestUnknownSessionReadIsNotFound(t *testing.T) {
 	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 
-	for _, id := range []string{task.NewConversationID(), "rubbish"} {
-		rec := do(t, s, http.MethodGet, "/v1/conversations/"+id, "")
+	for _, id := range []string{task.NewSessionID(), "rubbish"} {
+		rec := do(t, s, http.MethodGet, "/v1/sessions/"+id, "")
 		if rec.Code != http.StatusNotFound {
-			t.Errorf("conversation %q: status = %d, want 404", id, rec.Code)
+			t.Errorf("session %q: status = %d, want 404", id, rec.Code)
 		}
 	}
 }

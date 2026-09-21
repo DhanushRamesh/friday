@@ -121,10 +121,10 @@ func (s *Server) routes() {
 	// issues one. A password stands in its place.
 	s.router.Post("/v1/auth/login", s.handleLogin)
 
-	s.router.Route("/v1/devices", func(r chi.Router) {
+	s.router.Route("/v1/clients", func(r chi.Router) {
 		r.Use(s.requireAuth)
-		r.Get("/", s.handleListDevices)
-		r.Delete("/{id}", s.handleRevokeDevice)
+		r.Get("/", s.handleListClients)
+		r.Delete("/{id}", s.handleRevokeClient)
 	})
 
 	s.router.Route("/v1/tasks", func(r chi.Router) {
@@ -137,12 +137,12 @@ func (s *Server) routes() {
 		r.Post("/{id}/cancel", s.handleCancelTask)
 	})
 
-	s.router.Route("/v1/conversations", func(r chi.Router) {
+	s.router.Route("/v1/sessions", func(r chi.Router) {
 		r.Use(s.requireAuth)
-		r.Post("/", s.handleCreateConversation)
-		r.Get("/", s.handleListConversations)
-		r.Get("/{id}", s.handleGetConversation)
-		r.Post("/{id}/activate", s.handleActivateConversation)
+		r.Post("/", s.handleCreateSession)
+		r.Get("/", s.handleListSessions)
+		r.Get("/{id}", s.handleGetSession)
+		r.Post("/{id}/activate", s.handleActivateSession)
 	})
 
 	s.router.Route("/v1/me", func(r chi.Router) {

@@ -10,8 +10,8 @@ import (
 type createTaskRequest struct {
 	// Prompt : What the user asked for.
 	Prompt string `json:"prompt"`
-	// ConversationID : The exchange to continue. Empty starts a new one.
-	ConversationID string `json:"conversation_id,omitempty"`
+	// SessionID : The exchange to continue. Empty starts a new one.
+	SessionID string `json:"session_id,omitempty"`
 }
 
 // taskView : A task as the API returns it.
@@ -20,59 +20,59 @@ type createTaskRequest struct {
 // without disturbing the domain, and so that fields added for FRIDAY's own
 // use are not published by accident.
 type taskView struct {
-	ID             string     `json:"id"`
-	ConversationID string     `json:"conversation_id,omitempty"`
-	Prompt         string     `json:"prompt"`
-	Status         string     `json:"status"`
-	Response       string     `json:"response,omitempty"`
-	Error          string     `json:"error,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
-	StartedAt      *time.Time `json:"started_at,omitempty"`
-	FinishedAt     *time.Time `json:"finished_at,omitempty"`
+	ID         string     `json:"id"`
+	SessionID  string     `json:"session_id,omitempty"`
+	Prompt     string     `json:"prompt"`
+	Status     string     `json:"status"`
+	Response   string     `json:"response,omitempty"`
+	Error      string     `json:"error,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+	StartedAt  *time.Time `json:"started_at,omitempty"`
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
 }
 
 // viewOf : Renders a task for the API.
 func viewOf(t *task.Task) taskView {
 	return taskView{
-		ID:             t.ID,
-		ConversationID: t.ConversationID,
-		Prompt:         t.Prompt,
-		Status:         string(t.Status),
-		Response:       t.Response,
-		Error:          t.Error,
-		CreatedAt:      t.CreatedAt,
-		UpdatedAt:      t.UpdatedAt,
-		StartedAt:      t.StartedAt,
-		FinishedAt:     t.FinishedAt,
+		ID:         t.ID,
+		SessionID:  t.SessionID,
+		Prompt:     t.Prompt,
+		Status:     string(t.Status),
+		Response:   t.Response,
+		Error:      t.Error,
+		CreatedAt:  t.CreatedAt,
+		UpdatedAt:  t.UpdatedAt,
+		StartedAt:  t.StartedAt,
+		FinishedAt: t.FinishedAt,
 	}
 }
 
 // summaryView : A task in a listing, which carries no response body.
 type summaryView struct {
-	ID             string     `json:"id"`
-	ConversationID string     `json:"conversation_id,omitempty"`
-	Prompt         string     `json:"prompt"`
-	Status         string     `json:"status"`
-	Error          string     `json:"error,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
-	StartedAt      *time.Time `json:"started_at,omitempty"`
-	FinishedAt     *time.Time `json:"finished_at,omitempty"`
+	ID         string     `json:"id"`
+	SessionID  string     `json:"session_id,omitempty"`
+	Prompt     string     `json:"prompt"`
+	Status     string     `json:"status"`
+	Error      string     `json:"error,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+	StartedAt  *time.Time `json:"started_at,omitempty"`
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
 }
 
 // viewOfSummary : Renders a task summary for the API.
 func viewOfSummary(s task.Summary) summaryView {
 	return summaryView{
-		ID:             s.ID,
-		ConversationID: s.ConversationID,
-		Prompt:         s.Prompt,
-		Status:         string(s.Status),
-		Error:          s.Error,
-		CreatedAt:      s.CreatedAt,
-		UpdatedAt:      s.UpdatedAt,
-		StartedAt:      s.StartedAt,
-		FinishedAt:     s.FinishedAt,
+		ID:         s.ID,
+		SessionID:  s.SessionID,
+		Prompt:     s.Prompt,
+		Status:     string(s.Status),
+		Error:      s.Error,
+		CreatedAt:  s.CreatedAt,
+		UpdatedAt:  s.UpdatedAt,
+		StartedAt:  s.StartedAt,
+		FinishedAt: s.FinishedAt,
 	}
 }
 
@@ -107,9 +107,9 @@ func viewOfMessages(messages []task.Message) []messageView {
 type loginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
-	// DeviceName : What to call the device being logged in from, such as
+	// ClientName : What to call the client being logged in from, such as
 	// "my phone". Optional.
-	DeviceName string `json:"device_name,omitempty"`
+	ClientName string `json:"client_name,omitempty"`
 }
 
 // loginResponse : What logging in returns.
@@ -119,13 +119,13 @@ type loginRequest struct {
 type loginResponse struct {
 	Token  string     `json:"token"`
 	User   userView   `json:"user"`
-	Device deviceView `json:"device"`
+	Client clientView `json:"client"`
 }
 
 // meResponse : Who is calling and from what.
 type meResponse struct {
 	User   userView   `json:"user"`
-	Device deviceView `json:"device"`
+	Client clientView `json:"client"`
 }
 
 // userView : A user as the API returns it. The password hash is never
@@ -141,46 +141,46 @@ func viewOfUser(u *task.User) userView {
 	return userView{ID: u.ID, Username: u.Username, CreatedAt: u.CreatedAt}
 }
 
-// deviceView : A device as the API returns it.
-type deviceView struct {
-	ID                   string     `json:"id"`
-	Name                 string     `json:"name,omitempty"`
-	Current              bool       `json:"current"`
-	Revoked              bool       `json:"revoked"`
-	RevokedAt            *time.Time `json:"revoked_at,omitempty"`
-	ActiveConversationID string     `json:"active_conversation_id,omitempty"`
-	CreatedAt            time.Time  `json:"created_at"`
+// clientView : A client as the API returns it.
+type clientView struct {
+	ID              string     `json:"id"`
+	Name            string     `json:"name,omitempty"`
+	Current         bool       `json:"current"`
+	Revoked         bool       `json:"revoked"`
+	RevokedAt       *time.Time `json:"revoked_at,omitempty"`
+	ActiveSessionID string     `json:"active_session_id,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
 }
 
-// viewOfDevice : Renders a device for the API. Current marks the one the
+// viewOfClient : Renders a client for the API. Current marks the one the
 // request was made from.
-func viewOfDevice(d task.Device, current bool) deviceView {
-	return deviceView{
-		ID:                   d.ID,
-		Name:                 d.Name,
-		Current:              current,
-		Revoked:              d.Revoked(),
-		RevokedAt:            d.RevokedAt,
-		ActiveConversationID: d.ActiveConversationID,
-		CreatedAt:            d.CreatedAt,
+func viewOfClient(d task.Client, current bool) clientView {
+	return clientView{
+		ID:              d.ID,
+		Name:            d.Name,
+		Current:         current,
+		Revoked:         d.Revoked(),
+		RevokedAt:       d.RevokedAt,
+		ActiveSessionID: d.ActiveSessionID,
+		CreatedAt:       d.CreatedAt,
 	}
 }
 
-// listDevicesResponse : The body of a listing of devices.
-type listDevicesResponse struct {
-	Devices []deviceView `json:"devices"`
+// listClientsResponse : The body of a listing of clients.
+type listClientsResponse struct {
+	Clients []clientView `json:"clients"`
 }
 
-// createConversationRequest : The body of a request to start a conversation.
-type createConversationRequest struct {
+// createSessionRequest : The body of a request to start a session.
+type createSessionRequest struct {
 	// Title : What to call it in a listing. Optional.
 	Title string `json:"title,omitempty"`
-	// Activate : Whether this device switches to it. Defaults to true.
+	// Activate : Whether this client switches to it. Defaults to true.
 	Activate bool `json:"activate,omitempty"`
 }
 
-// conversationView : A conversation as the API returns it.
-type conversationView struct {
+// sessionView : A session as the API returns it.
+type sessionView struct {
 	ID        string    `json:"id"`
 	Title     string    `json:"title,omitempty"`
 	Active    bool      `json:"active"`
@@ -188,9 +188,9 @@ type conversationView struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// viewOfConversation : Renders a conversation for the API.
-func viewOfConversation(c task.Conversation, active bool) conversationView {
-	return conversationView{
+// viewOfSession : Renders a session for the API.
+func viewOfSession(c task.Session, active bool) sessionView {
+	return sessionView{
 		ID:        c.ID,
 		Title:     c.Title,
 		Active:    active,
@@ -199,15 +199,15 @@ func viewOfConversation(c task.Conversation, active bool) conversationView {
 	}
 }
 
-// listConversationsResponse : The body of a listing of conversations.
-type listConversationsResponse struct {
-	Conversations []conversationView `json:"conversations"`
+// listSessionsResponse : The body of a listing of sessions.
+type listSessionsResponse struct {
+	Sessions []sessionView `json:"sessions"`
 }
 
-// conversationDetailResponse : A conversation together with its tasks.
-type conversationDetailResponse struct {
-	Conversation conversationView `json:"conversation"`
-	Tasks        []summaryView    `json:"tasks"`
+// sessionDetailResponse : A session together with its tasks.
+type sessionDetailResponse struct {
+	Session sessionView   `json:"session"`
+	Tasks   []summaryView `json:"tasks"`
 }
 
 // errorResponse : The body returned with every failing status code.

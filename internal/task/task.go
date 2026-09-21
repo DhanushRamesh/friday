@@ -58,9 +58,9 @@ var (
 type Task struct {
 	// ID : The identifier, an IDPrefix followed by a ULID.
 	ID string
-	// ConversationID : The exchange this task belongs to, empty for a task
-	// created before conversations existed.
-	ConversationID string
+	// SessionID : The exchange this task belongs to, empty for a task
+	// created before sessions existed.
+	SessionID string
 	// Prompt : What the user asked for.
 	Prompt string
 
@@ -84,8 +84,8 @@ type Task struct {
 }
 
 // New : Creates a pending task from a user's prompt, belonging to the given
-// conversation. Surrounding whitespace is removed.
-func New(conversationID, prompt string) (*Task, error) {
+// session. Surrounding whitespace is removed.
+func New(sessionID, prompt string) (*Task, error) {
 	prompt = strings.TrimSpace(prompt)
 	if prompt == "" {
 		return nil, ErrEmptyPrompt
@@ -96,12 +96,12 @@ func New(conversationID, prompt string) (*Task, error) {
 
 	created := now()
 	return &Task{
-		ID:             NewID(),
-		ConversationID: conversationID,
-		Prompt:         prompt,
-		Status:         StatusPending,
-		CreatedAt:      created,
-		UpdatedAt:      created,
+		ID:        NewID(),
+		SessionID: sessionID,
+		Prompt:    prompt,
+		Status:    StatusPending,
+		CreatedAt: created,
+		UpdatedAt: created,
 	}, nil
 }
 

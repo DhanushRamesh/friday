@@ -24,13 +24,13 @@ type harness struct {
 	convID string
 }
 
-// conversation : Returns the harness's conversation, creating it on first use.
-func (h *harness) conversation(t *testing.T) string {
+// session : Returns the harness's session, creating it on first use.
+func (h *harness) session(t *testing.T) string {
 	t.Helper()
 	if h.convID == "" {
-		c := task.NewConversation("", "")
-		if err := h.repo.CreateConversation(context.Background(), c); err != nil {
-			t.Fatalf("CreateConversation: %v", err)
+		c := task.NewSession("", "")
+		if err := h.repo.CreateSession(context.Background(), c); err != nil {
+			t.Fatalf("CreateSession: %v", err)
 		}
 		h.convID = c.ID
 	}
@@ -61,7 +61,7 @@ func newHarness(t *testing.T, p provider.Provider, opts runner.Options) *harness
 // submit : Creates and stores a task, then starts it running.
 func (h *harness) submit(t *testing.T, prompt string) *task.Task {
 	t.Helper()
-	tk, err := task.New(h.conversation(t), prompt)
+	tk, err := task.New(h.session(t), prompt)
 	if err != nil {
 		t.Fatalf("task.New: %v", err)
 	}

@@ -98,10 +98,10 @@ curl localhost:8080/ready
 Endpoints:
 
 ```
-POST /v1/auth/login               log in; registers this device, returns a token
-GET  /v1/me                       the user and the device in use
-GET  /v1/devices                  this user's devices
-DELETE /v1/devices/{id}           revoke one
+POST /v1/auth/login               log in; registers this client, returns a token
+GET  /v1/me                       the user and the client in use
+GET  /v1/clients                  this user's clients
+DELETE /v1/clients/{id}           revoke one
 
 POST /v1/tasks                    create a task; ?wait=30s holds for the answer
 GET  /v1/tasks/{id}               one task
@@ -110,10 +110,10 @@ GET  /v1/tasks/{id}/messages      what a task said while it ran
 GET  /v1/tasks/{id}/stream        server-sent events, as they happen
 POST /v1/tasks/{id}/cancel        stop a task
 
-POST /v1/conversations            start one; this device switches to it
-GET  /v1/conversations            this user's conversations
-GET  /v1/conversations/{id}       a conversation and its tasks
-POST /v1/conversations/{id}/activate   switch this device to it
+POST /v1/sessions            start one; this client switches to it
+GET  /v1/sessions            this user's sessions
+GET  /v1/sessions/{id}       a session and its tasks
+POST /v1/sessions/{id}/activate   switch this client to it
 ```
 
 
@@ -125,14 +125,14 @@ go run ./cmd/server createuser dhanush
 # again: ...
 ```
 
-Then log in from each device. Logging in registers that device and returns its
+Then log in from each client. Logging in registers that client and returns its
 token, shown only then because only its hash is stored:
 
 ```bash
 curl -X POST localhost:8080/v1/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"username":"dhanush","password":"...","device_name":"my phone"}'
-# {"token":"fri_9f2a...","user":{...},"device":{...}}
+  -d '{"username":"dhanush","password":"...","client_name":"my phone"}'
+# {"token":"fri_9f2a...","user":{...},"client":{...}}
 ```
 
 Every other endpoint needs that token:
@@ -144,12 +144,12 @@ curl -X POST localhost:8080/v1/tasks \
   -d '{"prompt":"what is the capital of France?"}'
 ```
 
-A lost device is revoked from any other with `DELETE /v1/devices/{id}`.
+A lost client is revoked from any other with `DELETE /v1/clients/{id}`.
 
-Conversations belong to the user, so any device can see and continue any of
-them. Each device holds its own active conversation, so a speaker in one room
+Sessions belong to the user, so any client can see and continue any of
+them. Each client holds its own active session, so a speaker in one room
 and a laptop in another do not collide. A prompt lands in whichever
-conversation that device is in, a follow-up is understood in the light of what
+session that client is in, a follow-up is understood in the light of what
 came before, and a new prompt supersedes whatever is still running there.
 
 A bearer token is only as private as the connection carrying it. Over plain

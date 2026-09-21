@@ -56,22 +56,22 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conversationID, err := s.conversationFor(ctx, callerOf(ctx), req.ConversationID)
+	sessionID, err := s.sessionFor(ctx, callerOf(ctx), req.SessionID)
 	if err != nil {
 		if errors.Is(err, task.ErrNotFound) || errors.Is(err, task.ErrNotOwned) {
-			writeError(ctx, w, http.StatusNotFound, "No such conversation.")
+			writeError(ctx, w, http.StatusNotFound, "No such session.")
 			return
 		}
-		s.fail(ctx, w, "resolving conversation", err)
+		s.fail(ctx, w, "resolving session", err)
 		return
 	}
 
 	// Speaking again supersedes whatever is still running in this
-	// conversation. Someone who talks over an answer wants the new thing, not
+	// session. Someone who talks over an answer wants the new thing, not
 	// both, and two answers cannot be listened to at once.
-	s.supersede(ctx, conversationID)
+	s.supersede(ctx, sessionID)
 
-	t, err := task.New(conversationID, req.Prompt)
+	t, err := task.New(sessionID, req.Prompt)
 	switch {
 	case errors.Is(err, task.ErrEmptyPrompt):
 		writeError(ctx, w, http.StatusBadRequest, "A prompt is required.")
@@ -110,46 +110,46 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(ctx, w, http.StatusAccepted, viewOf(t))
 }
 
-// conversationFor : Returns the conversation a prompt belongs in.
+// sessionFor : Returns the session a prompt belongs in.
 //
-// A prompt lands in the conversation this device is currently in, which is
-// the point of holding one per device: a person may be speaking to a speaker
+// A prompt lands in the session this client is currently in, which is
+// the point of holding one per client: a person may be speaking to a speaker
 // in one room while typing at a laptop in another, and the two should not
-// collide. Naming a conversation overrides that for one prompt without
-// switching what the device is in.
-func (s *Server) conversationFor(ctx context.Context, c *caller, requested string) (string, error) {
+// collide. Naming a session overrides that for one prompt without
+// switching what the client is in.
+func (s *Server) sessionFor(ctx context.Context, c *caller, requested string) (string, error) {
 	if requested == "" {
-		if c.device.ActiveConversationID != "" {
-			return c.device.ActiveConversationID, nil
+		if c.client.ActiveSessionID != "" {
+			return c.client.ActiveSessionID, nil
 		}
-		// Only reachable if the conversation was removed underneath it.
-		id, err := s.startingConversation(ctx, c.user.ID)
+		// Only reachable if the session was removed underneath it.
+		id, err := s.startingSession(ctx, c.user.ID)
 		if err != nil {
 			return "", err
 		}
-		if err := s.tasks.SetActiveConversation(ctx, c.user.ID, c.device.ID, id); err != nil {
+		if err := s.tasks.SetActiveSession(ctx, c.user.ID, c.client.ID, id); err != nil {
 			return "", err
 		}
 		return id, nil
 	}
 
-	if !task.ValidConversationID(requested) {
+	if !task.ValidSessionID(requested) {
 		return "", task.ErrNotFound
 	}
-	conversation, err := s.tasks.GetConversation(ctx, requested)
+	session, err := s.tasks.GetSession(ctx, requested)
 	if err != nil {
 		return "", err
 	}
-	// Owned by the person, not the device, so any of their devices may use
-	// any of their conversations.
-	if conversation.UserID != c.user.ID {
+	// Owned by the person, not the client, so any of their clients may use
+	// any of their sessions.
+	if session.UserID != c.user.ID {
 		return "", task.ErrNotOwned
 	}
 	return requested, nil
 }
 
-// handleListConversations : Returns conversations, most recently used first.
-func (s *Server) handleListConversations(w http.ResponseWriter, r *http.Request) {
+// handleListSessions : Returns sessions, most recently used first.
+func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	limit := 0
@@ -163,48 +163,48 @@ func (s *Server) handleListConversations(w http.ResponseWriter, r *http.Request)
 	}
 
 	c := callerOf(ctx)
-	conversations, err := s.tasks.ListConversations(ctx, c.user.ID, limit)
+	sessions, err := s.tasks.ListSessions(ctx, c.user.ID, limit)
 	if err != nil {
-		s.fail(ctx, w, "listing conversations", err)
+		s.fail(ctx, w, "listing sessions", err)
 		return
 	}
 
-	views := make([]conversationView, len(conversations))
-	for i, conversation := range conversations {
-		views[i] = viewOfConversation(conversation, conversation.ID == c.device.ActiveConversationID)
+	views := make([]sessionView, len(sessions))
+	for i, session := range sessions {
+		views[i] = viewOfSession(session, session.ID == c.client.ActiveSessionID)
 	}
-	writeJSON(ctx, w, http.StatusOK, listConversationsResponse{Conversations: views})
+	writeJSON(ctx, w, http.StatusOK, listSessionsResponse{Sessions: views})
 }
 
-// handleGetConversation : Returns a conversation with the tasks belonging to
+// handleGetSession : Returns a session with the tasks belonging to
 // it, oldest first.
-func (s *Server) handleGetConversation(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
 
-	if !task.ValidConversationID(id) {
-		writeError(ctx, w, http.StatusNotFound, "No such conversation.")
+	if !task.ValidSessionID(id) {
+		writeError(ctx, w, http.StatusNotFound, "No such session.")
 		return
 	}
 
-	conversation, err := s.tasks.GetConversation(ctx, id)
+	session, err := s.tasks.GetSession(ctx, id)
 	if errors.Is(err, task.ErrNotFound) {
-		writeError(ctx, w, http.StatusNotFound, "No such conversation.")
+		writeError(ctx, w, http.StatusNotFound, "No such session.")
 		return
 	}
 	if err != nil {
-		s.fail(ctx, w, "reading conversation", err)
+		s.fail(ctx, w, "reading session", err)
 		return
 	}
 	c := callerOf(ctx)
-	if conversation.UserID != c.user.ID {
-		writeError(ctx, w, http.StatusNotFound, "No such conversation.")
+	if session.UserID != c.user.ID {
+		writeError(ctx, w, http.StatusNotFound, "No such session.")
 		return
 	}
 
-	summaries, err := s.tasks.List(ctx, task.Filter{ConversationID: id, Limit: task.MaxListLimit})
+	summaries, err := s.tasks.List(ctx, task.Filter{SessionID: id, Limit: task.MaxListLimit})
 	if err != nil {
-		s.fail(ctx, w, "listing conversation tasks", err)
+		s.fail(ctx, w, "listing session tasks", err)
 		return
 	}
 
@@ -217,9 +217,9 @@ func (s *Server) handleGetConversation(w http.ResponseWriter, r *http.Request) {
 	for i, summary := range summaries {
 		views[i] = viewOfSummary(summary)
 	}
-	writeJSON(ctx, w, http.StatusOK, conversationDetailResponse{
-		Conversation: viewOfConversation(*conversation, conversation.ID == c.device.ActiveConversationID),
-		Tasks:        views,
+	writeJSON(ctx, w, http.StatusOK, sessionDetailResponse{
+		Session: viewOfSession(*session, session.ID == c.client.ActiveSessionID),
+		Tasks:   views,
 	})
 }
 
@@ -343,25 +343,25 @@ func (s *Server) loadTask(ctx context.Context, w http.ResponseWriter, id string)
 
 	// One user must never read another's task. Answered as missing rather
 	// than forbidden, so the existence of it is not revealed either.
-	if !s.ownedByCaller(ctx, t.ConversationID) {
+	if !s.ownedByCaller(ctx, t.SessionID) {
 		writeError(ctx, w, http.StatusNotFound, "No such task.")
 		return nil, task.ErrNotOwned
 	}
 	return t, nil
 }
 
-// ownedByCaller : Reports whether a conversation belongs to the calling
+// ownedByCaller : Reports whether a session belongs to the calling
 // user. One predating users belongs to nobody and is hidden.
-func (s *Server) ownedByCaller(ctx context.Context, conversationID string) bool {
+func (s *Server) ownedByCaller(ctx context.Context, sessionID string) bool {
 	c := callerOf(ctx)
-	if c == nil || conversationID == "" {
+	if c == nil || sessionID == "" {
 		return false
 	}
-	conversation, err := s.tasks.GetConversation(ctx, conversationID)
+	session, err := s.tasks.GetSession(ctx, sessionID)
 	if err != nil {
 		return false
 	}
-	return conversation.UserID == c.user.ID
+	return session.UserID == c.user.ID
 }
 
 // awaitTask : Waits for a task to finish, returning it if it does within the

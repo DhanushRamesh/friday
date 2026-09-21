@@ -15,16 +15,16 @@ import (
 // otherwise overwrite them on every write, discarding the times the domain
 // recorded and making a task's own history disagree with the row.
 type taskRow struct {
-	ID             string     `gorm:"column:id;primaryKey"`
-	ConversationID *string    `gorm:"column:conversation_id"`
-	Prompt         string     `gorm:"column:prompt"`
-	Status         string     `gorm:"column:status"`
-	Response       *string    `gorm:"column:response"`
-	Error          *string    `gorm:"column:error"`
-	CreatedAt      time.Time  `gorm:"column:created_at;autoCreateTime:false"`
-	UpdatedAt      time.Time  `gorm:"column:updated_at;autoUpdateTime:false"`
-	StartedAt      *time.Time `gorm:"column:started_at"`
-	FinishedAt     *time.Time `gorm:"column:finished_at"`
+	ID         string     `gorm:"column:id;primaryKey"`
+	SessionID  *string    `gorm:"column:session_id"`
+	Prompt     string     `gorm:"column:prompt"`
+	Status     string     `gorm:"column:status"`
+	Response   *string    `gorm:"column:response"`
+	Error      *string    `gorm:"column:error"`
+	CreatedAt  time.Time  `gorm:"column:created_at;autoCreateTime:false"`
+	UpdatedAt  time.Time  `gorm:"column:updated_at;autoUpdateTime:false"`
+	StartedAt  *time.Time `gorm:"column:started_at"`
+	FinishedAt *time.Time `gorm:"column:finished_at"`
 }
 
 // TableName : Names the table this row maps to.
@@ -33,26 +33,26 @@ func (taskRow) TableName() string { return "tasks" }
 // summaryRow : The columns of tasks that a listing needs, which is every one
 // except the response.
 type summaryRow struct {
-	ID             string     `gorm:"column:id"`
-	ConversationID *string    `gorm:"column:conversation_id"`
-	Prompt         string     `gorm:"column:prompt"`
-	Status         string     `gorm:"column:status"`
-	Error          *string    `gorm:"column:error"`
-	CreatedAt      time.Time  `gorm:"column:created_at"`
-	UpdatedAt      time.Time  `gorm:"column:updated_at"`
-	StartedAt      *time.Time `gorm:"column:started_at"`
-	FinishedAt     *time.Time `gorm:"column:finished_at"`
+	ID         string     `gorm:"column:id"`
+	SessionID  *string    `gorm:"column:session_id"`
+	Prompt     string     `gorm:"column:prompt"`
+	Status     string     `gorm:"column:status"`
+	Error      *string    `gorm:"column:error"`
+	CreatedAt  time.Time  `gorm:"column:created_at"`
+	UpdatedAt  time.Time  `gorm:"column:updated_at"`
+	StartedAt  *time.Time `gorm:"column:started_at"`
+	FinishedAt *time.Time `gorm:"column:finished_at"`
 }
 
 // summaryColumns : The columns a listing selects. Naming them is what keeps
 // response bodies out of a query that does not need them.
 var summaryColumns = []string{
-	"id", "conversation_id", "prompt", "status", "error",
+	"id", "session_id", "prompt", "status", "error",
 	"created_at", "updated_at", "started_at", "finished_at",
 }
 
-// conversationRow : The conversations table, as GORM sees it.
-type conversationRow struct {
+// sessionRow : The sessions table, as GORM sees it.
+type sessionRow struct {
 	ID        string    `gorm:"column:id;primaryKey"`
 	UserID    *string   `gorm:"column:user_id"`
 	Title     string    `gorm:"column:title"`
@@ -83,41 +83,41 @@ func (r *userRow) toUser() *task.User {
 	}
 }
 
-// deviceRow : The devices table, as GORM sees it.
-type deviceRow struct {
-	ID                   string     `gorm:"column:id;primaryKey"`
-	UserID               *string    `gorm:"column:user_id"`
-	Name                 string     `gorm:"column:name"`
-	TokenHash            *string    `gorm:"column:token_hash"`
-	ActiveConversationID *string    `gorm:"column:active_conversation_id"`
-	RevokedAt            *time.Time `gorm:"column:revoked_at"`
-	CreatedAt            time.Time  `gorm:"column:created_at;autoCreateTime:false"`
-	UpdatedAt            time.Time  `gorm:"column:updated_at;autoUpdateTime:false"`
+// clientRow : The clients table, as GORM sees it.
+type clientRow struct {
+	ID              string     `gorm:"column:id;primaryKey"`
+	UserID          *string    `gorm:"column:user_id"`
+	Name            string     `gorm:"column:name"`
+	TokenHash       *string    `gorm:"column:token_hash"`
+	ActiveSessionID *string    `gorm:"column:active_session_id"`
+	RevokedAt       *time.Time `gorm:"column:revoked_at"`
+	CreatedAt       time.Time  `gorm:"column:created_at;autoCreateTime:false"`
+	UpdatedAt       time.Time  `gorm:"column:updated_at;autoUpdateTime:false"`
 }
 
 // TableName : Names the table this row maps to.
-func (deviceRow) TableName() string { return "devices" }
+func (clientRow) TableName() string { return "clients" }
 
-// toDevice : Converts a stored row back into a device.
-func (r *deviceRow) toDevice() *task.Device {
-	return &task.Device{
-		ID:                   r.ID,
-		UserID:               value(r.UserID),
-		Name:                 r.Name,
-		TokenHash:            value(r.TokenHash),
-		ActiveConversationID: value(r.ActiveConversationID),
-		RevokedAt:            utc(r.RevokedAt),
-		CreatedAt:            r.CreatedAt.UTC(),
-		UpdatedAt:            r.UpdatedAt.UTC(),
+// toClient : Converts a stored row back into a client.
+func (r *clientRow) toClient() *task.Client {
+	return &task.Client{
+		ID:              r.ID,
+		UserID:          value(r.UserID),
+		Name:            r.Name,
+		TokenHash:       value(r.TokenHash),
+		ActiveSessionID: value(r.ActiveSessionID),
+		RevokedAt:       utc(r.RevokedAt),
+		CreatedAt:       r.CreatedAt.UTC(),
+		UpdatedAt:       r.UpdatedAt.UTC(),
 	}
 }
 
 // TableName : Names the table this row maps to.
-func (conversationRow) TableName() string { return "conversations" }
+func (sessionRow) TableName() string { return "sessions" }
 
-// toConversation : Converts a stored row back into a conversation.
-func (r *conversationRow) toConversation() task.Conversation {
-	return task.Conversation{
+// toSession : Converts a stored row back into a session.
+func (r *sessionRow) toSession() task.Session {
+	return task.Session{
 		ID:        r.ID,
 		UserID:    value(r.UserID),
 		Title:     r.Title,
@@ -144,47 +144,47 @@ func (messageRow) TableName() string { return "task_messages" }
 // that "produced nothing" and "not finished" read the same way in the table.
 func toRow(t *task.Task) *taskRow {
 	return &taskRow{
-		ID:             t.ID,
-		ConversationID: nullable(t.ConversationID),
-		Prompt:         t.Prompt,
-		Status:         string(t.Status),
-		Response:       nullable(t.Response),
-		Error:          nullable(t.Error),
-		CreatedAt:      t.CreatedAt,
-		UpdatedAt:      t.UpdatedAt,
-		StartedAt:      t.StartedAt,
-		FinishedAt:     t.FinishedAt,
+		ID:         t.ID,
+		SessionID:  nullable(t.SessionID),
+		Prompt:     t.Prompt,
+		Status:     string(t.Status),
+		Response:   nullable(t.Response),
+		Error:      nullable(t.Error),
+		CreatedAt:  t.CreatedAt,
+		UpdatedAt:  t.UpdatedAt,
+		StartedAt:  t.StartedAt,
+		FinishedAt: t.FinishedAt,
 	}
 }
 
 // toTask : Converts a stored row back into a task.
 func (r *taskRow) toTask() *task.Task {
 	return &task.Task{
-		ID:             r.ID,
-		ConversationID: value(r.ConversationID),
-		Prompt:         r.Prompt,
-		Status:         task.Status(r.Status),
-		Response:       value(r.Response),
-		Error:          value(r.Error),
-		CreatedAt:      r.CreatedAt.UTC(),
-		UpdatedAt:      r.UpdatedAt.UTC(),
-		StartedAt:      utc(r.StartedAt),
-		FinishedAt:     utc(r.FinishedAt),
+		ID:         r.ID,
+		SessionID:  value(r.SessionID),
+		Prompt:     r.Prompt,
+		Status:     task.Status(r.Status),
+		Response:   value(r.Response),
+		Error:      value(r.Error),
+		CreatedAt:  r.CreatedAt.UTC(),
+		UpdatedAt:  r.UpdatedAt.UTC(),
+		StartedAt:  utc(r.StartedAt),
+		FinishedAt: utc(r.FinishedAt),
 	}
 }
 
 // toSummary : Converts a listing row into a summary.
 func (r *summaryRow) toSummary() task.Summary {
 	return task.Summary{
-		ID:             r.ID,
-		ConversationID: value(r.ConversationID),
-		Prompt:         r.Prompt,
-		Status:         task.Status(r.Status),
-		Error:          value(r.Error),
-		CreatedAt:      r.CreatedAt.UTC(),
-		UpdatedAt:      r.UpdatedAt.UTC(),
-		StartedAt:      utc(r.StartedAt),
-		FinishedAt:     utc(r.FinishedAt),
+		ID:         r.ID,
+		SessionID:  value(r.SessionID),
+		Prompt:     r.Prompt,
+		Status:     task.Status(r.Status),
+		Error:      value(r.Error),
+		CreatedAt:  r.CreatedAt.UTC(),
+		UpdatedAt:  r.UpdatedAt.UTC(),
+		StartedAt:  utc(r.StartedAt),
+		FinishedAt: utc(r.FinishedAt),
 	}
 }
 

@@ -49,8 +49,8 @@ func newRepository(t *testing.T) *taskmysql.Repository {
 	return taskmysql.NewRepository(db)
 }
 
-// storedConversation : Creates a conversation for a test to attach tasks to.
-func storedConversation(t *testing.T, r *taskmysql.Repository) string {
+// storedSession : Creates a session for a test to attach tasks to.
+func storedSession(t *testing.T, r *taskmysql.Repository) string {
 	t.Helper()
 	owner, err := task.NewUser("tester"+task.NewUserID()[4:14], "hash")
 	if err != nil {
@@ -59,9 +59,9 @@ func storedConversation(t *testing.T, r *taskmysql.Repository) string {
 	if err := r.CreateUser(context.Background(), owner); err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
-	c := task.NewConversation(owner.ID, "")
-	if err := r.CreateConversation(context.Background(), c); err != nil {
-		t.Fatalf("CreateConversation: %v", err)
+	c := task.NewSession(owner.ID, "")
+	if err := r.CreateSession(context.Background(), c); err != nil {
+		t.Fatalf("CreateSession: %v", err)
 	}
 	return c.ID
 }
@@ -69,7 +69,7 @@ func storedConversation(t *testing.T, r *taskmysql.Repository) string {
 // storedTask : Creates a task, stores it, and removes it when the test ends.
 func storedTask(t *testing.T, r *taskmysql.Repository, prompt string) *task.Task {
 	t.Helper()
-	tk, err := task.New(storedConversation(t, r), prompt)
+	tk, err := task.New(storedSession(t, r), prompt)
 	if err != nil {
 		t.Fatalf("task.New: %v", err)
 	}

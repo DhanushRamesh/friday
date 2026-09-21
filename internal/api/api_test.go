@@ -49,9 +49,9 @@ const (
 	testPassword = "correct horse battery staple"
 )
 
-// registerTestDevice : Creates the test user and logs a device in, recording
+// registerTestClient : Creates the test user and logs a client in, recording
 // its token for the helpers to present.
-func registerTestDevice(t *testing.T, s *Server, repo *memRepo) string {
+func registerTestClient(t *testing.T, s *Server, repo *memRepo) string {
 	t.Helper()
 	ctx := context.Background()
 
@@ -71,20 +71,20 @@ func registerTestDevice(t *testing.T, s *Server, repo *memRepo) string {
 	if err != nil {
 		t.Fatalf("auth.NewToken: %v", err)
 	}
-	device, err := task.NewDevice(user.ID, "test device", tokenHash)
+	client, err := task.NewClient(user.ID, "test client", tokenHash)
 	if err != nil {
-		t.Fatalf("task.NewDevice: %v", err)
+		t.Fatalf("task.NewClient: %v", err)
 	}
-	if err := repo.CreateDevice(ctx, device); err != nil {
-		t.Fatalf("CreateDevice: %v", err)
+	if err := repo.CreateClient(ctx, client); err != nil {
+		t.Fatalf("CreateClient: %v", err)
 	}
 
-	conversation := task.NewConversation(user.ID, "")
-	if err := repo.CreateConversation(ctx, conversation); err != nil {
-		t.Fatalf("CreateConversation: %v", err)
+	session := task.NewSession(user.ID, "")
+	if err := repo.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession: %v", err)
 	}
-	if err := repo.SetActiveConversation(ctx, user.ID, device.ID, conversation.ID); err != nil {
-		t.Fatalf("SetActiveConversation: %v", err)
+	if err := repo.SetActiveSession(ctx, user.ID, client.ID, session.ID); err != nil {
+		t.Fatalf("SetActiveSession: %v", err)
 	}
 
 	testTokens.Store(s, token)
@@ -123,7 +123,7 @@ func newTaskServer(t *testing.T, db Pinger, p provider.Provider) (*Server, *byte
 	})
 
 	srv := New(Options{Logger: logger.Logger, DB: db, Tasks: repo, Runner: r, Events: bus})
-	registerTestDevice(t, srv, repo)
+	registerTestClient(t, srv, repo)
 	return srv, buf, repo, r
 }
 

@@ -23,10 +23,10 @@ func login(t *testing.T, s *Server, body string) *httptest.ResponseRecorder {
 }
 
 // loginAs : Logs in with the test account and returns what came back.
-func loginAs(t *testing.T, s *Server, deviceName string) loginResponse {
+func loginAs(t *testing.T, s *Server, clientName string) loginResponse {
 	t.Helper()
 	body, _ := json.Marshal(map[string]string{
-		"username": testUsername, "password": testPassword, "device_name": deviceName,
+		"username": testUsername, "password": testPassword, "client_name": clientName,
 	})
 	rec := login(t, s, string(body))
 	if rec.Code != http.StatusCreated {
@@ -49,10 +49,10 @@ func withToken(t *testing.T, s *Server, method, path, authorization string) *htt
 	return rec
 }
 
-// Logging in registers the device and hands it a token, in one act: a token
-// exists only for a device, and a device only for someone who proved who
+// Logging in registers the client and hands it a token, in one act: a token
+// exists only for a client, and a client only for someone who proved who
 // they are.
-func TestLoginRegistersTheDeviceAndIssuesAToken(t *testing.T) {
+func TestLoginRegistersTheClientAndIssuesAToken(t *testing.T) {
 	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 
 	out := loginAs(t, s, "my phone")
@@ -63,14 +63,14 @@ func TestLoginRegistersTheDeviceAndIssuesAToken(t *testing.T) {
 	if out.User.Username != testUsername {
 		t.Errorf("username = %q, want %q", out.User.Username, testUsername)
 	}
-	if !task.ValidDeviceID(out.Device.ID) {
-		t.Errorf("device id = %q, want a device identifier", out.Device.ID)
+	if !task.ValidClientID(out.Client.ID) {
+		t.Errorf("client id = %q, want a client identifier", out.Client.ID)
 	}
-	if out.Device.Name != "my phone" {
-		t.Errorf("device name = %q, want it echoed back", out.Device.Name)
+	if out.Client.Name != "my phone" {
+		t.Errorf("client name = %q, want it echoed back", out.Client.Name)
 	}
-	if !task.ValidConversationID(out.Device.ActiveConversationID) {
-		t.Errorf("active conversation = %q, want one ready to talk in", out.Device.ActiveConversationID)
+	if !task.ValidSessionID(out.Client.ActiveSessionID) {
+		t.Errorf("active session = %q, want one ready to talk in", out.Client.ActiveSessionID)
 	}
 }
 
@@ -113,9 +113,9 @@ func TestTokenIsIssuedOnceAndStoredHashed(t *testing.T) {
 
 	out := loginAs(t, s, "my phone")
 
-	stored, err := repo.DeviceByTokenHash(t.Context(), auth.HashToken(out.Token))
+	stored, err := repo.ClientByTokenHash(t.Context(), auth.HashToken(out.Token))
 	if err != nil {
-		t.Fatalf("DeviceByTokenHash: %v", err)
+		t.Fatalf("ClientByTokenHash: %v", err)
 	}
 	if stored.TokenHash == out.Token {
 		t.Fatal("the token itself was stored")
@@ -134,9 +134,9 @@ func TestEveryEndpointButLoginRequiresAToken(t *testing.T) {
 	for _, p := range []struct{ method, path string }{
 		{http.MethodPost, "/v1/tasks"},
 		{http.MethodGet, "/v1/tasks"},
-		{http.MethodGet, "/v1/conversations"},
-		{http.MethodPost, "/v1/conversations"},
-		{http.MethodGet, "/v1/devices"},
+		{http.MethodGet, "/v1/sessions"},
+		{http.MethodPost, "/v1/sessions"},
+		{http.MethodGet, "/v1/clients"},
 		{http.MethodGet, "/v1/me"},
 	} {
 		rec := withToken(t, s, p.method, p.path, "")
@@ -172,9 +172,9 @@ func TestMalformedOrUnissuedTokensAreRefused(t *testing.T) {
 	}
 }
 
-// A lost phone is revoked from another device, which is the reason devices
+// A lost phone is revoked from another client, which is the reason clients
 // exist separately from the user at all.
-func TestAnyDeviceCanRevokeAnother(t *testing.T) {
+func TestAnyClientCanRevokeAnother(t *testing.T) {
 	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 
 	phone := loginAs(t, s, "my phone")
@@ -185,7 +185,7 @@ func TestAnyDeviceCanRevokeAnother(t *testing.T) {
 	}
 
 	// Revoke the phone from the laptop.
-	rec := withToken(t, s, http.MethodDelete, "/v1/devices/"+phone.Device.ID, "Bearer "+laptop.Token)
+	rec := withToken(t, s, http.MethodDelete, "/v1/clients/"+phone.Client.ID, "Bearer "+laptop.Token)
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("revoke: status = %d, want 204: %s", rec.Code, rec.Body)
 	}
@@ -198,55 +198,55 @@ func TestAnyDeviceCanRevokeAnother(t *testing.T) {
 	}
 }
 
-// One user's device must not revoke another user's.
-func TestADeviceCannotRevokeAnotherUsers(t *testing.T) {
+// One user's client must not revoke another user's.
+func TestAClientCannotRevokeAnotherUsers(t *testing.T) {
 	s, _, repo, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 	mine := loginAs(t, s, "mine")
 
 	stranger, _ := task.NewUser("stranger", "hash")
 	_ = repo.CreateUser(t.Context(), stranger)
-	theirDevice, _ := task.NewDevice(stranger.ID, "theirs", "their-hash")
-	_ = repo.CreateDevice(t.Context(), theirDevice)
+	theirClient, _ := task.NewClient(stranger.ID, "theirs", "their-hash")
+	_ = repo.CreateClient(t.Context(), theirClient)
 
-	rec := withToken(t, s, http.MethodDelete, "/v1/devices/"+theirDevice.ID, "Bearer "+mine.Token)
+	rec := withToken(t, s, http.MethodDelete, "/v1/clients/"+theirClient.ID, "Bearer "+mine.Token)
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", rec.Code)
 	}
 }
 
-// A device listing shows the user's own devices, marking which is in use and
+// A client listing shows the user's own clients, marking which is in use and
 // which have been revoked.
-func TestDeviceListing(t *testing.T) {
+func TestClientListing(t *testing.T) {
 	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 
 	phone := loginAs(t, s, "my phone")
 	laptop := loginAs(t, s, "my laptop")
-	withToken(t, s, http.MethodDelete, "/v1/devices/"+phone.Device.ID, "Bearer "+laptop.Token)
+	withToken(t, s, http.MethodDelete, "/v1/clients/"+phone.Client.ID, "Bearer "+laptop.Token)
 
-	rec := withToken(t, s, http.MethodGet, "/v1/devices", "Bearer "+laptop.Token)
+	rec := withToken(t, s, http.MethodGet, "/v1/clients", "Bearer "+laptop.Token)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
 	}
-	var list listDevicesResponse
+	var list listClientsResponse
 	decodeInto(t, rec, &list)
 
 	var sawCurrent, sawRevoked bool
-	for _, d := range list.Devices {
-		if d.ID == laptop.Device.ID {
+	for _, d := range list.Clients {
+		if d.ID == laptop.Client.ID {
 			if !d.Current {
-				t.Error("the device in use is not marked current")
+				t.Error("the client in use is not marked current")
 			}
 			sawCurrent = true
 		}
-		if d.ID == phone.Device.ID {
+		if d.ID == phone.Client.ID {
 			if !d.Revoked {
-				t.Error("the revoked device is not marked revoked")
+				t.Error("the revoked client is not marked revoked")
 			}
 			sawRevoked = true
 		}
 	}
 	if !sawCurrent || !sawRevoked {
-		t.Errorf("listing did not show both devices: %+v", list.Devices)
+		t.Errorf("listing did not show both clients: %+v", list.Clients)
 	}
 }
 
@@ -271,11 +271,11 @@ func TestSecretsAreNotLogged(t *testing.T) {
 func TestLoginRejectsBadRequests(t *testing.T) {
 	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 
-	long := strings.Repeat("a", task.MaxDeviceNameRunes+1)
+	long := strings.Repeat("a", task.MaxClientNameRunes+1)
 	cases := map[string]string{
 		"not json":         `nonsense`,
 		"unknown field":    `{"username":"x","password":"y","admin":true}`,
-		"device name long": `{"username":"` + testUsername + `","password":"` + testPassword + `","device_name":"` + long + `"}`,
+		"client name long": `{"username":"` + testUsername + `","password":"` + testPassword + `","client_name":"` + long + `"}`,
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {

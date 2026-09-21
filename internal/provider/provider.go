@@ -68,7 +68,7 @@ func Failure(text string) Message {
 	return Message{Kind: KindError, Text: text, At: time.Now().UTC()}
 }
 
-// Role : Who said something in a conversation.
+// Role : Who said something in a session.
 type Role string
 
 const (
@@ -78,7 +78,7 @@ const (
 	RoleAssistant Role = "assistant"
 )
 
-// Turn : One thing said earlier in the same conversation.
+// Turn : One thing said earlier in the same session.
 type Turn struct {
 	Role Role
 	Text string
@@ -88,7 +88,7 @@ type Turn struct {
 type Request struct {
 	// Prompt : What the user asked for.
 	Prompt string
-	// History : What was said earlier in the same conversation, oldest first,
+	// History : What was said earlier in the same session, oldest first,
 	// excluding this prompt. Without it a correction such as "no, make it
 	// four" reaches the model with nothing to make four.
 	History []Turn

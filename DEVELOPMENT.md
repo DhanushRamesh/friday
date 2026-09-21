@@ -96,7 +96,7 @@ The history reads as the owner's own work.
 
 ### Earlier planning documents are context, not specification
 
-A long design document was pasted into an early conversation describing
+A long design document was pasted into an early session describing
 milestones, endpoints and architecture. The owner has said explicitly that it
 was **background context only** and should not be followed literally. Treat it
 as illustrative. Ask before implementing anything from it.
@@ -233,7 +233,7 @@ Follow Go doc comment convention.
   earns its place; a paragraph of reasoning does not.
 
 The reader of a comment has the file in front of them and none of the
-surrounding conversation.
+surrounding session.
 
 ### Time
 
@@ -338,47 +338,53 @@ serves the runner's query, oldest pending first.
 Deliberately absent until something needs them: `user_id`, the model used,
 token counts, retry counts.
 
-### Users, devices, conversations, tasks
+### Users, clients, sessions, tasks
 
 ```
-user                       the person FRIDAY belongs to
+user                    the person FRIDAY belongs to
   |
-  +-- devices              phone, laptop, speaker
-  |                        a token and nothing else: owns nothing,
-  |                        but holds which conversation IT is in
+  +-- clients           chrome, postman, a command line, a phone, a speaker
+  |                     a token and nothing else: owns nothing,
+  |                     but holds which session IT is in
   |
-  +-- conversations        owned by the person, reachable from any device
+  +-- sessions          owned by the person, reachable from any client
         |
-        +-- tasks          a prompt is a task
+        +-- tasks       a prompt is a task
               |
               +-- messages
 ```
 
-**Conversations belong to the user, not the device.** An exchange begun on a
-phone continues at a desk. Every device sees every conversation.
+**A client is one logged-in thing, not a piece of hardware.** A laptop running
+a browser, Postman and a command line is three clients. That is the useful
+unit: each has its own token, so Postman's can be revoked without disturbing
+the browser, and each has its own active session, so testing in one does not
+interrupt a conversation in the other.
 
-**The active conversation belongs to the device.** A person may be speaking to
-a speaker in one room while typing at a laptop in another, and those two
-threads must not collide. Switching on one device leaves the others where they
-were. Which conversations exist is a property of the person; which one a
-device is currently in is a property of the device.
+**Sessions belong to the user, not the client.** An exchange begun on a phone
+continues at a desk. Every client sees every session.
+
+**The active session belongs to the client.** A person may be speaking to a
+speaker in one room while typing at a laptop in another, and those threads
+must not collide. Switching on one client leaves the others where they were.
+Which sessions exist is a property of the person; which one a client is
+currently in is a property of the client.
 
 **The user is the boundary.** Every ownership check asks whether it is the
-same user, never the same device. A device is only which credential was
+same user, never the same client. A client is only which credential was
 presented.
 
-Naming a conversation on a single prompt sends it there without switching what
-the device is in.
+Naming a session on a single prompt sends it there without switching what the
+client is in.
 
 ### Authentication
 
-A device authenticates with a token, sent as `Authorization: Bearer fri_...`.
-The token both names the device and proves it, so nothing is sent alongside:
+A client authenticates with a token, sent as `Authorization: Bearer fri_...`.
+The token both names the client and proves it, so nothing is sent alongside:
 an identifier presentable without the token would be a name with no password.
 
-**Logging in and registering a device are one act.** `POST /v1/auth/login`
-takes a username, a password and a device name, and returns a token. A token
-exists only for a device, and a device may be created only by someone who
+**Logging in and registering a client are one act.** `POST /v1/auth/login`
+takes a username, a password and a client name, and returns a token. A token
+exists only for a client, and a client may be created only by someone who
 proved who they are, so there is nothing to register separately and no
 registration secret to share around.
 
@@ -396,8 +402,8 @@ An unknown username spends the same time as a wrong password, through
 `DummyPasswordCheck`. Answering faster for an account that does not exist
 tells whoever is guessing which usernames are real.
 
-`DELETE /v1/devices/{id}` revokes any of the caller's own devices, which is
-the reason devices exist apart from the user: a phone left in a taxi is
+`DELETE /v1/clients/{id}` revokes any of the caller's own clients, which is
+the reason clients exist apart from the user: a phone left in a taxi is
 revoked from the laptop at home. The row is kept rather than deleted, so a
 revocation is visible in a listing.
 
@@ -412,20 +418,20 @@ secret, which is the same problem one level up. A command run by whoever
 already has the machine avoids both and is needed exactly once.
 
 **A bearer token is only as private as the connection carrying it.** Over
-plain HTTP anyone on the network reads it and becomes that device. TLS must
+plain HTTP anyone on the network reads it and becomes that client. TLS must
 sit in front of FRIDAY before it is reachable from anywhere but the machine it
 runs on.
 
-### Conversations
+### Sessions
 
-A task belongs to a conversation, and the provider is given what was said
+A task belongs to a session, and the provider is given what was said
 earlier in it. Without that, a second prompt arrives with nothing before it:
 "no, make it four" reached the model with nothing to make four, and it said so.
 
-`POST /v1/tasks` creates a conversation when the caller names none, and returns
+`POST /v1/tasks` creates a session when the caller names none, and returns
 its identifier so a follow-up can continue it.
 
-**A new prompt supersedes whatever is still running in that conversation.**
+**A new prompt supersedes whatever is still running in that session.**
 Someone who speaks over an answer wants the new thing rather than both, and two
 answers cannot be listened to at once. The superseded task is cancelled, not
 deleted: everything it said is still stored, it is simply never spoken.
@@ -822,10 +828,10 @@ needs is complete, end to end.
   `[provider] name`
 - `internal/auth` — token issuing and hashing, bcrypt password hashing, and
   the constant-time comparisons around both
-- Users, their devices, and their conversations. A device authenticates with
-  a bearer token and holds its own active conversation; tasks land there,
+- Users, their clients, and their sessions. A client authenticates with
+  a bearer token and holds its own active session; tasks land there,
   history reaches the provider, and a new prompt supersedes whatever is still
-  running in that same conversation
+  running in that same session
 - `GET /v1/tasks/{id}/stream` — server-sent events, delivering each message as
   it is produced. This is the voice path
 - `GET /health` (liveness, no dependencies) and `GET /ready` (checks the
@@ -848,7 +854,7 @@ needs is complete, end to end.
 - Nothing terminates TLS. Tokens travel in clear over HTTP, so FRIDAY must
   stay on localhost until something in front of it speaks HTTPS.
 - Tokens do not expire. Revocation is the only way to end one, which is the
-  agreed trade for a handful of the owner's own devices.
+  agreed trade for a handful of the owner's own clients.
 - Platform AI's reassurance interval is fifteen seconds, and answers commonly
   arrive in three to nine, so most tasks send only the opening
   acknowledgement. That is fine now, but if answers get slower the interval is
@@ -863,7 +869,7 @@ needs is complete, end to end.
 When the owner states a preference, makes a decision, or corrects something,
 **record it here** in the same turn. That is the point of the file: a fresh
 agent on a different machine should be able to read it and behave consistently
-with every conversation that came before.
+with every session that came before.
 
 Record the reasoning, not just the conclusion. A decision whose rationale is
 lost gets reversed by the next person who thinks they know better.
