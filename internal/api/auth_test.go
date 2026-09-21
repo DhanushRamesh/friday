@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,7 +12,32 @@ import (
 	"github.com/DhanushRamesh/friday/internal/task"
 )
 
-// withToken : Issues a request carrying the given Authorization header value.
+// login : Attempts a login against the server.
+func login(t *testing.T, s *Server, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, r)
+	return rec
+}
+
+// loginAs : Logs in with the test account and returns what came back.
+func loginAs(t *testing.T, s *Server, deviceName string) loginResponse {
+	t.Helper()
+	body, _ := json.Marshal(map[string]string{
+		"username": testUsername, "password": testPassword, "device_name": deviceName,
+	})
+	rec := login(t, s, string(body))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("login: status %d, want 201: %s", rec.Code, rec.Body)
+	}
+	var out loginResponse
+	decodeInto(t, rec, &out)
+	return out
+}
+
+// withToken : Issues a request carrying the given Authorization header.
 func withToken(t *testing.T, s *Server, method, path, authorization string) *httptest.ResponseRecorder {
 	t.Helper()
 	r := httptest.NewRequest(method, path, nil)
@@ -23,19 +49,43 @@ func withToken(t *testing.T, s *Server, method, path, authorization string) *htt
 	return rec
 }
 
-// Registration that anyone may perform is no authentication at all, since a
-// stranger would simply issue themselves a token.
-func TestRegistrationRequiresTheSecret(t *testing.T) {
+// Logging in registers the device and hands it a token, in one act: a token
+// exists only for a device, and a device only for someone who proved who
+// they are.
+func TestLoginRegistersTheDeviceAndIssuesAToken(t *testing.T) {
+	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
+
+	out := loginAs(t, s, "my phone")
+
+	if !auth.LooksLikeToken(out.Token) {
+		t.Errorf("token = %q, want a usable token", out.Token)
+	}
+	if out.User.Username != testUsername {
+		t.Errorf("username = %q, want %q", out.User.Username, testUsername)
+	}
+	if !task.ValidDeviceID(out.Device.ID) {
+		t.Errorf("device id = %q, want a device identifier", out.Device.ID)
+	}
+	if out.Device.Name != "my phone" {
+		t.Errorf("device name = %q, want it echoed back", out.Device.Name)
+	}
+	if !task.ValidConversationID(out.Device.ActiveConversationID) {
+		t.Errorf("active conversation = %q, want one ready to talk in", out.Device.ActiveConversationID)
+	}
+}
+
+func TestLoginRefusesWrongCredentials(t *testing.T) {
 	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 
 	cases := map[string]string{
-		"no secret":    "",
-		"wrong secret": "not-the-secret",
-		"near miss":    testRegistrationSecret[:len(testRegistrationSecret)-1],
+		"wrong password": `{"username":"` + testUsername + `","password":"not the password"}`,
+		"unknown user":   `{"username":"nobody","password":"` + testPassword + `"}`,
+		"empty password": `{"username":"` + testUsername + `","password":""}`,
+		"empty username": `{"username":"","password":"` + testPassword + `"}`,
 	}
-	for name, secret := range cases {
+	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
-			rec := register(t, s, `{"name":"intruder"}`, secret)
+			rec := login(t, s, body)
 			if rec.Code != http.StatusUnauthorized {
 				t.Errorf("status = %d, want 401: %s", rec.Code, rec.Body)
 			}
@@ -43,96 +93,77 @@ func TestRegistrationRequiresTheSecret(t *testing.T) {
 	}
 }
 
-// A blank secret disables registration rather than accepting anything, which
-// is the difference between a safe default and an open door.
-func TestBlankSecretDisablesRegistration(t *testing.T) {
-	s, _, repo, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
-	open := New(Options{
-		Logger: s.logger, DB: stubPinger{}, Tasks: repo, Runner: s.runner, Events: s.events,
-		RegistrationSecret: "",
-	})
+// A wrong password and an unknown username must be indistinguishable, or
+// whoever is guessing learns which accounts exist.
+func TestLoginRefusalsLookAlike(t *testing.T) {
+	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 
-	for _, secret := range []string{"", "anything"} {
-		rec := register(t, open, `{"name":"intruder"}`, secret)
-		if rec.Code == http.StatusCreated {
-			t.Fatalf("a client was registered with secret %q while registration is disabled", secret)
-		}
-		if rec.Code != http.StatusServiceUnavailable && rec.Code != http.StatusUnauthorized {
-			t.Errorf("secret %q: status = %d, want 503 or 401", secret, rec.Code)
-		}
+	wrongPassword := login(t, s, `{"username":"`+testUsername+`","password":"wrong"}`).Body.String()
+	unknownUser := login(t, s, `{"username":"nobody","password":"wrong"}`).Body.String()
+
+	if wrongPassword != unknownUser {
+		t.Errorf("an unknown user is distinguishable from a wrong password:\n  %s\n  %s",
+			unknownUser, wrongPassword)
 	}
 }
 
-// The token is returned once and never stored in a recoverable form.
+// The token is returned once and stored only as a hash.
 func TestTokenIsIssuedOnceAndStoredHashed(t *testing.T) {
 	s, _, repo, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 
-	rec := register(t, s, `{"name":"my phone"}`, testRegistrationSecret)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body)
-	}
-	var registered registeredClientView
-	decodeInto(t, rec, &registered)
+	out := loginAs(t, s, "my phone")
 
-	if !auth.LooksLikeToken(registered.Token) {
-		t.Fatalf("token = %q, want a usable token", registered.Token)
-	}
-
-	stored, err := repo.GetClient(t.Context(), registered.ID)
+	stored, err := repo.DeviceByTokenHash(t.Context(), auth.HashToken(out.Token))
 	if err != nil {
-		t.Fatalf("GetClient: %v", err)
+		t.Fatalf("DeviceByTokenHash: %v", err)
 	}
-	if stored.TokenHash == registered.Token {
+	if stored.TokenHash == out.Token {
 		t.Fatal("the token itself was stored")
 	}
-	if stored.TokenHash != auth.HashToken(registered.Token) {
-		t.Error("the stored hash does not match the issued token")
-	}
 
-	// Reading the client back never discloses the token again.
-	rec = withToken(t, s, http.MethodGet, "/v1/me", "Bearer "+registered.Token)
-	if strings.Contains(rec.Body.String(), registered.Token) {
+	// Reading back never discloses it again.
+	rec := withToken(t, s, http.MethodGet, "/v1/me", "Bearer "+out.Token)
+	if strings.Contains(rec.Body.String(), out.Token) {
 		t.Errorf("the token was disclosed again: %s", rec.Body)
 	}
 }
 
-// A freshly issued token works on every endpoint.
-func TestAnIssuedTokenAuthenticates(t *testing.T) {
+func TestEveryEndpointButLoginRequiresAToken(t *testing.T) {
 	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 
-	rec := register(t, s, `{"name":"my phone"}`, testRegistrationSecret)
-	var registered registeredClientView
-	decodeInto(t, rec, &registered)
-
-	rec = withToken(t, s, http.MethodGet, "/v1/me", "Bearer "+registered.Token)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
-	}
-	var me clientView
-	decodeInto(t, rec, &me)
-	if me.ID != registered.ID {
-		t.Errorf("authenticated as %s, want %s", me.ID, registered.ID)
+	for _, p := range []struct{ method, path string }{
+		{http.MethodPost, "/v1/tasks"},
+		{http.MethodGet, "/v1/tasks"},
+		{http.MethodGet, "/v1/conversations"},
+		{http.MethodPost, "/v1/conversations"},
+		{http.MethodGet, "/v1/devices"},
+		{http.MethodGet, "/v1/me"},
+	} {
+		rec := withToken(t, s, p.method, p.path, "")
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s %s: status = %d, want 401", p.method, p.path, rec.Code)
+		}
 	}
 }
 
-func TestMalformedAuthorizationIsRefused(t *testing.T) {
+func TestMalformedOrUnissuedTokensAreRefused(t *testing.T) {
 	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 	valid := tokenOf(s)
+	unissued, _, _ := auth.NewToken()
 
 	cases := map[string]string{
-		"absent":         "",
-		"no scheme":      valid,
-		"wrong scheme":   "Basic " + valid,
-		"empty bearer":   "Bearer ",
-		"rubbish":        "Bearer not-a-token",
-		"truncated":      "Bearer " + valid[:len(valid)-4],
-		"extra appended": "Bearer " + valid + "x",
+		"no scheme":    valid,
+		"wrong scheme": "Basic " + valid,
+		"empty bearer": "Bearer ",
+		"rubbish":      "Bearer not-a-token",
+		"truncated":    "Bearer " + valid[:len(valid)-4],
+		"unissued":     "Bearer " + unissued,
 	}
 	for name, header := range cases {
 		t.Run(name, func(t *testing.T) {
 			rec := withToken(t, s, http.MethodGet, "/v1/me", header)
 			if rec.Code != http.StatusUnauthorized {
-				t.Errorf("status = %d, want 401: %s", rec.Code, rec.Body)
+				t.Errorf("status = %d, want 401", rec.Code)
 			}
 			if got := rec.Header().Get("WWW-Authenticate"); !strings.Contains(got, "Bearer") {
 				t.Errorf("WWW-Authenticate = %q, want it to name the scheme", got)
@@ -141,102 +172,95 @@ func TestMalformedAuthorizationIsRefused(t *testing.T) {
 	}
 }
 
-// A token that was never issued must be refused, however well formed.
-func TestAnUnissuedTokenIsRefused(t *testing.T) {
+// A lost phone is revoked from another device, which is the reason devices
+// exist separately from the user at all.
+func TestAnyDeviceCanRevokeAnother(t *testing.T) {
 	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 
-	unissued, _, err := auth.NewToken()
-	if err != nil {
-		t.Fatalf("auth.NewToken: %v", err)
-	}
-	rec := withToken(t, s, http.MethodGet, "/v1/me", "Bearer "+unissued)
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("status = %d, want 401", rec.Code)
-	}
-}
+	phone := loginAs(t, s, "my phone")
+	laptop := loginAs(t, s, "my laptop")
 
-// A revoked device must stop working, which is the point of revocation.
-func TestRevokingStopsTheToken(t *testing.T) {
-	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
-
-	rec := register(t, s, `{"name":"lost phone"}`, testRegistrationSecret)
-	var registered registeredClientView
-	decodeInto(t, rec, &registered)
-	bearer := "Bearer " + registered.Token
-
-	if rec := withToken(t, s, http.MethodGet, "/v1/me", bearer); rec.Code != http.StatusOK {
-		t.Fatalf("before revoking: status = %d, want 200", rec.Code)
+	if rec := withToken(t, s, http.MethodGet, "/v1/me", "Bearer "+phone.Token); rec.Code != http.StatusOK {
+		t.Fatalf("the phone did not work to begin with: %d", rec.Code)
 	}
 
-	rec = withToken(t, s, http.MethodDelete, "/v1/clients/"+registered.ID, bearer)
+	// Revoke the phone from the laptop.
+	rec := withToken(t, s, http.MethodDelete, "/v1/devices/"+phone.Device.ID, "Bearer "+laptop.Token)
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("revoke: status = %d, want 204: %s", rec.Code, rec.Body)
 	}
 
-	if rec := withToken(t, s, http.MethodGet, "/v1/me", bearer); rec.Code != http.StatusUnauthorized {
-		t.Errorf("after revoking: status = %d, want 401", rec.Code)
+	if rec := withToken(t, s, http.MethodGet, "/v1/me", "Bearer "+phone.Token); rec.Code != http.StatusUnauthorized {
+		t.Errorf("the revoked phone still works: status = %d", rec.Code)
 	}
-	if rec := withToken(t, s, http.MethodPost, "/v1/tasks", bearer); rec.Code != http.StatusUnauthorized {
-		t.Errorf("a revoked client could still submit: status = %d, want 401", rec.Code)
+	if rec := withToken(t, s, http.MethodGet, "/v1/me", "Bearer "+laptop.Token); rec.Code != http.StatusOK {
+		t.Errorf("the laptop stopped working too: status = %d", rec.Code)
 	}
 }
 
-// A stolen token must not be usable to lock out the rest.
-func TestAClientCannotRevokeAnother(t *testing.T) {
+// One user's device must not revoke another user's.
+func TestADeviceCannotRevokeAnotherUsers(t *testing.T) {
+	s, _, repo, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
+	mine := loginAs(t, s, "mine")
+
+	stranger, _ := task.NewUser("stranger", "hash")
+	_ = repo.CreateUser(t.Context(), stranger)
+	theirDevice, _ := task.NewDevice(stranger.ID, "theirs", "their-hash")
+	_ = repo.CreateDevice(t.Context(), theirDevice)
+
+	rec := withToken(t, s, http.MethodDelete, "/v1/devices/"+theirDevice.ID, "Bearer "+mine.Token)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
+	}
+}
+
+// A device listing shows the user's own devices, marking which is in use and
+// which have been revoked.
+func TestDeviceListing(t *testing.T) {
 	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 
-	rec := register(t, s, `{"name":"other phone"}`, testRegistrationSecret)
-	var other registeredClientView
-	decodeInto(t, rec, &other)
+	phone := loginAs(t, s, "my phone")
+	laptop := loginAs(t, s, "my laptop")
+	withToken(t, s, http.MethodDelete, "/v1/devices/"+phone.Device.ID, "Bearer "+laptop.Token)
 
-	// The server's own client tries to revoke the newly registered one.
-	rec = withToken(t, s, http.MethodDelete, "/v1/clients/"+other.ID, "Bearer "+tokenOf(s))
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want 403", rec.Code)
+	rec := withToken(t, s, http.MethodGet, "/v1/devices", "Bearer "+laptop.Token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
 	}
+	var list listDevicesResponse
+	decodeInto(t, rec, &list)
 
-	// The other client still works.
-	if rec := withToken(t, s, http.MethodGet, "/v1/me", "Bearer "+other.Token); rec.Code != http.StatusOK {
-		t.Errorf("the targeted client stopped working: status = %d", rec.Code)
+	var sawCurrent, sawRevoked bool
+	for _, d := range list.Devices {
+		if d.ID == laptop.Device.ID {
+			if !d.Current {
+				t.Error("the device in use is not marked current")
+			}
+			sawCurrent = true
+		}
+		if d.ID == phone.Device.ID {
+			if !d.Revoked {
+				t.Error("the revoked device is not marked revoked")
+			}
+			sawRevoked = true
+		}
 	}
-}
-
-// A refusal must not say which kind it was, or guessing becomes cheaper.
-func TestRefusalsAreIndistinguishable(t *testing.T) {
-	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
-
-	rec := register(t, s, `{"name":"to be revoked"}`, testRegistrationSecret)
-	var revoked registeredClientView
-	decodeInto(t, rec, &revoked)
-	withToken(t, s, http.MethodDelete, "/v1/clients/"+revoked.ID, "Bearer "+revoked.Token)
-
-	unissued, _, _ := auth.NewToken()
-
-	revokedBody := withToken(t, s, http.MethodGet, "/v1/me", "Bearer "+revoked.Token).Body.String()
-	unissuedBody := withToken(t, s, http.MethodGet, "/v1/me", "Bearer "+unissued).Body.String()
-
-	if revokedBody != unissuedBody {
-		t.Errorf("a revoked token is distinguishable from an unissued one:\n revoked:  %s\n unissued: %s",
-			revokedBody, unissuedBody)
+	if !sawCurrent || !sawRevoked {
+		t.Errorf("listing did not show both devices: %+v", list.Devices)
 	}
 }
 
-// A token must never be written to the log, whatever happens to it.
-func TestTokensAreNotLogged(t *testing.T) {
+// Neither a password nor a token may reach the log.
+func TestSecretsAreNotLogged(t *testing.T) {
 	s, logs, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 
-	rec := register(t, s, `{"name":"my phone"}`, testRegistrationSecret)
-	var registered registeredClientView
-	decodeInto(t, rec, &registered)
-
-	withToken(t, s, http.MethodGet, "/v1/me", "Bearer "+registered.Token)
-	unissued, _, _ := auth.NewToken()
-	withToken(t, s, http.MethodGet, "/v1/me", "Bearer "+unissued)
+	out := loginAs(t, s, "my phone")
+	login(t, s, `{"username":"`+testUsername+`","password":"`+testPassword+`-wrong"}`)
+	withToken(t, s, http.MethodGet, "/v1/me", "Bearer "+out.Token)
 
 	for name, secret := range map[string]string{
-		"issued token":        registered.Token,
-		"rejected token":      unissued,
-		"registration secret": testRegistrationSecret,
+		"password": testPassword,
+		"token":    out.Token,
 	} {
 		if strings.Contains(logs.String(), secret) {
 			t.Errorf("the %s was written to the log", name)
@@ -244,19 +268,20 @@ func TestTokensAreNotLogged(t *testing.T) {
 	}
 }
 
-// Ownership still holds once tokens are in play.
-func TestOneClientStillCannotReachAnothersWork(t *testing.T) {
+func TestLoginRejectsBadRequests(t *testing.T) {
 	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 
-	rec := register(t, s, `{"name":"second phone"}`, testRegistrationSecret)
-	var other registeredClientView
-	decodeInto(t, rec, &other)
-
-	mine := createIn(t, s, "", "my question", "?wait=5s")
-
-	rec = withToken(t, s, http.MethodGet, "/v1/tasks/"+mine.ID, "Bearer "+other.Token)
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("another client read my task: status = %d, want 404", rec.Code)
+	long := strings.Repeat("a", task.MaxDeviceNameRunes+1)
+	cases := map[string]string{
+		"not json":         `nonsense`,
+		"unknown field":    `{"username":"x","password":"y","admin":true}`,
+		"device name long": `{"username":"` + testUsername + `","password":"` + testPassword + `","device_name":"` + long + `"}`,
 	}
-	_ = task.StatusPending
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			if rec := login(t, s, body); rec.Code != http.StatusBadRequest {
+				t.Errorf("status = %d, want 400: %s", rec.Code, rec.Body)
+			}
+		})
+	}
 }

@@ -18,7 +18,8 @@ type memRepo struct {
 	tasks         map[string]*task.Task
 	messages      map[string][]task.Message
 	conversations map[string]task.Conversation
-	clients       map[string]task.Client
+	devices       map[string]task.Device
+	users         map[string]task.User
 
 	// updateErr : When set, every Update fails with it.
 	updateErr error
@@ -34,7 +35,8 @@ func newMemRepo() *memRepo {
 		tasks:         map[string]*task.Task{},
 		messages:      map[string][]task.Message{},
 		conversations: map[string]task.Conversation{},
-		clients:       map[string]task.Client{},
+		devices:       map[string]task.Device{},
+		users:         map[string]task.User{},
 	}
 }
 
@@ -90,9 +92,9 @@ func (m *memRepo) List(_ context.Context, f task.Filter) ([]task.Summary, error)
 		if f.ConversationID != "" && t.ConversationID != f.ConversationID {
 			continue
 		}
-		if f.ClientID != "" {
+		if f.UserID != "" {
 			owner, ok := m.conversations[t.ConversationID]
-			if !ok || owner.ClientID != f.ClientID {
+			if !ok || owner.UserID != f.UserID {
 				continue
 			}
 		}
@@ -189,12 +191,12 @@ func (m *memRepo) GetConversation(_ context.Context, id string) (*task.Conversat
 }
 
 // ListConversations : Returns stored conversations.
-func (m *memRepo) ListConversations(_ context.Context, clientID string, limit int) ([]task.Conversation, error) {
+func (m *memRepo) ListConversations(_ context.Context, userID string, limit int) ([]task.Conversation, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var out []task.Conversation
 	for _, c := range m.conversations {
-		if c.ClientID != clientID {
+		if c.UserID != userID {
 			continue
 		}
 		out = append(out, c)
@@ -206,62 +208,106 @@ func (m *memRepo) ListConversations(_ context.Context, clientID string, limit in
 	return out, nil
 }
 
-// CreateClient : Stores a new client.
-func (m *memRepo) CreateClient(_ context.Context, c *task.Client) error {
+// CreateUser : Stores a new user.
+func (m *memRepo) CreateUser(_ context.Context, u *task.User) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.clients[c.ID] = *c
+	for _, existing := range m.users {
+		if existing.Username == u.Username {
+			return task.ErrUsernameTaken
+		}
+	}
+	m.users[u.ID] = *u
 	return nil
 }
 
-// GetClient : Returns a stored client.
-func (m *memRepo) GetClient(_ context.Context, id string) (*task.Client, error) {
+// GetUser : Returns a stored user.
+func (m *memRepo) GetUser(_ context.Context, id string) (*task.User, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	c, ok := m.clients[id]
+	u, ok := m.users[id]
 	if !ok {
 		return nil, task.ErrNotFound
 	}
-	return &c, nil
+	return &u, nil
 }
 
-// ClientByTokenHash : Returns the client authenticating with a token hash.
-func (m *memRepo) ClientByTokenHash(_ context.Context, tokenHash string) (*task.Client, error) {
-	if tokenHash == "" {
-		return nil, task.ErrNotFound
-	}
+// UserByUsername : Returns the user with the given username.
+func (m *memRepo) UserByUsername(_ context.Context, username string) (*task.User, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for _, c := range m.clients {
-		if c.TokenHash == tokenHash {
-			if c.Revoked() {
-				return nil, task.ErrRevoked
-			}
-			found := c
+	want := task.NormaliseUsername(username)
+	for _, u := range m.users {
+		if u.Username == want {
+			found := u
 			return &found, nil
 		}
 	}
 	return nil, task.ErrNotFound
 }
 
-// RevokeClient : Stops a client authenticating.
-func (m *memRepo) RevokeClient(_ context.Context, id string) error {
+// CreateDevice : Stores a new device.
+func (m *memRepo) CreateDevice(_ context.Context, d *task.Device) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	c, ok := m.clients[id]
+	m.devices[d.ID] = *d
+	return nil
+}
+
+// DeviceByTokenHash : Returns the device authenticating with a token hash.
+func (m *memRepo) DeviceByTokenHash(_ context.Context, tokenHash string) (*task.Device, error) {
+	if tokenHash == "" {
+		return nil, task.ErrNotFound
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, d := range m.devices {
+		if d.TokenHash == tokenHash {
+			if d.Revoked() {
+				return nil, task.ErrRevoked
+			}
+			found := d
+			return &found, nil
+		}
+	}
+	return nil, task.ErrNotFound
+}
+
+// ListDevices : Returns a user's devices, newest first.
+func (m *memRepo) ListDevices(_ context.Context, userID string) ([]task.Device, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []task.Device
+	for _, d := range m.devices {
+		if d.UserID == userID {
+			out = append(out, d)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID })
+	return out, nil
+}
+
+// RevokeDevice : Stops a device authenticating.
+func (m *memRepo) RevokeDevice(_ context.Context, userID, deviceID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	d, ok := m.devices[deviceID]
 	if !ok {
 		return task.ErrNotFound
 	}
-	if c.RevokedAt == nil {
+	if d.UserID != userID {
+		return task.ErrNotOwned
+	}
+	if d.RevokedAt == nil {
 		at := time.Now().UTC()
-		c.RevokedAt = &at
-		m.clients[id] = c
+		d.RevokedAt = &at
+		m.devices[deviceID] = d
 	}
 	return nil
 }
 
-// SetActiveConversation : Points a client at a conversation it owns.
-func (m *memRepo) SetActiveConversation(_ context.Context, clientID, conversationID string) error {
+// SetActiveConversation : Points a device at a conversation its user owns.
+func (m *memRepo) SetActiveConversation(_ context.Context, userID, deviceID, conversationID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -269,15 +315,15 @@ func (m *memRepo) SetActiveConversation(_ context.Context, clientID, conversatio
 	if !ok {
 		return task.ErrNotFound
 	}
-	if conversation.ClientID != clientID {
+	if conversation.UserID != userID {
 		return task.ErrNotOwned
 	}
-	client, ok := m.clients[clientID]
-	if !ok {
+	d, ok := m.devices[deviceID]
+	if !ok || d.UserID != userID {
 		return task.ErrNotFound
 	}
-	client.ActiveConversationID = conversationID
-	m.clients[clientID] = client
+	d.ActiveConversationID = conversationID
+	m.devices[deviceID] = d
 	return nil
 }
 

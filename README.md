@@ -98,9 +98,10 @@ curl localhost:8080/ready
 Endpoints:
 
 ```
-POST /v1/clients                  register a client; returns its token once
-DELETE /v1/clients/{id}           revoke a client (itself only)
-GET  /v1/me                       the calling client and its active conversation
+POST /v1/auth/login               log in; registers this device, returns a token
+GET  /v1/me                       the user and the device in use
+GET  /v1/devices                  this user's devices
+DELETE /v1/devices/{id}           revoke one
 
 POST /v1/tasks                    create a task; ?wait=30s holds for the answer
 GET  /v1/tasks/{id}               one task
@@ -109,21 +110,29 @@ GET  /v1/tasks/{id}/messages      what a task said while it ran
 GET  /v1/tasks/{id}/stream        server-sent events, as they happen
 POST /v1/tasks/{id}/cancel        stop a task
 
-POST /v1/conversations            start one; it becomes active
-GET  /v1/conversations            this client's conversations
+POST /v1/conversations            start one; this device switches to it
+GET  /v1/conversations            this user's conversations
 GET  /v1/conversations/{id}       a conversation and its tasks
-POST /v1/conversations/{id}/activate   switch to it
+POST /v1/conversations/{id}/activate   switch this device to it
 ```
 
-Register a client once, presenting the registration secret, and keep the token
-it returns. The token is shown only then, because only its hash is stored:
+
+Create a user once, from the terminal:
 
 ```bash
-curl -X POST localhost:8080/v1/clients \
-  -H "Authorization: Bearer $REGISTRATION_SECRET" \
+go run ./cmd/server createuser dhanush
+# password: ...
+# again: ...
+```
+
+Then log in from each device. Logging in registers that device and returns its
+token, shown only then because only its hash is stored:
+
+```bash
+curl -X POST localhost:8080/v1/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"name":"my phone"}'
-# {"id":"cli_01M30...","token":"fri_9f2a...","active_conversation_id":"conv_..."}
+  -d '{"username":"dhanush","password":"...","device_name":"my phone"}'
+# {"token":"fri_9f2a...","user":{...},"device":{...}}
 ```
 
 Every other endpoint needs that token:
@@ -135,13 +144,13 @@ curl -X POST localhost:8080/v1/tasks \
   -d '{"prompt":"what is the capital of France?"}'
 ```
 
-A lost device is revoked with `DELETE /v1/clients/{id}`, which a client may
-only do to itself.
+A lost device is revoked from any other with `DELETE /v1/devices/{id}`.
 
-A prompt lands in the client's active conversation, so a voice client need not
-say where it belongs. A follow-up is understood in the light of what came
-before, and a new prompt supersedes whatever is still running there. One client
-cannot see another's conversations or tasks.
+Conversations belong to the user, so any device can see and continue any of
+them. Each device holds its own active conversation, so a speaker in one room
+and a laptop in another do not collide. A prompt lands in whichever
+conversation that device is in, a follow-up is understood in the light of what
+came before, and a new prompt supersedes whatever is still running there.
 
 A bearer token is only as private as the connection carrying it. Over plain
 HTTP anyone on the network can read it and become that client, so put TLS in
@@ -189,7 +198,6 @@ FRIDAY_DATABASE_PASSWORD=... ./friday
 | `database` | `max_idle_conns` | `5` | Must not exceed `max_open_conns` |
 | `database` | `conn_max_lifetime` | `5m` | |
 | `database` | `connect_timeout` | `5s` | |
-| `auth` | `registration_secret` | empty | What a caller presents to register a client. Empty disables registration |
 | `provider` | `name` | `stub` | `stub` or `platformai` |
 | `platformai` | `client_id` | | OAuth client |
 | `platformai` | `client_secret` | | OAuth client secret |

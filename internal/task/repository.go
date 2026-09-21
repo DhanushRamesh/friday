@@ -9,15 +9,15 @@ import (
 var (
 	// ErrNotFound : Nothing exists with the given identifier.
 	ErrNotFound = errors.New("task: not found")
-	// ErrRevoked : The client exists but may no longer authenticate.
-	ErrRevoked = errors.New("task: client is revoked")
-	// ErrNotOwned : It exists but belongs to a different client.
+	// ErrRevoked : The device exists but may no longer authenticate.
+	ErrRevoked = errors.New("task: device is revoked")
+	// ErrNotOwned : It exists but belongs to a different user.
 	//
 	// Distinguished from ErrNotFound inside FRIDAY so that a mistake is
 	// diagnosable; at the edge both are answered the same way, because
-	// telling one client that another's conversation exists reveals more than
+	// telling one user that another's conversation exists reveals more than
 	// it should.
-	ErrNotOwned = errors.New("task: belongs to another client")
+	ErrNotOwned = errors.New("task: belongs to another user")
 )
 
 // Message : One thing recorded during a task's run.
@@ -67,9 +67,8 @@ type Filter struct {
 	// ConversationID : Restricts the listing to one conversation. Empty means
 	// any.
 	ConversationID string
-	// ClientID : Restricts the listing to one client's tasks. Empty means
-	// any.
-	ClientID string
+	// UserID : Restricts the listing to one user's tasks. Empty means any.
+	UserID string
 	// Limit : The greatest number of tasks to return. Zero selects
 	// DefaultListLimit.
 	Limit int
@@ -113,25 +112,39 @@ type Repository interface {
 	// Messages : Returns a task's messages in the order they were produced.
 	Messages(ctx context.Context, taskID string) ([]Message, error)
 
-	// CreateClient : Stores a new client.
-	CreateClient(ctx context.Context, c *Client) error
+	// CreateUser : Stores a new user. It reports ErrUsernameTaken if the
+	// username is already in use.
+	CreateUser(ctx context.Context, u *User) error
 
-	// GetClient : Returns a client. It reports ErrNotFound if there is none.
-	GetClient(ctx context.Context, id string) (*Client, error)
+	// UserByUsername : Returns the user with the given username. It reports
+	// ErrNotFound if there is none.
+	UserByUsername(ctx context.Context, username string) (*User, error)
 
-	// ClientByTokenHash : Returns the client authenticating with the given
+	// GetUser : Returns a user by identifier. It reports ErrNotFound if
+	// there is none.
+	GetUser(ctx context.Context, id string) (*User, error)
+
+	// CreateDevice : Stores a new device.
+	CreateDevice(ctx context.Context, d *Device) error
+
+	// DeviceByTokenHash : Returns the device authenticating with the given
 	// token hash. It reports ErrNotFound if there is none, and ErrRevoked if
-	// the client was revoked.
-	ClientByTokenHash(ctx context.Context, tokenHash string) (*Client, error)
+	// the device was revoked.
+	DeviceByTokenHash(ctx context.Context, tokenHash string) (*Device, error)
 
-	// RevokeClient : Stops a client authenticating. Revoking one already
-	// revoked changes nothing.
-	RevokeClient(ctx context.Context, id string) error
+	// ListDevices : Returns a user's devices, newest first, including
+	// revoked ones so that a revocation is visible.
+	ListDevices(ctx context.Context, userID string) ([]Device, error)
+
+	// RevokeDevice : Stops a device authenticating. It reports ErrNotFound if
+	// there is none, and ErrNotOwned if it belongs to another user. Revoking
+	// one already revoked changes nothing.
+	RevokeDevice(ctx context.Context, userID, deviceID string) error
 
 	// SetActiveConversation : Makes a conversation the one a prompt from this
-	// client lands in. It reports ErrNotFound if either does not exist, and
-	// ErrNotOwned if the conversation belongs to another client.
-	SetActiveConversation(ctx context.Context, clientID, conversationID string) error
+	// device lands in. It reports ErrNotFound if either does not exist, and
+	// ErrNotOwned if the conversation belongs to another user.
+	SetActiveConversation(ctx context.Context, userID, deviceID, conversationID string) error
 
 	// CreateConversation : Stores a new conversation.
 	CreateConversation(ctx context.Context, c *Conversation) error
@@ -140,9 +153,10 @@ type Repository interface {
 	// there is none.
 	GetConversation(ctx context.Context, id string) (*Conversation, error)
 
-	// ListConversations : Returns a client's conversations, most recently
-	// used first.
-	ListConversations(ctx context.Context, clientID string, limit int) ([]Conversation, error)
+	// ListConversations : Returns a user's conversations, most recently used
+	// first. They belong to the person, so every one of their devices sees
+	// all of them.
+	ListConversations(ctx context.Context, userID string, limit int) ([]Conversation, error)
 
 	// History : Returns a conversation's turns, oldest first, limited to the
 	// most recent turns. A task that was cancelled or failed contributes its

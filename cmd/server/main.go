@@ -24,14 +24,54 @@ import (
 	taskmysql "github.com/DhanushRamesh/friday/internal/task/mysql"
 )
 
-// main : Starts the server and exits non-zero if it cannot run.
+// main : Runs the server, or the named command.
 func main() {
+	if len(os.Args) > 2 && os.Args[1] == "createuser" {
+		osExitOnError(runCreateUser(os.Args[2]))
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "createuser" {
+		fmt.Fprintln(os.Stderr, "usage: friday createuser <username>")
+		os.Exit(1)
+	}
+
 	if err := run(); err != nil {
 		// Configuration is read before the logger exists, so this cannot be
 		// a structured record.
 		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// storageDB : The database handle a command works through.
+type storageDB = storage.DB
+
+// runCreateUser : Opens the database and creates a user, without starting the
+// server.
+func runCreateUser(username string) error {
+	cfg, err := config.LoadFromEnv()
+	if err != nil {
+		return err
+	}
+	logger, err := logging.New(os.Stdout, logging.Config{
+		Level: "warn", Format: cfg.Log.Format, Service: "friday",
+	})
+	if err != nil {
+		return err
+	}
+
+	db, err := storage.Open(context.Background(), cfg.Database, logger.Logger, storage.Options{})
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	if cfg.Database.AutoMigrate {
+		if err := storage.Migrate(context.Background(), db, logger.Logger); err != nil {
+			return err
+		}
+	}
+	return createUser(username, db)
 }
 
 // run : Loads configuration, opens the dependencies and serves until
@@ -107,18 +147,13 @@ func run() error {
 		return err
 	}
 
-	if cfg.Auth.RegistrationSecret == "" {
-		logger.Warn("registration is disabled; set [auth] registration_secret to register a client")
-	}
-
 	handler := api.New(api.Options{
-		Logger:             logger.Logger,
-		DB:                 db,
-		Tasks:              tasks,
-		Runner:             taskRunner,
-		Events:             bus,
-		RegistrationSecret: cfg.Auth.RegistrationSecret.Reveal(),
-		RequestTimeout:     cfg.Server.RequestTimeout,
+		Logger:         logger.Logger,
+		DB:             db,
+		Tasks:          tasks,
+		Runner:         taskRunner,
+		Events:         bus,
+		RequestTimeout: cfg.Server.RequestTimeout,
 	})
 
 	srv := &http.Server{

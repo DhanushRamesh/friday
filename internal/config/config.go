@@ -57,7 +57,6 @@ type Config struct {
 	Server     Server
 	Log        Log
 	Database   Database
-	Auth       Auth
 	Provider   Provider
 	PlatformAI PlatformAI
 
@@ -80,16 +79,6 @@ type Log struct {
 	Level     string
 	Format    logging.Format
 	AddSource bool
-}
-
-// Auth : How clients prove who they are.
-type Auth struct {
-	// RegistrationSecret : What a caller must present to register a client.
-	//
-	// Empty disables registration, which is the safe default: an endpoint
-	// anyone may call would let a stranger issue themselves a token, and
-	// authentication one can self-issue is none.
-	RegistrationSecret logging.Secret
 }
 
 // ProviderName : Which engine answers a task.
@@ -192,7 +181,6 @@ func (c Config) LogValue() slog.Value {
 		slog.String("database.addr", c.Database.SafeAddr()),
 		slog.Int("database.max_open_conns", c.Database.MaxOpenConns),
 		slog.Bool("database.auto_migrate", c.Database.AutoMigrate),
-		slog.Bool("auth.registration_enabled", c.Auth.RegistrationSecret != ""),
 		slog.String("provider.name", string(c.Provider.Name)),
 		slog.String("platformai.model", c.PlatformAI.Model),
 	)
@@ -277,9 +265,6 @@ func Load(path string, lookup Lookup) (Config, error) {
 			ConnMaxLifetime: l.duration("database", "conn_max_lifetime", 5*time.Minute),
 			ConnectTimeout:  l.duration("database", "connect_timeout", 5*time.Second),
 			AutoMigrate:     l.boolean("database", "auto_migrate", true),
-		},
-		Auth: Auth{
-			RegistrationSecret: logging.Secret(l.str("auth", "registration_secret", "")),
 		},
 		Provider: Provider{
 			Name: ProviderName(l.str("provider", "name", string(ProviderStub))),

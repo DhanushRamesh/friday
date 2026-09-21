@@ -338,68 +338,83 @@ serves the runner's query, oldest pending first.
 Deliberately absent until something needs them: `user_id`, the model used,
 token counts, retry counts.
 
-### Clients, conversations, tasks
+### Users, devices, conversations, tasks
 
 ```
-client                     one thing that talks to FRIDAY: a phone, a speaker
+user                       the person FRIDAY belongs to
   |
-  +-- conversations        many, created explicitly
+  +-- devices              phone, laptop, speaker
+  |                        a token and nothing else: owns nothing,
+  |                        but holds which conversation IT is in
+  |
+  +-- conversations        owned by the person, reachable from any device
         |
-        +-- one is ACTIVE  the server remembers which
+        +-- tasks          a prompt is a task
               |
-              +-- tasks    a prompt is a task
-                    |
-                    +-- messages
+              +-- messages
 ```
 
-A prompt lands in the client's **active conversation**. That is the point of
-holding one server-side: a voice client says what it wants without also saying
-where it belongs. Naming a conversation on a single prompt overrides that for
-that prompt without switching which is active.
+**Conversations belong to the user, not the device.** An exchange begun on a
+phone continues at a desk. Every device sees every conversation.
 
-Registering a client creates and activates its first conversation, so a new
-client can ask something at once. Creating one explicitly is for wanting a
-second, and it becomes active unless the caller says otherwise, since starting
-a conversation almost always means wanting to talk in it.
+**The active conversation belongs to the device.** A person may be speaking to
+a speaker in one room while typing at a laptop in another, and those two
+threads must not collide. Switching on one device leaves the others where they
+were. Which conversations exist is a property of the person; which one a
+device is currently in is a property of the device.
+
+**The user is the boundary.** Every ownership check asks whether it is the
+same user, never the same device. A device is only which credential was
+presented.
+
+Naming a conversation on a single prompt sends it there without switching what
+the device is in.
 
 ### Authentication
 
-A client authenticates with a token, sent as `Authorization: Bearer fri_...`.
-The token both names the client and proves it is that client, so nothing is
-sent alongside it: an identifier that could be presented without the token
-would be a name with no password.
+A device authenticates with a token, sent as `Authorization: Bearer fri_...`.
+The token both names the device and proves it, so nothing is sent alongside:
+an identifier presentable without the token would be a name with no password.
 
-`POST /v1/clients` issues one. It is returned **once** and never again,
-because only its SHA-256 is stored: a copy of the database hands over nobody's
-devices. A plain hash rather than a password hash, since the token is 256 bits
-of randomness — there is no dictionary to try, and bcrypt on every request
+**Logging in and registering a device are one act.** `POST /v1/auth/login`
+takes a username, a password and a device name, and returns a token. A token
+exists only for a device, and a device may be created only by someone who
+proved who they are, so there is nothing to register separately and no
+registration secret to share around.
+
+The token is returned once and never again, because only its SHA-256 is
+stored. A plain hash rather than a password hash, since the token is 256 bits
+of randomness: there is no dictionary to try, and bcrypt on every request
 would cost a hundred milliseconds to defend against nothing.
 
-**Registration is guarded by a secret** held in `[auth] registration_secret`.
-An endpoint anyone may call would let a stranger issue themselves a token, and
-authentication one can self-issue is none. A blank secret disables
-registration rather than accepting anything, so the default is closed. The
-comparison is constant-time: a naive one returns sooner the earlier it
-differs, leaking the secret a character at a time.
+**Passwords are bcrypt**, at a cost chosen so one check takes roughly two
+hundred milliseconds. A password is chosen by a person and therefore
+guessable, so here the slowness is precisely the point. `auth.PasswordCost`
+exists so tests can lower it; production must leave it alone.
 
-`DELETE /v1/clients/{id}` revokes a client, and only itself — a stolen token
-must not be usable to lock everyone else out. The row is kept rather than
-deleted, so a revoked device's conversations stay readable.
+An unknown username spends the same time as a wrong password, through
+`DummyPasswordCheck`. Answering faster for an account that does not exist
+tells whoever is guessing which usernames are real.
+
+`DELETE /v1/devices/{id}` revokes any of the caller's own devices, which is
+the reason devices exist apart from the user: a phone left in a taxi is
+revoked from the laptop at home. The row is kept rather than deleted, so a
+revocation is visible in a listing.
 
 Every refusal reads alike and answers 401. A token never issued and one since
-revoked are logged apart, so a problem is diagnosable, but answered
-identically, so neither is discoverable by guessing.
+revoked are logged apart, so a problem stays diagnosable, but answered
+identically, so neither is discoverable.
+
+**The first user is created from the terminal**, with `friday createuser
+<username>`. There is no endpoint. One that creates the first user must either
+be open, which lets a stranger claim the assistant, or be guarded by a shared
+secret, which is the same problem one level up. A command run by whoever
+already has the machine avoids both and is needed exactly once.
 
 **A bearer token is only as private as the connection carrying it.** Over
-plain HTTP anyone on the network reads it and becomes that client. TLS must
+plain HTTP anyone on the network reads it and becomes that device. TLS must
 sit in front of FRIDAY before it is reachable from anywhere but the machine it
 runs on.
-
-Ownership is enforced regardless. One client cannot read, list, activate or
-post into another's conversation or task. Internally that is `ErrNotOwned`,
-distinct from `ErrNotFound` so a mistake is diagnosable; at the edge both
-answer 404, because telling one client that another's conversation exists
-already reveals more than it should.
 
 ### Conversations
 
@@ -805,11 +820,12 @@ needs is complete, end to end.
   runner to whoever is listening
 - `internal/provider/platformai` — answers using Zoho Platform AI, selected by
   `[provider] name`
-- `internal/auth` — token issuing, hashing and the constant-time secret
-  comparison; clients authenticate with `Authorization: Bearer`
-- Clients, each with many conversations and one active. Tasks land in the
-  active conversation, history reaches the provider, and a new prompt
-  supersedes whatever is still running in that same conversation
+- `internal/auth` — token issuing and hashing, bcrypt password hashing, and
+  the constant-time comparisons around both
+- Users, their devices, and their conversations. A device authenticates with
+  a bearer token and holds its own active conversation; tasks land there,
+  history reaches the provider, and a new prompt supersedes whatever is still
+  running in that same conversation
 - `GET /v1/tasks/{id}/stream` — server-sent events, delivering each message as
   it is produced. This is the voice path
 - `GET /health` (liveness, no dependencies) and `GET /ready` (checks the

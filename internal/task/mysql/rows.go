@@ -54,15 +54,39 @@ var summaryColumns = []string{
 // conversationRow : The conversations table, as GORM sees it.
 type conversationRow struct {
 	ID        string    `gorm:"column:id;primaryKey"`
-	ClientID  *string   `gorm:"column:client_id"`
+	UserID    *string   `gorm:"column:user_id"`
 	Title     string    `gorm:"column:title"`
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime:false"`
 	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime:false"`
 }
 
-// clientRow : The clients table, as GORM sees it.
-type clientRow struct {
+// userRow : The users table, as GORM sees it.
+type userRow struct {
+	ID           string    `gorm:"column:id;primaryKey"`
+	Username     string    `gorm:"column:username"`
+	PasswordHash string    `gorm:"column:password_hash"`
+	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime:false"`
+	UpdatedAt    time.Time `gorm:"column:updated_at;autoUpdateTime:false"`
+}
+
+// TableName : Names the table this row maps to.
+func (userRow) TableName() string { return "users" }
+
+// toUser : Converts a stored row back into a user.
+func (r *userRow) toUser() *task.User {
+	return &task.User{
+		ID:           r.ID,
+		Username:     r.Username,
+		PasswordHash: r.PasswordHash,
+		CreatedAt:    r.CreatedAt.UTC(),
+		UpdatedAt:    r.UpdatedAt.UTC(),
+	}
+}
+
+// deviceRow : The devices table, as GORM sees it.
+type deviceRow struct {
 	ID                   string     `gorm:"column:id;primaryKey"`
+	UserID               *string    `gorm:"column:user_id"`
 	Name                 string     `gorm:"column:name"`
 	TokenHash            *string    `gorm:"column:token_hash"`
 	ActiveConversationID *string    `gorm:"column:active_conversation_id"`
@@ -72,12 +96,13 @@ type clientRow struct {
 }
 
 // TableName : Names the table this row maps to.
-func (clientRow) TableName() string { return "clients" }
+func (deviceRow) TableName() string { return "devices" }
 
-// toClient : Converts a stored row back into a client.
-func (r *clientRow) toClient() *task.Client {
-	return &task.Client{
+// toDevice : Converts a stored row back into a device.
+func (r *deviceRow) toDevice() *task.Device {
+	return &task.Device{
 		ID:                   r.ID,
+		UserID:               value(r.UserID),
 		Name:                 r.Name,
 		TokenHash:            value(r.TokenHash),
 		ActiveConversationID: value(r.ActiveConversationID),
@@ -94,7 +119,7 @@ func (conversationRow) TableName() string { return "conversations" }
 func (r *conversationRow) toConversation() task.Conversation {
 	return task.Conversation{
 		ID:        r.ID,
-		ClientID:  value(r.ClientID),
+		UserID:    value(r.UserID),
 		Title:     r.Title,
 		CreatedAt: r.CreatedAt.UTC(),
 		UpdatedAt: r.UpdatedAt.UTC(),

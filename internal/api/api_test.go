@@ -36,9 +36,6 @@ func newTestServer(t *testing.T, db Pinger) (*Server, *bytes.Buffer) {
 // call. Test-only.
 var testTokens sync.Map
 
-// testRegistrationSecret : What test servers accept for registration.
-const testRegistrationSecret = "test-registration-secret"
-
 // tokenOf : Returns the token registered for a test server.
 func tokenOf(s *Server) string {
 	token, _ := testTokens.Load(s)
@@ -46,34 +43,53 @@ func tokenOf(s *Server) string {
 	return str
 }
 
-// registerTestClient : Registers a client against the server and records it.
-func registerTestClient(t *testing.T, s *Server, repo *memRepo) string {
-	t.Helper()
+// testUsername and testPassword : The account every test server is given.
+const (
+	testUsername = "tester"
+	testPassword = "correct horse battery staple"
+)
 
-	token, hash, err := auth.NewToken()
+// registerTestDevice : Creates the test user and logs a device in, recording
+// its token for the helpers to present.
+func registerTestDevice(t *testing.T, s *Server, repo *memRepo) string {
+	t.Helper()
+	ctx := context.Background()
+
+	hash, err := auth.HashPassword(testPassword)
+	if err != nil {
+		t.Fatalf("auth.HashPassword: %v", err)
+	}
+	user, err := task.NewUser(testUsername, hash)
+	if err != nil {
+		t.Fatalf("task.NewUser: %v", err)
+	}
+	if err := repo.CreateUser(ctx, user); err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+
+	token, tokenHash, err := auth.NewToken()
 	if err != nil {
 		t.Fatalf("auth.NewToken: %v", err)
 	}
-	client, err := task.NewClient("test client", hash)
+	device, err := task.NewDevice(user.ID, "test device", tokenHash)
 	if err != nil {
-		t.Fatalf("task.NewClient: %v", err)
+		t.Fatalf("task.NewDevice: %v", err)
 	}
-	ctx := context.Background()
-	if err := repo.CreateClient(ctx, client); err != nil {
-		t.Fatalf("CreateClient: %v", err)
+	if err := repo.CreateDevice(ctx, device); err != nil {
+		t.Fatalf("CreateDevice: %v", err)
 	}
 
-	conversation := task.NewConversation(client.ID, "")
+	conversation := task.NewConversation(user.ID, "")
 	if err := repo.CreateConversation(ctx, conversation); err != nil {
 		t.Fatalf("CreateConversation: %v", err)
 	}
-	if err := repo.SetActiveConversation(ctx, client.ID, conversation.ID); err != nil {
+	if err := repo.SetActiveConversation(ctx, user.ID, device.ID, conversation.ID); err != nil {
 		t.Fatalf("SetActiveConversation: %v", err)
 	}
 
 	testTokens.Store(s, token)
 	t.Cleanup(func() { testTokens.Delete(s) })
-	return client.ID
+	return token
 }
 
 // newTaskServer : Builds a Server with an in-memory task repository and a
@@ -106,11 +122,8 @@ func newTaskServer(t *testing.T, db Pinger, p provider.Provider) (*Server, *byte
 		_ = r.Shutdown(ctx)
 	})
 
-	srv := New(Options{
-		Logger: logger.Logger, DB: db, Tasks: repo, Runner: r, Events: bus,
-		RegistrationSecret: testRegistrationSecret,
-	})
-	registerTestClient(t, srv, repo)
+	srv := New(Options{Logger: logger.Logger, DB: db, Tasks: repo, Runner: r, Events: bus})
+	registerTestDevice(t, srv, repo)
 	return srv, buf, repo, r
 }
 

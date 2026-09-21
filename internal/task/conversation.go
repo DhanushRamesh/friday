@@ -28,9 +28,9 @@ const (
 type Conversation struct {
 	// ID : The identifier, a ConversationIDPrefix followed by a ULID.
 	ID string
-	// ClientID : Who the conversation belongs to. Empty only for one created
-	// before clients existed.
-	ClientID string
+	// UserID : Whose conversation it is. Empty only for one created before
+	// users existed, which is therefore unreachable.
+	UserID string
 	// Title : What to call it in a listing. May be empty.
 	Title string
 	// CreatedAt : When the exchange began.
@@ -39,12 +39,15 @@ type Conversation struct {
 	UpdatedAt time.Time
 }
 
-// NewConversation : Creates a conversation belonging to a client.
-func NewConversation(clientID, title string) *Conversation {
+// NewConversation : Creates a conversation belonging to a user.
+//
+// It belongs to the person rather than to the device they happened to be
+// using, so an exchange begun on a phone can be continued at a desk.
+func NewConversation(userID, title string) *Conversation {
 	started := now()
 	return &Conversation{
 		ID:        NewConversationID(),
-		ClientID:  clientID,
+		UserID:    userID,
 		Title:     strings.TrimSpace(title),
 		CreatedAt: started,
 		UpdatedAt: started,
