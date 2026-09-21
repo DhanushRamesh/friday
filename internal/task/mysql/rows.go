@@ -62,11 +62,13 @@ type conversationRow struct {
 
 // clientRow : The clients table, as GORM sees it.
 type clientRow struct {
-	ID                   string    `gorm:"column:id;primaryKey"`
-	Name                 string    `gorm:"column:name"`
-	ActiveConversationID *string   `gorm:"column:active_conversation_id"`
-	CreatedAt            time.Time `gorm:"column:created_at;autoCreateTime:false"`
-	UpdatedAt            time.Time `gorm:"column:updated_at;autoUpdateTime:false"`
+	ID                   string     `gorm:"column:id;primaryKey"`
+	Name                 string     `gorm:"column:name"`
+	TokenHash            *string    `gorm:"column:token_hash"`
+	ActiveConversationID *string    `gorm:"column:active_conversation_id"`
+	RevokedAt            *time.Time `gorm:"column:revoked_at"`
+	CreatedAt            time.Time  `gorm:"column:created_at;autoCreateTime:false"`
+	UpdatedAt            time.Time  `gorm:"column:updated_at;autoUpdateTime:false"`
 }
 
 // TableName : Names the table this row maps to.
@@ -77,7 +79,9 @@ func (r *clientRow) toClient() *task.Client {
 	return &task.Client{
 		ID:                   r.ID,
 		Name:                 r.Name,
+		TokenHash:            value(r.TokenHash),
 		ActiveConversationID: value(r.ActiveConversationID),
+		RevokedAt:            utc(r.RevokedAt),
 		CreatedAt:            r.CreatedAt.UTC(),
 		UpdatedAt:            r.UpdatedAt.UTC(),
 	}

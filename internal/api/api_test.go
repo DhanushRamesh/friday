@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DhanushRamesh/friday/internal/auth"
 	"github.com/DhanushRamesh/friday/internal/events"
 	"github.com/DhanushRamesh/friday/internal/logging"
 	"github.com/DhanushRamesh/friday/internal/provider"
@@ -30,14 +31,18 @@ func newTestServer(t *testing.T, db Pinger) (*Server, *bytes.Buffer) {
 	return s, buf
 }
 
-// testClients : The client each test server registered, so that every helper
-// can present one without it being threaded through each call. Test-only.
-var testClients sync.Map
+// testTokens : The token each test server's client authenticates with, so
+// that every helper can present one without it being threaded through each
+// call. Test-only.
+var testTokens sync.Map
 
-// clientOf : Returns the client registered for a test server.
-func clientOf(s *Server) string {
-	id, _ := testClients.Load(s)
-	str, _ := id.(string)
+// testRegistrationSecret : What test servers accept for registration.
+const testRegistrationSecret = "test-registration-secret"
+
+// tokenOf : Returns the token registered for a test server.
+func tokenOf(s *Server) string {
+	token, _ := testTokens.Load(s)
+	str, _ := token.(string)
 	return str
 }
 
@@ -45,7 +50,11 @@ func clientOf(s *Server) string {
 func registerTestClient(t *testing.T, s *Server, repo *memRepo) string {
 	t.Helper()
 
-	client, err := task.NewClient("test client")
+	token, hash, err := auth.NewToken()
+	if err != nil {
+		t.Fatalf("auth.NewToken: %v", err)
+	}
+	client, err := task.NewClient("test client", hash)
 	if err != nil {
 		t.Fatalf("task.NewClient: %v", err)
 	}
@@ -62,8 +71,8 @@ func registerTestClient(t *testing.T, s *Server, repo *memRepo) string {
 		t.Fatalf("SetActiveConversation: %v", err)
 	}
 
-	testClients.Store(s, client.ID)
-	t.Cleanup(func() { testClients.Delete(s) })
+	testTokens.Store(s, token)
+	t.Cleanup(func() { testTokens.Delete(s) })
 	return client.ID
 }
 
@@ -97,7 +106,10 @@ func newTaskServer(t *testing.T, db Pinger, p provider.Provider) (*Server, *byte
 		_ = r.Shutdown(ctx)
 	})
 
-	srv := New(Options{Logger: logger.Logger, DB: db, Tasks: repo, Runner: r, Events: bus})
+	srv := New(Options{
+		Logger: logger.Logger, DB: db, Tasks: repo, Runner: r, Events: bus,
+		RegistrationSecret: testRegistrationSecret,
+	})
 	registerTestClient(t, srv, repo)
 	return srv, buf, repo, r
 }

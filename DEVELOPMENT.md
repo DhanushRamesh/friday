@@ -362,12 +362,38 @@ client can ask something at once. Creating one explicitly is for wanting a
 second, and it becomes active unless the caller says otherwise, since starting
 a conversation almost always means wanting to talk in it.
 
-A client is identified by the `X-Friday-Client` header, holding an identifier
-returned by `POST /v1/clients`. **This is identity, not proof**: anyone who
-knows an identifier can use it. When authentication arrives the header becomes
-a token that must be proved, and nothing built on top changes, because knowing
-who is asking and establishing that they are who they claim are separate
-concerns.
+### Authentication
+
+A client authenticates with a token, sent as `Authorization: Bearer fri_...`.
+The token both names the client and proves it is that client, so nothing is
+sent alongside it: an identifier that could be presented without the token
+would be a name with no password.
+
+`POST /v1/clients` issues one. It is returned **once** and never again,
+because only its SHA-256 is stored: a copy of the database hands over nobody's
+devices. A plain hash rather than a password hash, since the token is 256 bits
+of randomness — there is no dictionary to try, and bcrypt on every request
+would cost a hundred milliseconds to defend against nothing.
+
+**Registration is guarded by a secret** held in `[auth] registration_secret`.
+An endpoint anyone may call would let a stranger issue themselves a token, and
+authentication one can self-issue is none. A blank secret disables
+registration rather than accepting anything, so the default is closed. The
+comparison is constant-time: a naive one returns sooner the earlier it
+differs, leaking the secret a character at a time.
+
+`DELETE /v1/clients/{id}` revokes a client, and only itself — a stolen token
+must not be usable to lock everyone else out. The row is kept rather than
+deleted, so a revoked device's conversations stay readable.
+
+Every refusal reads alike and answers 401. A token never issued and one since
+revoked are logged apart, so a problem is diagnosable, but answered
+identically, so neither is discoverable by guessing.
+
+**A bearer token is only as private as the connection carrying it.** Over
+plain HTTP anyone on the network reads it and becomes that client. TLS must
+sit in front of FRIDAY before it is reachable from anywhere but the machine it
+runs on.
 
 Ownership is enforced regardless. One client cannot read, list, activate or
 post into another's conversation or task. Internally that is `ErrNotOwned`,
@@ -779,6 +805,8 @@ needs is complete, end to end.
   runner to whoever is listening
 - `internal/provider/platformai` — answers using Zoho Platform AI, selected by
   `[provider] name`
+- `internal/auth` — token issuing, hashing and the constant-time secret
+  comparison; clients authenticate with `Authorization: Bearer`
 - Clients, each with many conversations and one active. Tasks land in the
   active conversation, history reaches the provider, and a new prompt
   supersedes whatever is still running in that same conversation
@@ -801,9 +829,10 @@ needs is complete, end to end.
   hand; the stream is what a client should use, and could serve `?wait` too.
 - The event bus is in-process. A second process would not see another's
   events, and clients would hear nothing from tasks it was running.
-- The client header is identity, not authentication: anyone who knows an
-  identifier can act as that client. Ownership is enforced between clients,
-  but nothing stops a stranger presenting someone else's identifier.
+- Nothing terminates TLS. Tokens travel in clear over HTTP, so FRIDAY must
+  stay on localhost until something in front of it speaks HTTPS.
+- Tokens do not expire. Revocation is the only way to end one, which is the
+  agreed trade for a handful of the owner's own devices.
 - Platform AI's reassurance interval is fifteen seconds, and answers commonly
   arrive in three to nine, so most tasks send only the opening
   acknowledgement. That is fine now, but if answers get slower the interval is

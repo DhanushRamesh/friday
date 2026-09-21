@@ -107,13 +107,18 @@ func run() error {
 		return err
 	}
 
+	if cfg.Auth.RegistrationSecret == "" {
+		logger.Warn("registration is disabled; set [auth] registration_secret to register a client")
+	}
+
 	handler := api.New(api.Options{
-		Logger:         logger.Logger,
-		DB:             db,
-		Tasks:          tasks,
-		Runner:         taskRunner,
-		Events:         bus,
-		RequestTimeout: cfg.Server.RequestTimeout,
+		Logger:             logger.Logger,
+		DB:                 db,
+		Tasks:              tasks,
+		Runner:             taskRunner,
+		Events:             bus,
+		RegistrationSecret: cfg.Auth.RegistrationSecret.Reveal(),
+		RequestTimeout:     cfg.Server.RequestTimeout,
 	})
 
 	srv := &http.Server{

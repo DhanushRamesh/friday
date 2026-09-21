@@ -70,7 +70,7 @@ func streamTask(t *testing.T, s *Server, base, id string, headers map[string]str
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
-	req.Header.Set(ClientHeader, clientOf(s))
+	req.Header.Set("Authorization", "Bearer "+tokenOf(s))
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}

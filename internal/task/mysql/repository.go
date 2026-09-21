@@ -204,6 +204,7 @@ func (r *Repository) CreateClient(ctx context.Context, c *task.Client) error {
 	row := &clientRow{
 		ID:                   c.ID,
 		Name:                 c.Name,
+		TokenHash:            nullable(c.TokenHash),
 		ActiveConversationID: nullable(c.ActiveConversationID),
 		CreatedAt:            c.CreatedAt,
 		UpdatedAt:            c.UpdatedAt,
@@ -225,6 +226,54 @@ func (r *Repository) GetClient(ctx context.Context, id string) (*task.Client, er
 		return nil, fmt.Errorf("task: reading client %s: %w", id, err)
 	}
 	return row.toClient(), nil
+}
+
+// ClientByTokenHash : Returns the client authenticating with the given token
+// hash.
+func (r *Repository) ClientByTokenHash(ctx context.Context, tokenHash string) (*task.Client, error) {
+	if tokenHash == "" {
+		return nil, task.ErrNotFound
+	}
+
+	var row clientRow
+	err := r.db.WithContext(ctx).First(&row, "token_hash = ?", tokenHash).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, task.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("task: reading client by token: %w", err)
+	}
+
+	client := row.toClient()
+	if client.Revoked() {
+		return nil, task.ErrRevoked
+	}
+	return client, nil
+}
+
+// RevokeClient : Stops a client authenticating.
+func (r *Repository) RevokeClient(ctx context.Context, id string) error {
+	now := time.Now().UTC().Truncate(task.StoredPrecision)
+
+	result := r.db.WithContext(ctx).
+		Model(&clientRow{}).
+		Where("id = ? AND revoked_at IS NULL", id).
+		Updates(map[string]any{"revoked_at": now, "updated_at": now})
+	if result.Error != nil {
+		return fmt.Errorf("task: revoking client %s: %w", id, result.Error)
+	}
+	if result.RowsAffected == 0 {
+		// Either it is gone, or it was revoked already, which is not a fault.
+		var exists int64
+		if err := r.db.WithContext(ctx).Model(&clientRow{}).
+			Where("id = ?", id).Count(&exists).Error; err != nil {
+			return fmt.Errorf("task: revoking client %s: %w", id, err)
+		}
+		if exists == 0 {
+			return task.ErrNotFound
+		}
+	}
+	return nil
 }
 
 // SetActiveConversation : Makes a conversation the one a prompt from this

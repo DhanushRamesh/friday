@@ -9,6 +9,8 @@ import (
 var (
 	// ErrNotFound : Nothing exists with the given identifier.
 	ErrNotFound = errors.New("task: not found")
+	// ErrRevoked : The client exists but may no longer authenticate.
+	ErrRevoked = errors.New("task: client is revoked")
 	// ErrNotOwned : It exists but belongs to a different client.
 	//
 	// Distinguished from ErrNotFound inside FRIDAY so that a mistake is
@@ -116,6 +118,15 @@ type Repository interface {
 
 	// GetClient : Returns a client. It reports ErrNotFound if there is none.
 	GetClient(ctx context.Context, id string) (*Client, error)
+
+	// ClientByTokenHash : Returns the client authenticating with the given
+	// token hash. It reports ErrNotFound if there is none, and ErrRevoked if
+	// the client was revoked.
+	ClientByTokenHash(ctx context.Context, tokenHash string) (*Client, error)
+
+	// RevokeClient : Stops a client authenticating. Revoking one already
+	// revoked changes nothing.
+	RevokeClient(ctx context.Context, id string) error
 
 	// SetActiveConversation : Makes a conversation the one a prompt from this
 	// client lands in. It reports ErrNotFound if either does not exist, and

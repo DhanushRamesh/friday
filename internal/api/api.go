@@ -60,6 +60,10 @@ type Options struct {
 	// Events : Carries a task's messages to clients listening for them.
 	// Required for streaming.
 	Events Subscriber
+	// RegistrationSecret : What a caller must present to register a client.
+	// Empty disables registration entirely, which is the safe default: an
+	// open registration endpoint lets a stranger issue themselves a token.
+	RegistrationSecret string
 	// RequestTimeout : The per-request deadline. Zero selects
 	// DefaultRequestTimeout.
 	RequestTimeout time.Duration
@@ -67,13 +71,14 @@ type Options struct {
 
 // Server : FRIDAY's HTTP interface. It implements http.Handler.
 type Server struct {
-	logger         *slog.Logger
-	db             Pinger
-	tasks          task.Repository
-	runner         Runner
-	events         Subscriber
-	requestTimeout time.Duration
-	router         chi.Router
+	logger             *slog.Logger
+	db                 Pinger
+	tasks              task.Repository
+	runner             Runner
+	events             Subscriber
+	registrationSecret string
+	requestTimeout     time.Duration
+	router             chi.Router
 }
 
 // New : Builds a Server from opts and registers its routes.
@@ -83,13 +88,14 @@ func New(opts Options) *Server {
 	}
 
 	s := &Server{
-		logger:         opts.Logger,
-		db:             opts.DB,
-		tasks:          opts.Tasks,
-		runner:         opts.Runner,
-		events:         opts.Events,
-		requestTimeout: opts.RequestTimeout,
-		router:         chi.NewRouter(),
+		logger:             opts.Logger,
+		db:                 opts.DB,
+		tasks:              opts.Tasks,
+		runner:             opts.Runner,
+		events:             opts.Events,
+		registrationSecret: opts.RegistrationSecret,
+		requestTimeout:     opts.RequestTimeout,
+		router:             chi.NewRouter(),
 	}
 	s.routes()
 	return s
@@ -116,8 +122,10 @@ func (s *Server) routes() {
 	s.router.Get("/health", s.handleHealth)
 	s.router.Get("/ready", s.handleReady)
 
-	// Registering is the one call that cannot present a client.
+	// Registering is the one call that cannot present a token, so it is
+	// guarded by the registration secret instead.
 	s.router.Post("/v1/clients", s.handleRegisterClient)
+	s.router.With(s.requireClient).Delete("/v1/clients/{id}", s.handleRevokeClient)
 
 	s.router.Route("/v1/tasks", func(r chi.Router) {
 		r.Use(s.requireClient)

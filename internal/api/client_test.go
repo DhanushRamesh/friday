@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"strings"
+
+	"github.com/DhanushRamesh/friday/internal/auth"
 	"github.com/DhanushRamesh/friday/internal/provider"
 	"github.com/DhanushRamesh/friday/internal/task"
 )
@@ -15,14 +18,17 @@ import (
 func TestRegisteringAClientGivesItAnActiveConversation(t *testing.T) {
 	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 
-	rec := do(t, s, http.MethodPost, "/v1/clients", `{"name":"my phone"}`)
+	rec := register(t, s, `{"name":"my phone"}`, testRegistrationSecret)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body)
 	}
 
-	var client clientView
+	var client registeredClientView
 	decodeInto(t, rec, &client)
 
+	if !auth.LooksLikeToken(client.Token) {
+		t.Errorf("token = %q, want one the client can authenticate with", client.Token)
+	}
 	if !task.ValidClientID(client.ID) {
 		t.Errorf("id = %q, want a client identifier", client.ID)
 	}
@@ -57,12 +63,31 @@ func TestEndpointsRequireAClient(t *testing.T) {
 	}
 }
 
+// register : Calls the registration endpoint with the given secret.
+func register(t *testing.T, s *Server, body, secret string) *httptest.ResponseRecorder {
+	t.Helper()
+	var r *http.Request
+	if body == "" {
+		r = httptest.NewRequest(http.MethodPost, "/v1/clients", nil)
+	} else {
+		r = httptest.NewRequest(http.MethodPost, "/v1/clients", strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
+	}
+	if secret != "" {
+		r.Header.Set("Authorization", "Bearer "+secret)
+	}
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, r)
+	return rec
+}
+
 func TestUnknownOrMalformedClientIsRefused(t *testing.T) {
 	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 
-	for _, id := range []string{task.NewClientID(), "nonsense", "cli_short"} {
+	unissued, _, _ := auth.NewToken()
+	for _, id := range []string{unissued, "nonsense", "fri_short"} {
 		req := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
-		req.Header.Set(ClientHeader, id)
+		req.Header.Set("Authorization", "Bearer "+id)
 		rec := httptest.NewRecorder()
 		s.ServeHTTP(rec, req)
 		if rec.Code != http.StatusUnauthorized {
@@ -147,7 +172,7 @@ func TestOneClientCannotReachAnothers(t *testing.T) {
 	mine := createIn(t, s, "", "my question", "?wait=5s")
 
 	// A second client, registered directly so the first stays the caller.
-	stranger, err := task.NewClient("someone else")
+	stranger, err := task.NewClient("someone else", "")
 	if err != nil {
 		t.Fatalf("task.NewClient: %v", err)
 	}
@@ -198,7 +223,7 @@ func TestTaskListingIsScopedToTheClient(t *testing.T) {
 
 	mine := createIn(t, s, "", "my question", "?wait=5s")
 
-	stranger, _ := task.NewClient("someone else")
+	stranger, _ := task.NewClient("someone else", "")
 	_ = repo.CreateClient(t.Context(), stranger)
 	theirs := task.NewConversation(stranger.ID, "")
 	_ = repo.CreateConversation(t.Context(), theirs)
@@ -235,7 +260,7 @@ func TestClientNameTooLongIsRejected(t *testing.T) {
 	for i := range long {
 		long[i] = 'a'
 	}
-	rec := do(t, s, http.MethodPost, "/v1/clients", `{"name":"`+string(long)+`"}`)
+	rec := register(t, s, `{"name":"`+string(long)+`"}`, testRegistrationSecret)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rec.Code)
 	}
@@ -245,11 +270,11 @@ func TestClientNameTooLongIsRejected(t *testing.T) {
 func TestRegisteringWithoutABody(t *testing.T) {
 	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
 
-	rec := do(t, s, http.MethodPost, "/v1/clients", "")
+	rec := register(t, s, "", testRegistrationSecret)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body)
 	}
-	var client clientView
+	var client registeredClientView
 	decodeInto(t, rec, &client)
 	if client.ActiveConversationID == "" {
 		t.Error("no conversation to talk in")

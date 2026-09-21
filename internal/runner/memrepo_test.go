@@ -223,6 +223,41 @@ func (m *memRepo) GetClient(_ context.Context, id string) (*task.Client, error) 
 	return &c, nil
 }
 
+// ClientByTokenHash : Returns the client authenticating with a token hash.
+func (m *memRepo) ClientByTokenHash(_ context.Context, tokenHash string) (*task.Client, error) {
+	if tokenHash == "" {
+		return nil, task.ErrNotFound
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, c := range m.clients {
+		if c.TokenHash == tokenHash {
+			if c.Revoked() {
+				return nil, task.ErrRevoked
+			}
+			found := c
+			return &found, nil
+		}
+	}
+	return nil, task.ErrNotFound
+}
+
+// RevokeClient : Stops a client authenticating.
+func (m *memRepo) RevokeClient(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	c, ok := m.clients[id]
+	if !ok {
+		return task.ErrNotFound
+	}
+	if c.RevokedAt == nil {
+		at := time.Now().UTC()
+		c.RevokedAt = &at
+		m.clients[id] = c
+	}
+	return nil
+}
+
 // SetActiveConversation : Points a client at a conversation it owns.
 func (m *memRepo) SetActiveConversation(_ context.Context, clientID, conversationID string) error {
 	m.mu.Lock()

@@ -98,7 +98,8 @@ curl localhost:8080/ready
 Endpoints:
 
 ```
-POST /v1/clients                  register a client, with a first conversation
+POST /v1/clients                  register a client; returns its token once
+DELETE /v1/clients/{id}           revoke a client (itself only)
 GET  /v1/me                       the calling client and its active conversation
 
 POST /v1/tasks                    create a task; ?wait=30s holds for the answer
@@ -114,22 +115,37 @@ GET  /v1/conversations/{id}       a conversation and its tasks
 POST /v1/conversations/{id}/activate   switch to it
 ```
 
-Every endpoint but `POST /v1/clients` needs the client identifier in a header:
+Register a client once, presenting the registration secret, and keep the token
+it returns. The token is shown only then, because only its hash is stored:
+
+```bash
+curl -X POST localhost:8080/v1/clients \
+  -H "Authorization: Bearer $REGISTRATION_SECRET" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"my phone"}'
+# {"id":"cli_01M30...","token":"fri_9f2a...","active_conversation_id":"conv_..."}
+```
+
+Every other endpoint needs that token:
 
 ```bash
 curl -X POST localhost:8080/v1/tasks \
-  -H 'X-Friday-Client: cli_01M30...' \
+  -H 'Authorization: Bearer fri_9f2a...' \
   -H 'Content-Type: application/json' \
   -d '{"prompt":"what is the capital of France?"}'
 ```
+
+A lost device is revoked with `DELETE /v1/clients/{id}`, which a client may
+only do to itself.
 
 A prompt lands in the client's active conversation, so a voice client need not
 say where it belongs. A follow-up is understood in the light of what came
 before, and a new prompt supersedes whatever is still running there. One client
 cannot see another's conversations or tasks.
 
-The header is identity, not authentication: anyone who knows an identifier can
-use it. Do not expose FRIDAY beyond localhost until that changes.
+A bearer token is only as private as the connection carrying it. Over plain
+HTTP anyone on the network can read it and become that client, so put TLS in
+front of FRIDAY before reaching it from anywhere but this machine.
 
 `/health` is liveness: it reports whether the process is up and deliberately
 touches no dependencies, so a database blip cannot cause a supervisor to
@@ -173,6 +189,7 @@ FRIDAY_DATABASE_PASSWORD=... ./friday
 | `database` | `max_idle_conns` | `5` | Must not exceed `max_open_conns` |
 | `database` | `conn_max_lifetime` | `5m` | |
 | `database` | `connect_timeout` | `5s` | |
+| `auth` | `registration_secret` | empty | What a caller presents to register a client. Empty disables registration |
 | `provider` | `name` | `stub` | `stub` or `platformai` |
 | `platformai` | `client_id` | | OAuth client |
 | `platformai` | `client_secret` | | OAuth client secret |

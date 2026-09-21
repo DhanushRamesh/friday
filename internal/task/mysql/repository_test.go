@@ -52,7 +52,7 @@ func newRepository(t *testing.T) *taskmysql.Repository {
 // storedConversation : Creates a conversation for a test to attach tasks to.
 func storedConversation(t *testing.T, r *taskmysql.Repository) string {
 	t.Helper()
-	owner, err := task.NewClient("test client")
+	owner, err := task.NewClient("test client", "")
 	if err != nil {
 		t.Fatalf("task.NewClient: %v", err)
 	}

@@ -136,6 +136,16 @@ func viewOfClient(c *task.Client) clientView {
 	}
 }
 
+// registeredClientView : A newly registered client, together with the token
+// it authenticates with.
+//
+// The token appears here and nowhere else: only its hash is stored, so this
+// response is the one chance to keep it.
+type registeredClientView struct {
+	clientView
+	Token string `json:"token"`
+}
+
 // conversationView : A conversation as the API returns it.
 type conversationView struct {
 	ID        string    `json:"id"`
