@@ -28,17 +28,24 @@ const (
 type Conversation struct {
 	// ID : The identifier, a ConversationIDPrefix followed by a ULID.
 	ID string
+	// ClientID : Who the conversation belongs to. Empty only for one created
+	// before clients existed.
+	ClientID string
+	// Title : What to call it in a listing. May be empty.
+	Title string
 	// CreatedAt : When the exchange began.
 	CreatedAt time.Time
 	// UpdatedAt : When a task was last added to it.
 	UpdatedAt time.Time
 }
 
-// NewConversation : Creates a conversation.
-func NewConversation() *Conversation {
+// NewConversation : Creates a conversation belonging to a client.
+func NewConversation(clientID, title string) *Conversation {
 	started := now()
 	return &Conversation{
 		ID:        NewConversationID(),
+		ClientID:  clientID,
+		Title:     strings.TrimSpace(title),
 		CreatedAt: started,
 		UpdatedAt: started,
 	}

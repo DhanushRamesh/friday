@@ -60,7 +60,7 @@ func readStream(t *testing.T, body *bufio.Reader) []sseEvent {
 }
 
 // streamTask : Opens a stream against a live test server.
-func streamTask(t *testing.T, base, id string, headers map[string]string) []sseEvent {
+func streamTask(t *testing.T, s *Server, base, id string, headers map[string]string) []sseEvent {
 	t.Helper()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -70,6 +70,7 @@ func streamTask(t *testing.T, base, id string, headers map[string]string) []sseE
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
+	req.Header.Set(ClientHeader, clientOf(s))
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
@@ -124,7 +125,7 @@ func TestStreamDeliversMessagesThenTheAnswer(t *testing.T) {
 	s, base := liveServer(t, &provider.Stub{Updates: updates, Delay: 40 * time.Millisecond})
 
 	created := createTask(t, s, "/v1/tasks", "check my merge requests")
-	got := streamTask(t, base, created.ID, nil)
+	got := streamTask(t, s, base, created.ID, nil)
 
 	if len(got) < len(updates)+1 {
 		t.Fatalf("got %d events, want %d updates and a final: %+v", len(got), len(updates), got)
@@ -162,7 +163,7 @@ func TestStreamReplaysAFinishedTask(t *testing.T) {
 		t.Fatalf("status = %q, want the task finished before streaming", created.Status)
 	}
 
-	got := streamTask(t, base, created.ID, nil)
+	got := streamTask(t, s, base, created.ID, nil)
 
 	if len(got) != len(updates)+1 {
 		t.Fatalf("got %d events, want %d replayed updates and a final: %+v", len(got), len(updates), got)
@@ -180,7 +181,7 @@ func TestStreamResumesFromLastEventID(t *testing.T) {
 
 	created := createTask(t, s, "/v1/tasks?wait=5s", "resume me")
 
-	got := streamTask(t, base, created.ID, map[string]string{"Last-Event-ID": "2"})
+	got := streamTask(t, s, base, created.ID, map[string]string{"Last-Event-ID": "2"})
 
 	for _, ev := range got {
 		if ev.Data.Seq > 0 && ev.Data.Seq <= 2 {
@@ -198,7 +199,7 @@ func TestStreamEndsWithTheFailure(t *testing.T) {
 	s, base := liveServer(t, &provider.Stub{Updates: []string{"trying"}, FailWith: reason})
 
 	created := createTask(t, s, "/v1/tasks", "will fail")
-	got := streamTask(t, base, created.ID, nil)
+	got := streamTask(t, s, base, created.ID, nil)
 
 	last := got[len(got)-1]
 	if last.Event != "error" {
@@ -219,7 +220,7 @@ func TestStreamEndsWhenTheTaskIsCancelled(t *testing.T) {
 	created := createTask(t, s, "/v1/tasks", "stop me midway")
 
 	done := make(chan []sseEvent, 1)
-	go func() { done <- streamTask(t, base, created.ID, nil) }()
+	go func() { done <- streamTask(t, s, base, created.ID, nil) }()
 
 	time.Sleep(120 * time.Millisecond)
 	rec := do(t, s, http.MethodPost, "/v1/tasks/"+created.ID+"/cancel", "")
@@ -260,8 +261,8 @@ func TestTwoListenersBothHearEverything(t *testing.T) {
 
 	first := make(chan []sseEvent, 1)
 	second := make(chan []sseEvent, 1)
-	go func() { first <- streamTask(t, base, created.ID, nil) }()
-	go func() { second <- streamTask(t, base, created.ID, nil) }()
+	go func() { first <- streamTask(t, s, base, created.ID, nil) }()
+	go func() { second <- streamTask(t, s, base, created.ID, nil) }()
 
 	for i, ch := range []chan []sseEvent{first, second} {
 		select {

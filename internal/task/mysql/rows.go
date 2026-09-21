@@ -54,8 +54,33 @@ var summaryColumns = []string{
 // conversationRow : The conversations table, as GORM sees it.
 type conversationRow struct {
 	ID        string    `gorm:"column:id;primaryKey"`
+	ClientID  *string   `gorm:"column:client_id"`
+	Title     string    `gorm:"column:title"`
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime:false"`
 	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime:false"`
+}
+
+// clientRow : The clients table, as GORM sees it.
+type clientRow struct {
+	ID                   string    `gorm:"column:id;primaryKey"`
+	Name                 string    `gorm:"column:name"`
+	ActiveConversationID *string   `gorm:"column:active_conversation_id"`
+	CreatedAt            time.Time `gorm:"column:created_at;autoCreateTime:false"`
+	UpdatedAt            time.Time `gorm:"column:updated_at;autoUpdateTime:false"`
+}
+
+// TableName : Names the table this row maps to.
+func (clientRow) TableName() string { return "clients" }
+
+// toClient : Converts a stored row back into a client.
+func (r *clientRow) toClient() *task.Client {
+	return &task.Client{
+		ID:                   r.ID,
+		Name:                 r.Name,
+		ActiveConversationID: value(r.ActiveConversationID),
+		CreatedAt:            r.CreatedAt.UTC(),
+		UpdatedAt:            r.UpdatedAt.UTC(),
+	}
 }
 
 // TableName : Names the table this row maps to.
@@ -65,6 +90,8 @@ func (conversationRow) TableName() string { return "conversations" }
 func (r *conversationRow) toConversation() task.Conversation {
 	return task.Conversation{
 		ID:        r.ID,
+		ClientID:  value(r.ClientID),
+		Title:     r.Title,
 		CreatedAt: r.CreatedAt.UTC(),
 		UpdatedAt: r.UpdatedAt.UTC(),
 	}

@@ -103,16 +103,57 @@ func viewOfMessages(messages []task.Message) []messageView {
 	return out
 }
 
+// registerClientRequest : The body of a request to register a client.
+type registerClientRequest struct {
+	// Name : What to call this client in a listing. Optional.
+	Name string `json:"name,omitempty"`
+}
+
+// createConversationRequest : The body of a request to start a conversation.
+type createConversationRequest struct {
+	// Title : What to call it in a listing. Optional.
+	Title string `json:"title,omitempty"`
+	// Activate : Whether it becomes the conversation a prompt lands in.
+	// Defaults to true.
+	Activate bool `json:"activate,omitempty"`
+}
+
+// clientView : A client as the API returns it.
+type clientView struct {
+	ID                   string    `json:"id"`
+	Name                 string    `json:"name,omitempty"`
+	ActiveConversationID string    `json:"active_conversation_id,omitempty"`
+	CreatedAt            time.Time `json:"created_at"`
+}
+
+// viewOfClient : Renders a client for the API.
+func viewOfClient(c *task.Client) clientView {
+	return clientView{
+		ID:                   c.ID,
+		Name:                 c.Name,
+		ActiveConversationID: c.ActiveConversationID,
+		CreatedAt:            c.CreatedAt,
+	}
+}
+
 // conversationView : A conversation as the API returns it.
 type conversationView struct {
 	ID        string    `json:"id"`
+	Title     string    `json:"title,omitempty"`
+	Active    bool      `json:"active"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // viewOfConversation : Renders a conversation for the API.
-func viewOfConversation(c task.Conversation) conversationView {
-	return conversationView{ID: c.ID, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt}
+func viewOfConversation(c task.Conversation, active bool) conversationView {
+	return conversationView{
+		ID:        c.ID,
+		Title:     c.Title,
+		Active:    active,
+		CreatedAt: c.CreatedAt,
+		UpdatedAt: c.UpdatedAt,
+	}
 }
 
 // listConversationsResponse : The body of a listing of conversations.

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/DhanushRamesh/friday/internal/provider"
-
 	"github.com/DhanushRamesh/friday/internal/task"
 )
 
@@ -19,6 +18,7 @@ type memRepo struct {
 	tasks         map[string]*task.Task
 	messages      map[string][]task.Message
 	conversations map[string]task.Conversation
+	clients       map[string]task.Client
 
 	// updateErr : When set, every Update fails with it.
 	updateErr error
@@ -34,6 +34,7 @@ func newMemRepo() *memRepo {
 		tasks:         map[string]*task.Task{},
 		messages:      map[string][]task.Message{},
 		conversations: map[string]task.Conversation{},
+		clients:       map[string]task.Client{},
 	}
 }
 
@@ -88,6 +89,12 @@ func (m *memRepo) List(_ context.Context, f task.Filter) ([]task.Summary, error)
 		}
 		if f.ConversationID != "" && t.ConversationID != f.ConversationID {
 			continue
+		}
+		if f.ClientID != "" {
+			owner, ok := m.conversations[t.ConversationID]
+			if !ok || owner.ClientID != f.ClientID {
+				continue
+			}
 		}
 		out = append(out, task.Summary{
 			ID: t.ID, ConversationID: t.ConversationID, Prompt: t.Prompt, Status: t.Status,
@@ -182,11 +189,14 @@ func (m *memRepo) GetConversation(_ context.Context, id string) (*task.Conversat
 }
 
 // ListConversations : Returns stored conversations.
-func (m *memRepo) ListConversations(_ context.Context, limit int) ([]task.Conversation, error) {
+func (m *memRepo) ListConversations(_ context.Context, clientID string, limit int) ([]task.Conversation, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var out []task.Conversation
 	for _, c := range m.conversations {
+		if c.ClientID != clientID {
+			continue
+		}
 		out = append(out, c)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt.After(out[j].UpdatedAt) })
@@ -194,6 +204,46 @@ func (m *memRepo) ListConversations(_ context.Context, limit int) ([]task.Conver
 		out = out[:limit]
 	}
 	return out, nil
+}
+
+// CreateClient : Stores a new client.
+func (m *memRepo) CreateClient(_ context.Context, c *task.Client) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.clients[c.ID] = *c
+	return nil
+}
+
+// GetClient : Returns a stored client.
+func (m *memRepo) GetClient(_ context.Context, id string) (*task.Client, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	c, ok := m.clients[id]
+	if !ok {
+		return nil, task.ErrNotFound
+	}
+	return &c, nil
+}
+
+// SetActiveConversation : Points a client at a conversation it owns.
+func (m *memRepo) SetActiveConversation(_ context.Context, clientID, conversationID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	conversation, ok := m.conversations[conversationID]
+	if !ok {
+		return task.ErrNotFound
+	}
+	if conversation.ClientID != clientID {
+		return task.ErrNotOwned
+	}
+	client, ok := m.clients[clientID]
+	if !ok {
+		return task.ErrNotFound
+	}
+	client.ActiveConversationID = conversationID
+	m.clients[clientID] = client
+	return nil
 }
 
 // History : Returns a conversation's turns, oldest first.

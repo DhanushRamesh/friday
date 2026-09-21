@@ -116,7 +116,11 @@ func (s *Server) routes() {
 	s.router.Get("/health", s.handleHealth)
 	s.router.Get("/ready", s.handleReady)
 
+	// Registering is the one call that cannot present a client.
+	s.router.Post("/v1/clients", s.handleRegisterClient)
+
 	s.router.Route("/v1/tasks", func(r chi.Router) {
+		r.Use(s.requireClient)
 		r.Post("/", s.handleCreateTask)
 		r.Get("/", s.handleListTasks)
 		r.Get("/{id}", s.handleGetTask)
@@ -126,7 +130,15 @@ func (s *Server) routes() {
 	})
 
 	s.router.Route("/v1/conversations", func(r chi.Router) {
+		r.Use(s.requireClient)
+		r.Post("/", s.handleCreateConversation)
 		r.Get("/", s.handleListConversations)
 		r.Get("/{id}", s.handleGetConversation)
+		r.Post("/{id}/activate", s.handleActivateConversation)
+	})
+
+	s.router.Route("/v1/me", func(r chi.Router) {
+		r.Use(s.requireClient)
+		r.Get("/", s.handleGetClient)
 	})
 }

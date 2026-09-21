@@ -338,6 +338,43 @@ serves the runner's query, oldest pending first.
 Deliberately absent until something needs them: `user_id`, the model used,
 token counts, retry counts.
 
+### Clients, conversations, tasks
+
+```
+client                     one thing that talks to FRIDAY: a phone, a speaker
+  |
+  +-- conversations        many, created explicitly
+        |
+        +-- one is ACTIVE  the server remembers which
+              |
+              +-- tasks    a prompt is a task
+                    |
+                    +-- messages
+```
+
+A prompt lands in the client's **active conversation**. That is the point of
+holding one server-side: a voice client says what it wants without also saying
+where it belongs. Naming a conversation on a single prompt overrides that for
+that prompt without switching which is active.
+
+Registering a client creates and activates its first conversation, so a new
+client can ask something at once. Creating one explicitly is for wanting a
+second, and it becomes active unless the caller says otherwise, since starting
+a conversation almost always means wanting to talk in it.
+
+A client is identified by the `X-Friday-Client` header, holding an identifier
+returned by `POST /v1/clients`. **This is identity, not proof**: anyone who
+knows an identifier can use it. When authentication arrives the header becomes
+a token that must be proved, and nothing built on top changes, because knowing
+who is asking and establishing that they are who they claim are separate
+concerns.
+
+Ownership is enforced regardless. One client cannot read, list, activate or
+post into another's conversation or task. Internally that is `ErrNotOwned`,
+distinct from `ErrNotFound` so a mistake is diagnosable; at the edge both
+answer 404, because telling one client that another's conversation exists
+already reveals more than it should.
+
 ### Conversations
 
 A task belongs to a conversation, and the provider is given what was said
@@ -742,8 +779,9 @@ needs is complete, end to end.
   runner to whoever is listening
 - `internal/provider/platformai` — answers using Zoho Platform AI, selected by
   `[provider] name`
-- Conversations: tasks are grouped, history reaches the provider, and a new
-  prompt supersedes whatever is still running in the same conversation
+- Clients, each with many conversations and one active. Tasks land in the
+  active conversation, history reaches the provider, and a new prompt
+  supersedes whatever is still running in that same conversation
 - `GET /v1/tasks/{id}/stream` — server-sent events, delivering each message as
   it is produced. This is the voice path
 - `GET /health` (liveness, no dependencies) and `GET /ready` (checks the
@@ -763,7 +801,9 @@ needs is complete, end to end.
   hand; the stream is what a client should use, and could serve `?wait` too.
 - The event bus is in-process. A second process would not see another's
   events, and clients would hear nothing from tasks it was running.
-- Nothing authenticates. Anyone who can reach the port can submit tasks.
+- The client header is identity, not authentication: anyone who knows an
+  identifier can act as that client. Ownership is enforced between clients,
+  but nothing stops a stranger presenting someone else's identifier.
 - Platform AI's reassurance interval is fifteen seconds, and answers commonly
   arrive in three to nine, so most tasks send only the opening
   acknowledgement. That is fine now, but if answers get slower the interval is

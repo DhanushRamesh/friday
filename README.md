@@ -98,6 +98,9 @@ curl localhost:8080/ready
 Endpoints:
 
 ```
+POST /v1/clients                  register a client, with a first conversation
+GET  /v1/me                       the calling client and its active conversation
+
 POST /v1/tasks                    create a task; ?wait=30s holds for the answer
 GET  /v1/tasks/{id}               one task
 GET  /v1/tasks                    recent tasks, without response bodies
@@ -105,13 +108,28 @@ GET  /v1/tasks/{id}/messages      what a task said while it ran
 GET  /v1/tasks/{id}/stream        server-sent events, as they happen
 POST /v1/tasks/{id}/cancel        stop a task
 
-GET  /v1/conversations            recent conversations
+POST /v1/conversations            start one; it becomes active
+GET  /v1/conversations            this client's conversations
 GET  /v1/conversations/{id}       a conversation and its tasks
+POST /v1/conversations/{id}/activate   switch to it
 ```
 
-Creating a task starts a conversation unless one is named. Passing
-`conversation_id` continues it, so a follow-up is understood in the light of
-what came before, and a new prompt supersedes whatever is still running there.
+Every endpoint but `POST /v1/clients` needs the client identifier in a header:
+
+```bash
+curl -X POST localhost:8080/v1/tasks \
+  -H 'X-Friday-Client: cli_01M30...' \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"what is the capital of France?"}'
+```
+
+A prompt lands in the client's active conversation, so a voice client need not
+say where it belongs. A follow-up is understood in the light of what came
+before, and a new prompt supersedes whatever is still running there. One client
+cannot see another's conversations or tasks.
+
+The header is identity, not authentication: anyone who knows an identifier can
+use it. Do not expose FRIDAY beyond localhost until that changes.
 
 `/health` is liveness: it reports whether the process is up and deliberately
 touches no dependencies, so a database blip cannot cause a supervisor to

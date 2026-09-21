@@ -109,6 +109,11 @@ func (r *Repository) List(ctx context.Context, f task.Filter) ([]task.Summary, e
 	if f.ConversationID != "" {
 		query = query.Where("conversation_id = ?", f.ConversationID)
 	}
+	if f.ClientID != "" {
+		// One client must never see another's tasks.
+		query = query.Where("conversation_id IN (?)",
+			r.db.Model(&conversationRow{}).Select("id").Where("client_id = ?", f.ClientID))
+	}
 
 	var rows []summaryRow
 	if err := query.Find(&rows).Error; err != nil {
@@ -194,9 +199,77 @@ func (r *Repository) FailRunning(ctx context.Context, reason string) (int64, err
 // Repository implements the interface the rest of FRIDAY depends on.
 var _ task.Repository = (*Repository)(nil)
 
+// CreateClient : Stores a new client.
+func (r *Repository) CreateClient(ctx context.Context, c *task.Client) error {
+	row := &clientRow{
+		ID:                   c.ID,
+		Name:                 c.Name,
+		ActiveConversationID: nullable(c.ActiveConversationID),
+		CreatedAt:            c.CreatedAt,
+		UpdatedAt:            c.UpdatedAt,
+	}
+	if err := r.db.WithContext(ctx).Create(row).Error; err != nil {
+		return fmt.Errorf("task: creating client %s: %w", c.ID, err)
+	}
+	return nil
+}
+
+// GetClient : Returns a client.
+func (r *Repository) GetClient(ctx context.Context, id string) (*task.Client, error) {
+	var row clientRow
+	err := r.db.WithContext(ctx).First(&row, "id = ?", id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, task.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("task: reading client %s: %w", id, err)
+	}
+	return row.toClient(), nil
+}
+
+// SetActiveConversation : Makes a conversation the one a prompt from this
+// client lands in.
+func (r *Repository) SetActiveConversation(ctx context.Context, clientID, conversationID string) error {
+	conversation, err := r.GetConversation(ctx, conversationID)
+	if err != nil {
+		return err
+	}
+	if conversation.ClientID != clientID {
+		return task.ErrNotOwned
+	}
+
+	result := r.db.WithContext(ctx).
+		Model(&clientRow{}).
+		Where("id = ?", clientID).
+		Updates(map[string]any{
+			"active_conversation_id": conversationID,
+			"updated_at":             time.Now().UTC().Truncate(task.StoredPrecision),
+		})
+	if result.Error != nil {
+		return fmt.Errorf("task: activating conversation %s: %w", conversationID, result.Error)
+	}
+	if result.RowsAffected == 0 {
+		var exists int64
+		if err := r.db.WithContext(ctx).Model(&clientRow{}).
+			Where("id = ?", clientID).Count(&exists).Error; err != nil {
+			return fmt.Errorf("task: activating conversation %s: %w", conversationID, err)
+		}
+		if exists == 0 {
+			return task.ErrNotFound
+		}
+	}
+	return nil
+}
+
 // CreateConversation : Stores a new conversation.
 func (r *Repository) CreateConversation(ctx context.Context, c *task.Conversation) error {
-	row := &conversationRow{ID: c.ID, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt}
+	row := &conversationRow{
+		ID:        c.ID,
+		ClientID:  nullable(c.ClientID),
+		Title:     c.Title,
+		CreatedAt: c.CreatedAt,
+		UpdatedAt: c.UpdatedAt,
+	}
 	if err := r.db.WithContext(ctx).Create(row).Error; err != nil {
 		return fmt.Errorf("task: creating conversation %s: %w", c.ID, err)
 	}
@@ -217,8 +290,9 @@ func (r *Repository) GetConversation(ctx context.Context, id string) (*task.Conv
 	return &conversation, nil
 }
 
-// ListConversations : Returns conversations, most recently used first.
-func (r *Repository) ListConversations(ctx context.Context, limit int) ([]task.Conversation, error) {
+// ListConversations : Returns a client's conversations, most recently used
+// first.
+func (r *Repository) ListConversations(ctx context.Context, clientID string, limit int) ([]task.Conversation, error) {
 	if limit <= 0 {
 		limit = task.DefaultListLimit
 	}
@@ -229,6 +303,7 @@ func (r *Repository) ListConversations(ctx context.Context, limit int) ([]task.C
 	var rows []conversationRow
 	err := r.db.WithContext(ctx).
 		Model(&conversationRow{}).
+		Where("client_id = ?", clientID).
 		Order("updated_at DESC").
 		Limit(limit).
 		Find(&rows).Error

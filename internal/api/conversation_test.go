@@ -96,20 +96,34 @@ func TestANewPromptSupersedesARunningTask(t *testing.T) {
 	}
 }
 
-// A prompt in one conversation must not disturb another.
+// A prompt in one conversation must not disturb a task running in another.
 func TestSupersedingIsScopedToOneConversation(t *testing.T) {
 	s, _, _, _ := newTaskServer(t, stubPinger{},
 		&provider.Stub{Updates: []string{"a", "b", "c", "d"}, Delay: 50 * time.Millisecond})
 
-	other := createIn(t, s, "", "a separate question", "")
-	awaitStatus(t, s, other.ID, string(task.StatusRunning))
+	// A task running in the conversation that is active to begin with.
+	elsewhere := createIn(t, s, "", "a question over here", "")
+	awaitStatus(t, s, elsewhere.ID, string(task.StatusRunning))
 
-	elsewhere := createIn(t, s, "", "an unrelated question", "")
-	if elsewhere.ConversationID == other.ConversationID {
-		t.Fatal("the two tasks share a conversation, so this proves nothing")
+	// A second conversation, which becomes the active one.
+	rec := do(t, s, http.MethodPost, "/v1/conversations", `{"title":"another"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create conversation: status %d: %s", rec.Code, rec.Body)
+	}
+	var second conversationView
+	decodeInto(t, rec, &second)
+	if second.ID == elsewhere.ConversationID {
+		t.Fatal("the new conversation is the old one, so this proves nothing")
 	}
 
-	finished := awaitStatus(t, s, other.ID,
+	// A prompt now lands in the second conversation.
+	landed := createIn(t, s, "", "a question over there", "")
+	if landed.ConversationID != second.ID {
+		t.Fatalf("prompt landed in %s, want the newly activated %s", landed.ConversationID, second.ID)
+	}
+
+	// The task in the other conversation must be untouched.
+	finished := awaitStatus(t, s, elsewhere.ID,
 		string(task.StatusCompleted), string(task.StatusCancelled), string(task.StatusFailed))
 	if finished.Status == string(task.StatusCancelled) {
 		t.Error("a task was cancelled by a prompt in a different conversation")

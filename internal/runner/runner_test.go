@@ -28,7 +28,7 @@ type harness struct {
 func (h *harness) conversation(t *testing.T) string {
 	t.Helper()
 	if h.convID == "" {
-		c := task.NewConversation()
+		c := task.NewConversation("", "")
 		if err := h.repo.CreateConversation(context.Background(), c); err != nil {
 			t.Fatalf("CreateConversation: %v", err)
 		}

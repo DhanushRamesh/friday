@@ -56,13 +56,13 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conversationID, err := s.resolveConversation(ctx, req.ConversationID)
+	conversationID, err := s.conversationFor(ctx, callingClient(ctx), req.ConversationID)
 	if err != nil {
-		if errors.Is(err, task.ErrNotFound) {
+		if errors.Is(err, task.ErrNotFound) || errors.Is(err, task.ErrNotOwned) {
 			writeError(ctx, w, http.StatusNotFound, "No such conversation.")
 			return
 		}
-		s.fail(ctx, w, "starting conversation", err)
+		s.fail(ctx, w, "resolving conversation", err)
 		return
 	}
 
@@ -110,24 +110,39 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(ctx, w, http.StatusAccepted, viewOf(t))
 }
 
-// resolveConversation : Returns the conversation to attach a task to,
-// creating one when the caller named none.
-func (s *Server) resolveConversation(ctx context.Context, requested string) (string, error) {
-	if requested != "" {
-		if !task.ValidConversationID(requested) {
-			return "", task.ErrNotFound
+// conversationFor : Returns the conversation a prompt belongs in.
+//
+// A prompt lands in the client's active conversation, which is the point of
+// having one: a voice client says what it wants without also saying where it
+// belongs. Naming a conversation explicitly overrides that for one prompt,
+// without switching which is active.
+func (s *Server) conversationFor(ctx context.Context, client *task.Client, requested string) (string, error) {
+	if requested == "" {
+		if client.ActiveConversationID == "" {
+			// Only reachable for a client whose conversation was deleted.
+			conversation := task.NewConversation(client.ID, "")
+			if err := s.tasks.CreateConversation(ctx, conversation); err != nil {
+				return "", err
+			}
+			if err := s.tasks.SetActiveConversation(ctx, client.ID, conversation.ID); err != nil {
+				return "", err
+			}
+			return conversation.ID, nil
 		}
-		if _, err := s.tasks.GetConversation(ctx, requested); err != nil {
-			return "", err
-		}
-		return requested, nil
+		return client.ActiveConversationID, nil
 	}
 
-	conversation := task.NewConversation()
-	if err := s.tasks.CreateConversation(ctx, conversation); err != nil {
+	if !task.ValidConversationID(requested) {
+		return "", task.ErrNotFound
+	}
+	conversation, err := s.tasks.GetConversation(ctx, requested)
+	if err != nil {
 		return "", err
 	}
-	return conversation.ID, nil
+	if conversation.ClientID != client.ID {
+		return "", task.ErrNotOwned
+	}
+	return requested, nil
 }
 
 // supersede : Stops whatever is still running in a conversation.
@@ -173,7 +188,8 @@ func (s *Server) handleListConversations(w http.ResponseWriter, r *http.Request)
 		limit = parsed
 	}
 
-	conversations, err := s.tasks.ListConversations(ctx, limit)
+	client := callingClient(ctx)
+	conversations, err := s.tasks.ListConversations(ctx, client.ID, limit)
 	if err != nil {
 		s.fail(ctx, w, "listing conversations", err)
 		return
@@ -181,7 +197,7 @@ func (s *Server) handleListConversations(w http.ResponseWriter, r *http.Request)
 
 	views := make([]conversationView, len(conversations))
 	for i, c := range conversations {
-		views[i] = viewOfConversation(c)
+		views[i] = viewOfConversation(c, c.ID == client.ActiveConversationID)
 	}
 	writeJSON(ctx, w, http.StatusOK, listConversationsResponse{Conversations: views})
 }
@@ -206,6 +222,11 @@ func (s *Server) handleGetConversation(w http.ResponseWriter, r *http.Request) {
 		s.fail(ctx, w, "reading conversation", err)
 		return
 	}
+	client := callingClient(ctx)
+	if conversation.ClientID != client.ID {
+		writeError(ctx, w, http.StatusNotFound, "No such conversation.")
+		return
+	}
 
 	summaries, err := s.tasks.List(ctx, task.Filter{ConversationID: id, Limit: task.MaxListLimit})
 	if err != nil {
@@ -223,7 +244,7 @@ func (s *Server) handleGetConversation(w http.ResponseWriter, r *http.Request) {
 		views[i] = viewOfSummary(summary)
 	}
 	writeJSON(ctx, w, http.StatusOK, conversationDetailResponse{
-		Conversation: viewOfConversation(*conversation),
+		Conversation: viewOfConversation(*conversation, conversation.ID == client.ActiveConversationID),
 		Tasks:        views,
 	})
 }
@@ -246,7 +267,7 @@ func (s *Server) handleGetTask(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	filter := task.Filter{}
+	filter := task.Filter{ClientID: callingClient(ctx).ID}
 	if status := r.URL.Query().Get("status"); status != "" {
 		if !task.Status(status).Valid() {
 			writeError(ctx, w, http.StatusBadRequest, "Unknown status: "+status)
@@ -345,7 +366,28 @@ func (s *Server) loadTask(ctx context.Context, w http.ResponseWriter, id string)
 		s.fail(ctx, w, "reading task", err)
 		return nil, err
 	}
+
+	// One client must never read another's task. Answered as missing rather
+	// than forbidden, so the existence of it is not revealed either.
+	if !s.ownedByCaller(ctx, t.ConversationID) {
+		writeError(ctx, w, http.StatusNotFound, "No such task.")
+		return nil, task.ErrNotOwned
+	}
 	return t, nil
+}
+
+// ownedByCaller : Reports whether a conversation belongs to the calling
+// client. A conversation predating clients belongs to nobody and is hidden.
+func (s *Server) ownedByCaller(ctx context.Context, conversationID string) bool {
+	client := callingClient(ctx)
+	if client == nil || conversationID == "" {
+		return false
+	}
+	conversation, err := s.tasks.GetConversation(ctx, conversationID)
+	if err != nil {
+		return false
+	}
+	return conversation.ClientID == client.ID
 }
 
 // awaitTask : Waits for a task to finish, returning it if it does within the

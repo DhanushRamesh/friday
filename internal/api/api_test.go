@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/DhanushRamesh/friday/internal/logging"
 	"github.com/DhanushRamesh/friday/internal/provider"
 	"github.com/DhanushRamesh/friday/internal/runner"
+	"github.com/DhanushRamesh/friday/internal/task"
 )
 
 // stubPinger : Stands in for a database handle in tests.
@@ -28,8 +30,45 @@ func newTestServer(t *testing.T, db Pinger) (*Server, *bytes.Buffer) {
 	return s, buf
 }
 
+// testClients : The client each test server registered, so that every helper
+// can present one without it being threaded through each call. Test-only.
+var testClients sync.Map
+
+// clientOf : Returns the client registered for a test server.
+func clientOf(s *Server) string {
+	id, _ := testClients.Load(s)
+	str, _ := id.(string)
+	return str
+}
+
+// registerTestClient : Registers a client against the server and records it.
+func registerTestClient(t *testing.T, s *Server, repo *memRepo) string {
+	t.Helper()
+
+	client, err := task.NewClient("test client")
+	if err != nil {
+		t.Fatalf("task.NewClient: %v", err)
+	}
+	ctx := context.Background()
+	if err := repo.CreateClient(ctx, client); err != nil {
+		t.Fatalf("CreateClient: %v", err)
+	}
+
+	conversation := task.NewConversation(client.ID, "")
+	if err := repo.CreateConversation(ctx, conversation); err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+	if err := repo.SetActiveConversation(ctx, client.ID, conversation.ID); err != nil {
+		t.Fatalf("SetActiveConversation: %v", err)
+	}
+
+	testClients.Store(s, client.ID)
+	t.Cleanup(func() { testClients.Delete(s) })
+	return client.ID
+}
+
 // newTaskServer : Builds a Server with an in-memory task repository and a
-// runner driving the given provider.
+// runner driving the given provider, with one client already registered.
 func newTaskServer(t *testing.T, db Pinger, p provider.Provider) (*Server, *bytes.Buffer, *memRepo, *runner.Runner) {
 	t.Helper()
 
@@ -59,6 +98,7 @@ func newTaskServer(t *testing.T, db Pinger, p provider.Provider) (*Server, *byte
 	})
 
 	srv := New(Options{Logger: logger.Logger, DB: db, Tasks: repo, Runner: r, Events: bus})
+	registerTestClient(t, srv, repo)
 	return srv, buf, repo, r
 }
 

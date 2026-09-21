@@ -23,6 +23,9 @@ func do(t *testing.T, s *Server, method, path, body string) *httptest.ResponseRe
 		r = httptest.NewRequest(method, path, strings.NewReader(body))
 		r.Header.Set("Content-Type", "application/json")
 	}
+	if id := clientOf(s); id != "" {
+		r.Header.Set(ClientHeader, id)
+	}
 	rec := httptest.NewRecorder()
 	s.ServeHTTP(rec, r)
 	return rec
@@ -297,6 +300,7 @@ func TestOversizedBodyRejected(t *testing.T) {
 	huge := bytes.Repeat([]byte("a"), maxRequestBody+1024)
 	r := httptest.NewRequest(http.MethodPost, "/v1/tasks", bytes.NewReader(huge))
 	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set(ClientHeader, clientOf(s))
 	rec := httptest.NewRecorder()
 	s.ServeHTTP(rec, r)
 

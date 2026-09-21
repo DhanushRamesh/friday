@@ -6,8 +6,17 @@ import (
 	"time"
 )
 
-// ErrNotFound : No task exists with the given identifier.
-var ErrNotFound = errors.New("task: not found")
+var (
+	// ErrNotFound : Nothing exists with the given identifier.
+	ErrNotFound = errors.New("task: not found")
+	// ErrNotOwned : It exists but belongs to a different client.
+	//
+	// Distinguished from ErrNotFound inside FRIDAY so that a mistake is
+	// diagnosable; at the edge both are answered the same way, because
+	// telling one client that another's conversation exists reveals more than
+	// it should.
+	ErrNotOwned = errors.New("task: belongs to another client")
+)
 
 // Message : One thing recorded during a task's run.
 //
@@ -56,6 +65,9 @@ type Filter struct {
 	// ConversationID : Restricts the listing to one conversation. Empty means
 	// any.
 	ConversationID string
+	// ClientID : Restricts the listing to one client's tasks. Empty means
+	// any.
+	ClientID string
 	// Limit : The greatest number of tasks to return. Zero selects
 	// DefaultListLimit.
 	Limit int
@@ -99,6 +111,17 @@ type Repository interface {
 	// Messages : Returns a task's messages in the order they were produced.
 	Messages(ctx context.Context, taskID string) ([]Message, error)
 
+	// CreateClient : Stores a new client.
+	CreateClient(ctx context.Context, c *Client) error
+
+	// GetClient : Returns a client. It reports ErrNotFound if there is none.
+	GetClient(ctx context.Context, id string) (*Client, error)
+
+	// SetActiveConversation : Makes a conversation the one a prompt from this
+	// client lands in. It reports ErrNotFound if either does not exist, and
+	// ErrNotOwned if the conversation belongs to another client.
+	SetActiveConversation(ctx context.Context, clientID, conversationID string) error
+
 	// CreateConversation : Stores a new conversation.
 	CreateConversation(ctx context.Context, c *Conversation) error
 
@@ -106,8 +129,9 @@ type Repository interface {
 	// there is none.
 	GetConversation(ctx context.Context, id string) (*Conversation, error)
 
-	// ListConversations : Returns conversations, most recently used first.
-	ListConversations(ctx context.Context, limit int) ([]Conversation, error)
+	// ListConversations : Returns a client's conversations, most recently
+	// used first.
+	ListConversations(ctx context.Context, clientID string, limit int) ([]Conversation, error)
 
 	// History : Returns a conversation's turns, oldest first, limited to the
 	// most recent turns. A task that was cancelled or failed contributes its
