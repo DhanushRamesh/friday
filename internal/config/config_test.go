@@ -40,8 +40,9 @@ func TestDefaultsWithNoFile(t *testing.T) {
 	if cfg.Env != config.EnvDev {
 		t.Errorf("Env = %q, want dev", cfg.Env)
 	}
-	if cfg.Server.Addr != ":8080" {
-		t.Errorf("Server.Addr = %q, want :8080", cfg.Server.Addr)
+	// Loopback by default: ":8080" resembles localhost but binds everything.
+	if cfg.Server.Addr != "127.0.0.1:8080" {
+		t.Errorf("Server.Addr = %q, want 127.0.0.1:8080", cfg.Server.Addr)
 	}
 	// Dev should be readable by a human at a terminal.
 	if cfg.Log.Format != logging.FormatText || !cfg.Log.AddSource {
@@ -57,7 +58,7 @@ func TestReadsValuesFromFile(t *testing.T) {
 env = production
 
 [server]
-addr             = :9090
+addr             = 127.0.0.1:9090
 shutdown_timeout = 45s
 
 [log]
@@ -82,8 +83,8 @@ max_open_conns = 50
 	if cfg.Env != config.EnvProduction {
 		t.Errorf("Env = %q, want production", cfg.Env)
 	}
-	if cfg.Server.Addr != ":9090" {
-		t.Errorf("Addr = %q, want :9090", cfg.Server.Addr)
+	if cfg.Server.Addr != "127.0.0.1:9090" {
+		t.Errorf("Addr = %q, want 127.0.0.1:9090", cfg.Server.Addr)
 	}
 	if cfg.Server.ShutdownTimeout != 45*time.Second {
 		t.Errorf("ShutdownTimeout = %v, want 45s", cfg.Server.ShutdownTimeout)
@@ -305,7 +306,7 @@ func TestExampleFileIsValid(t *testing.T) {
 	if cfg.Env != config.EnvDev {
 		t.Errorf("example Env = %q, want dev", cfg.Env)
 	}
-	if cfg.Server.Addr != ":8080" {
-		t.Errorf("example Addr = %q, want :8080", cfg.Server.Addr)
+	if cfg.Server.Addr != "127.0.0.1:8080" {
+		t.Errorf("example Addr = %q, want 127.0.0.1:8080", cfg.Server.Addr)
 	}
 }

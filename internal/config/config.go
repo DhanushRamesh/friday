@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -72,6 +73,13 @@ type Server struct {
 	IdleTimeout       time.Duration
 	ShutdownTimeout   time.Duration
 	RequestTimeout    time.Duration
+
+	// AllowPublicBind : Permits listening on a public interface in
+	// production. Off by default, because FRIDAY speaks plain HTTP and its
+	// tokens are bearer credentials: anything in front of it must terminate
+	// TLS, and the way to guarantee that is to be unreachable except through
+	// it.
+	AllowPublicBind bool
 }
 
 // Log : Configures the structured logger.
@@ -243,11 +251,15 @@ func Load(path string, lookup Lookup) (Config, error) {
 		Env:    env,
 		Source: path,
 		Server: Server{
-			Addr:              l.str("server", "addr", ":8080"),
+			// Loopback by default. ":8080" looks like localhost and is
+			// not: it binds every interface, which would put a plain-HTTP
+			// service carrying bearer tokens on the network by accident.
+			Addr:              l.str("server", "addr", "127.0.0.1:8080"),
 			ReadHeaderTimeout: l.duration("server", "read_header_timeout", 5*time.Second),
 			IdleTimeout:       l.duration("server", "idle_timeout", 60*time.Second),
 			ShutdownTimeout:   l.duration("server", "shutdown_timeout", 15*time.Second),
 			RequestTimeout:    l.duration("server", "request_timeout", 30*time.Second),
+			AllowPublicBind:   l.boolean("server", "allow_public_bind", false),
 		},
 		Log: Log{
 			Level:     l.str("log", "level", "info"),
@@ -306,6 +318,15 @@ func (l *loader) validate(cfg Config) {
 	}
 	if cfg.Server.Addr == "" {
 		l.errorf("%s: must not be empty", l.where("server", "addr"))
+	}
+
+	// Plain HTTP on a public interface exposes every bearer token to anyone
+	// on the network. A misconfiguration that does this is silent, so it is
+	// refused rather than warned about.
+	if cfg.Env.IsProduction() && !cfg.Server.AllowPublicBind && bindsPublicly(cfg.Server.Addr) {
+		l.errorf("%s: %q listens on a public interface, and FRIDAY speaks plain HTTP. "+
+			"Bind 127.0.0.1 and put TLS in front of it, or set %s if something else already does",
+			l.where("server", "addr"), cfg.Server.Addr, l.where("server", "allow_public_bind"))
 	}
 	if cfg.Database.Host == "" {
 		l.errorf("%s: must not be empty", l.where("database", "host"))
@@ -478,4 +499,32 @@ func (l *loader) boolean(section, key string, fallback bool) bool {
 		return fallback
 	}
 	return b
+}
+
+// bindsPublicly : Reports whether an address accepts connections from beyond
+// this machine.
+//
+// An empty host, as in ":8080", is the one that catches people out: it binds
+// every interface, not the loopback it resembles.
+func bindsPublicly(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		// Unparseable, so nothing can be concluded. Other validation reports
+		// the malformed address; this check stays silent rather than guessing.
+		return false
+	}
+
+	switch host {
+	case "", "0.0.0.0", "::":
+		return true
+	case "localhost":
+		return false
+	}
+
+	if ip := net.ParseIP(host); ip != nil {
+		return !ip.IsLoopback()
+	}
+	// A hostname that is not "localhost" resolves somewhere, and where is not
+	// knowable here. Treated as public, which errs towards refusing.
+	return true
 }

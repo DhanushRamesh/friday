@@ -1,0 +1,52 @@
+# FRIDAY, as a service.
+#
+#   sudo cp friday.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now friday
+
+[Unit]
+Description=FRIDAY personal assistant
+Documentation=https://github.com/DhanushRamesh/friday
+# MySQL is on the same machine, and FRIDAY refuses to start without it.
+After=network-online.target mysql.service
+Wants=network-online.target
+Requires=mysql.service
+
+[Service]
+Type=simple
+User=friday
+Group=friday
+WorkingDirectory=/opt/friday
+ExecStart=/opt/friday/friday
+
+# FRIDAY drains in-flight requests and lets running tasks record where they
+# got to, so it is given time to do so rather than being killed outright.
+KillSignal=SIGTERM
+TimeoutStopSec=45
+
+Restart=on-failure
+RestartSec=5s
+
+# Logs are already structured JSON on stdout; the journal keeps them.
+StandardOutput=journal
+StandardError=journal
+
+# It needs its own directory, a loopback socket and nothing else.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ReadWritePaths=/opt/friday
+# Nothing is served to the outside; Caddy reaches it over loopback.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

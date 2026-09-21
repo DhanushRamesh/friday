@@ -851,8 +851,9 @@ needs is complete, end to end.
   hand; the stream is what a client should use, and could serve `?wait` too.
 - The event bus is in-process. A second process would not see another's
   events, and clients would hear nothing from tasks it was running.
-- Nothing terminates TLS. Tokens travel in clear over HTTP, so FRIDAY must
-  stay on localhost until something in front of it speaks HTTPS.
+- Nothing terminates TLS in development. FRIDAY binds the loopback and
+  refuses a public interface in production, and `deployments/` puts Caddy in
+  front, but locally it is plain HTTP and must stay on this machine.
 - Tokens do not expire. Revocation is the only way to end one, which is the
   agreed trade for a handful of the owner's own clients.
 - Platform AI's reassurance interval is fifteen seconds, and answers commonly
@@ -864,7 +865,53 @@ needs is complete, end to end.
 
 ---
 
-## 11. Maintaining this file
+## 11. Deploying
+
+`deployments/` holds what a deployment needs; `deployments/README.md` is the
+procedure. The shape is one machine running Caddy, FRIDAY and MySQL, with only
+Caddy reachable:
+
+```
+internet --:443--> Caddy --loopback--> FRIDAY --loopback--> MySQL
+```
+
+**FRIDAY binds the loopback and refuses a public interface in production.**
+It speaks plain HTTP and its tokens are bearer credentials, so anyone who can
+read one becomes that client. The default address is `127.0.0.1:8080` rather
+than `:8080`, because the latter looks like localhost and binds everything —
+the mistake is silent, which is why it is refused rather than warned about.
+`[server] allow_public_bind` exists for when something else already terminates
+TLS, and has to be set deliberately.
+
+**Caddy owns the certificate.** It obtains one from Let's Encrypt on the first
+request and renews it indefinitely, so there is no certbot and no expiry to
+forget. Its configuration sets `flush_interval -1`, without which server-sent
+events are buffered and a voice client hears nothing until the end.
+
+**A hostname is required.** Let's Encrypt will not certify a bare address.
+DuckDNS gives free subdomains that do not expire.
+
+**The database is on the same machine**, not a managed free tier. Those cap at
+around a gigabyte, and every prompt and answer is stored; a local database
+also spares a network round trip on the history read that precedes every task.
+The cost is that backups are ours, which `deployments/backup.sh` and its timer
+cover: nightly, fourteen days, written under a temporary name so a half-written
+dump is never mistaken for a good one, and checked afterwards for the tables it
+should contain. A backup that restores nothing is worse than none, because it
+is trusted.
+
+Two things that bit while writing it, both worth knowing:
+
+- `mysqldump` reads `INFORMATION_SCHEMA.FILES` unless given
+  `--no-tablespaces`, which needs the server-wide `PROCESS` privilege. A
+  backup user has no business holding that, so the flag is required rather
+  than cosmetic.
+- `grep -q` under `set -o pipefail` exits at the first match, kills the
+  upstream `zcat` with SIGPIPE, and reports the pipeline as failed. A correct
+  backup was declared corrupt by its own verification. Counting reads the
+  whole stream and cannot do that.
+
+## 12. Maintaining this file
 
 When the owner states a preference, makes a decision, or corrects something,
 **record it here** in the same turn. That is the point of the file: a fresh

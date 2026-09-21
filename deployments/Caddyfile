@@ -1,0 +1,43 @@
+# FRIDAY, behind Caddy.
+#
+# Caddy owns the certificate and renews it indefinitely, so nothing here
+# expires and no cron job has to be remembered. It obtains one from Let's
+# Encrypt the first time the hostname is requested, which requires that the
+# name already resolves to this machine and that ports 80 and 443 are open.
+#
+# Replace the hostname with your own, then:
+#   sudo cp Caddyfile /etc/caddy/Caddyfile
+#   sudo systemctl reload caddy
+
+friday-yourname.duckdns.org {
+	# FRIDAY listens on the loopback only, so this is the one way in.
+	reverse_proxy 127.0.0.1:8080 {
+		# Server-sent events must not be buffered: a voice client speaks each
+		# message as it arrives, and buffering would deliver them in a lump
+		# at the end, which is the failure this whole path exists to avoid.
+		flush_interval -1
+	}
+
+	# An agent run can take minutes. Caddy imposes no response deadline by
+	# default; this says so explicitly, so that a later edit does not
+	# reintroduce one by accident.
+	timeouts {
+		read_body 30s
+		idle 5m
+	}
+
+	encode gzip
+
+	log {
+		output file /var/log/caddy/friday.log
+		format json
+	}
+
+	# FRIDAY sets its own; these cover what a proxy is better placed to say.
+	header {
+		# Tell browsers never to try plain HTTP for this name again.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+}

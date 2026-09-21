@@ -82,9 +82,9 @@ usually nothing to edit.
 ### 3. Build and run
 
 ```bash
-go build ./...
-go test ./...
-go run ./cmd/server
+make check          # gofmt, vet, tests with the race detector
+make run            # run against config.ini
+make deploy-build   # build for the server (linux/arm64)
 ```
 
 ```bash
@@ -153,8 +153,12 @@ session that client is in, a follow-up is understood in the light of what
 came before, and a new prompt supersedes whatever is still running there.
 
 A bearer token is only as private as the connection carrying it. Over plain
-HTTP anyone on the network can read it and become that client, so put TLS in
-front of FRIDAY before reaching it from anywhere but this machine.
+HTTP anyone on the network can read it and become that client, so FRIDAY binds
+the loopback and refuses a public interface when `env = production`.
+
+To reach it from elsewhere, put TLS in front: see
+[`deployments/README.md`](deployments/README.md), which covers a free
+hostname, Caddy with automatic certificates, systemd, and nightly backups.
 
 `/health` is liveness: it reports whether the process is up and deliberately
 touches no dependencies, so a database blip cannot cause a supervisor to
@@ -180,7 +184,8 @@ FRIDAY_DATABASE_PASSWORD=... ./friday
 | Section | Key | Default | Meaning |
 |---|---|---|---|
 | | `env` | `dev` | `dev` or `production`. Production refuses dev-only shortcuts. |
-| `server` | `addr` | `:8080` | Listen address |
+| `server` | `addr` | `127.0.0.1:8080` | Listen address. Loopback by default; production refuses a public one |
+| `server` | `allow_public_bind` | `false` | Permit a public interface in production, when something else terminates TLS |
 | `server` | `read_header_timeout` | `5s` | Header read deadline |
 | `server` | `idle_timeout` | `60s` | Keep-alive idle deadline |
 | `server` | `shutdown_timeout` | `15s` | Grace period to drain in-flight requests |

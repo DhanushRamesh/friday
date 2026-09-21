@@ -1,4 +1,5 @@
-/friday
 /bin/
-.env
+/build/
 /config.ini
+.env
+/friday
