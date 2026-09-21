@@ -3,3 +3,5 @@
 /config.ini
 .env
 /friday
+/friday.log
+/.friday.pid

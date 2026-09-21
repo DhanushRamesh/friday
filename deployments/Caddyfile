@@ -19,17 +19,19 @@ friday-yourname.duckdns.org {
 	}
 
 	# An agent run can take minutes. Caddy imposes no response deadline by
-	# default; this says so explicitly, so that a later edit does not
-	# reintroduce one by accident.
-	timeouts {
-		read_body 30s
-		idle 5m
-	}
+	# default, which is what this relies on. Do not add one: a per-server
+	# `timeouts` block in the global options would cut a long task off
+	# mid-answer.
 
 	encode gzip
 
+	# To the journal, not a file. systemd's sandboxing of the caddy unit
+	# blocks writing under /var/log, and journald already collects, rotates
+	# and timestamps it — alongside FRIDAY's own logs, which is where you
+	# want them when tracing one request through both.
+	#
+	#   journalctl -u caddy -f
 	log {
-		output file /var/log/caddy/friday.log
 		format json
 	}
 

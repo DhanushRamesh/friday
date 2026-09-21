@@ -27,143 +27,110 @@ if the configuration is invalid or the database is unreachable.
 > [`DEVELOPMENT.md`](DEVELOPMENT.md) first. It records the decisions already
 > made and how work on this project is expected to be carried out.
 
+## The pieces
+
+```
+        you
+         │  HTTPS  (production only)
+         ▼
+   ┌───────────┐
+   │   Caddy   │   owns the TLS certificate, renews it forever
+   └─────┬─────┘   production only — absent locally
+         │  HTTP, loopback
+         ▼
+   ┌─────────────────────────────────────────────┐
+   │              FRIDAY                         │
+   │                                             │
+   │   api      routing, login, handlers, SSE    │
+   │   runner   executes tasks in the background │
+   │   provider asks the model                   │
+   │   events   pushes messages to listeners     │
+   └─────┬───────────────────────────┬───────────┘
+         │  loopback                 │  HTTPS
+         ▼                           ▼
+   ┌───────────┐            ┌──────────────────┐
+   │   MySQL   │            │   Platform AI    │
+   │  users    │            │   (Claude)       │
+   │  clients  │            └──────────────────┘
+   │  sessions │
+   │  tasks    │
+   │  messages │
+   └───────────┘
+```
+
+| Piece | What it does | Where it runs |
+|---|---|---|
+| **Caddy** | Terminates TLS, proxies to FRIDAY | production only |
+| **FRIDAY** | The whole assistant: API, task execution, streaming | both |
+| **MySQL** | Users, clients, sessions, tasks, messages | both |
+| **Platform AI** | Answers the prompts | neither — it is remote |
+
+Caddy is the only piece that differs. Locally there is no TLS because nothing
+outside the machine can reach it; in production TLS is the whole point,
+because a bearer token read off the wire is a working login.
+
+## Local and production
+
+They are the same program with different settings, not different builds.
+
+| | local | production |
+|---|---|---|
+| Where | this machine | `friday-server.duckdns.org` |
+| `env` | `dev` | `production` |
+| Reached over | `http://127.0.0.1:8080` | `https://friday-server.duckdns.org` |
+| TLS | none | Caddy, Let's Encrypt |
+| Started by | `make start` | systemd, on boot and on failure |
+| Config | `config.ini` in the repo | `/opt/friday/config.ini`, mode 600 |
+| Logs | `friday.log`, text with source lines | journal, JSON |
+| Database | local MySQL, `friday_dev` | same machine, generated password |
+| Backups | none | nightly, 14 days kept |
+| Public bind | permitted | **refused** — it would expose tokens in clear |
+
+The last row is enforced, not advisory: with `env = production`, FRIDAY will
+not start on a public interface unless `allow_public_bind` is set on purpose.
+
+### Running it locally
+
+```bash
+make start        # background; builds first
+make status       # running? listening? answering?
+make logs         # follow friday.log
+make stop         # drains, then stops
+make restart
+
+make run          # foreground instead, ctrl-c to stop
+```
+
+### Running it in production
+
+Every production target acts over SSH and is prefixed `prod-`:
+
+```bash
+make prod-status      # friday, mysql, caddy, memory, and a live health check
+make prod-start
+make prod-stop        # drains in-flight requests first
+make prod-restart
+make prod-logs        # follow the journal
+make prod-ssh         # a shell on the server
+
+make prod-deploy      # test, build for linux, upload, restart, verify
+make prod-backup      # run a database backup now
+make prod-createuser USER_NAME=dhanush
+```
+
+`make prod-deploy` runs the tests first and stops if they fail, so a broken
+build cannot reach the server by accident.
+
+Point them elsewhere by overriding the host:
+
+```bash
+make prod-status PROD_HOST=1.2.3.4
+```
+
 ## Requirements
 
 - Go 1.25 or newer
 - MySQL 8.0 or newer
-
-## Setup
-
-### 1. Create the database
-
-FRIDAY needs its own database and user. Connect to MySQL as an administrator:
-
-```bash
-sudo mysql
-```
-
-and run:
-
-```sql
-CREATE DATABASE IF NOT EXISTS friday
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_0900_ai_ci;
-
-CREATE USER IF NOT EXISTS 'friday'@'localhost' IDENTIFIED BY 'friday_dev';
-CREATE USER IF NOT EXISTS 'friday'@'127.0.0.1' IDENTIFIED BY 'friday_dev';
-
-GRANT ALL PRIVILEGES ON friday.* TO 'friday'@'localhost';
-GRANT ALL PRIVILEGES ON friday.* TO 'friday'@'127.0.0.1';
-
-FLUSH PRIVILEGES;
-```
-
-Two accounts are created on purpose. FRIDAY connects over TCP to `127.0.0.1`,
-but MySQL frequently reverse-resolves that to `localhost` and then matches a
-different account. Creating both avoids an access-denied error for a user you
-just created.
-
-Check it worked:
-
-```bash
-mysql -h 127.0.0.1 -u friday -pfriday_dev -e 'SELECT current_user(), database();' friday
-```
-
-### 2. Write the configuration
-
-```bash
-cp config.example.ini config.ini
-```
-
-`config.ini` is git-ignored, so credentials stay out of the repository. The
-defaults match the database created above, so on a developer machine there is
-usually nothing to edit.
-
-### 3. Build and run
-
-```bash
-make check          # gofmt, vet, tests with the race detector
-make run            # run against config.ini
-make deploy-build   # build for the server (linux/arm64)
-```
-
-```bash
-curl localhost:8080/health
-# {"status":"ok"}
-
-curl localhost:8080/ready
-# {"checks":{"database":"ok"},"status":"ready"}
-```
-
-Endpoints:
-
-```
-POST /v1/auth/login               log in; registers this client, returns a token
-GET  /v1/me                       the user and the client in use
-GET  /v1/clients                  this user's clients
-DELETE /v1/clients/{id}           revoke one
-
-POST /v1/tasks                    create a task; ?wait=30s holds for the answer
-GET  /v1/tasks/{id}               one task
-GET  /v1/tasks                    recent tasks, without response bodies
-GET  /v1/tasks/{id}/messages      what a task said while it ran
-GET  /v1/tasks/{id}/stream        server-sent events, as they happen
-POST /v1/tasks/{id}/cancel        stop a task
-
-POST /v1/sessions            start one; this client switches to it
-GET  /v1/sessions            this user's sessions
-GET  /v1/sessions/{id}       a session and its tasks
-POST /v1/sessions/{id}/activate   switch this client to it
-```
-
-
-Create a user once, from the terminal:
-
-```bash
-go run ./cmd/server createuser dhanush
-# password: ...
-# again: ...
-```
-
-Then log in from each client. Logging in registers that client and returns its
-token, shown only then because only its hash is stored:
-
-```bash
-curl -X POST localhost:8080/v1/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"dhanush","password":"...","client_name":"my phone"}'
-# {"token":"fri_9f2a...","user":{...},"client":{...}}
-```
-
-Every other endpoint needs that token:
-
-```bash
-curl -X POST localhost:8080/v1/tasks \
-  -H 'Authorization: Bearer fri_9f2a...' \
-  -H 'Content-Type: application/json' \
-  -d '{"prompt":"what is the capital of France?"}'
-```
-
-A lost client is revoked from any other with `DELETE /v1/clients/{id}`.
-
-Sessions belong to the user, so any client can see and continue any of
-them. Each client holds its own active session, so a speaker in one room
-and a laptop in another do not collide. A prompt lands in whichever
-session that client is in, a follow-up is understood in the light of what
-came before, and a new prompt supersedes whatever is still running there.
-
-A bearer token is only as private as the connection carrying it. Over plain
-HTTP anyone on the network can read it and become that client, so FRIDAY binds
-the loopback and refuses a public interface when `env = production`.
-
-To reach it from elsewhere, put TLS in front: see
-[`deployments/README.md`](deployments/README.md), which covers a free
-hostname, Caddy with automatic certificates, systemd, and nightly backups.
-
-`/health` is liveness: it reports whether the process is up and deliberately
-touches no dependencies, so a database blip cannot cause a supervisor to
-restart a healthy server. `/ready` is readiness: it checks the database and
-returns 503 when FRIDAY cannot actually serve traffic.
 
 ## Configuration
 
