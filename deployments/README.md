@@ -65,6 +65,32 @@ host firewall alone is not enough.
 
 ## 3. The database
 
+On a 1 GB machine — which both free tiers are — MySQL's defaults take most of
+the memory and leave nothing for FRIDAY. Add swap first, then the tuning:
+
+```bash
+sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+echo 'vm.swappiness=10' | sudo tee /etc/sysctl.d/99-friday.conf
+sudo sysctl -p /etc/sysctl.d/99-friday.conf
+```
+
+```bash
+sudo cp mysql-1gb.cnf /etc/mysql/mysql.conf.d/friday.cnf
+sudo systemctl restart mysql
+```
+
+That takes MySQL from roughly 400 MB to 200 MB. Swap is a safety net, not a
+plan: with `vm.swappiness=10` the machine prefers RAM and uses swap only to
+avoid the OOM killer choosing a victim for it.
+
+**Add the tuning after MySQL has finished installing, never during.** Touching
+the service while `apt` is still configuring the package interrupts the
+initialisation of the data directory and leaves the package in `iF` state,
+which then has to be repaired with `dpkg --configure -a`. Check `dpkg -l
+mysql-server-8.0` shows `ii` before doing anything else to it.
+
 ```bash
 sudo mysql
 ```

@@ -1,0 +1,29 @@
+# FRIDAY on a 1 GB machine.
+#
+# MySQL 8 defaults assume a server with memory to spare and would take most
+# of this one, leaving nothing for FRIDAY, Caddy and the kernel. These bring
+# it to roughly 200 MB, which is ample for a personal assistant's traffic.
+[mysqld]
+# The single biggest consumer. 128 MB holds this entire database in memory
+# many times over.
+innodb_buffer_pool_size = 128M
+
+# Instrumentation that costs 100 MB and answers questions nobody is asking
+# on a machine this size.
+performance_schema = OFF
+
+# One user, a handful of clients. The default of 151 reserves buffers for
+# connections that will never exist.
+max_connections = 20
+
+# Durability over throughput: a task's answer must survive the machine
+# losing power, and this database is written to a few times a minute.
+innodb_flush_log_at_trx_commit = 1
+
+# Modest per-connection buffers, since every one is multiplied by
+# max_connections.
+sort_buffer_size = 256K
+read_buffer_size = 128K
+join_buffer_size = 256K
+tmp_table_size = 16M
+max_heap_table_size = 16M
