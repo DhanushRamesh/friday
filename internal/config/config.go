@@ -58,6 +58,7 @@ type Config struct {
 	Server     Server
 	Log        Log
 	Database   Database
+	Assistant  Assistant
 	Provider   Provider
 	PlatformAI PlatformAI
 
@@ -99,6 +100,19 @@ const (
 	// ProviderPlatformAI : Answers using Zoho Platform AI.
 	ProviderPlatformAI ProviderName = "platformai"
 )
+
+// Assistant : What the assistant is called.
+//
+// The name lives here rather than in the code because it is the owner's
+// choice, not the server's: the same binary should serve whatever the
+// assistant is called today without being rebuilt. Nothing else in the
+// server states a name.
+type Assistant struct {
+	// Name : What the assistant calls itself when it answers. Empty leaves
+	// it nameless, which is a working assistant that simply never says what
+	// it is called.
+	Name string
+}
 
 // Provider : Chooses which engine answers chats.
 type Provider struct {
@@ -278,6 +292,9 @@ func Load(path string, lookup Lookup) (Config, error) {
 			ConnectTimeout:  l.duration("database", "connect_timeout", 5*time.Second),
 			AutoMigrate:     l.boolean("database", "auto_migrate", true),
 		},
+		Assistant: Assistant{
+			Name: l.str("assistant", "name", ""),
+		},
 		Provider: Provider{
 			Name: ProviderName(l.str("provider", "name", string(ProviderStub))),
 		},
@@ -324,7 +341,7 @@ func (l *loader) validate(cfg Config) {
 	// on the network. A misconfiguration that does this is silent, so it is
 	// refused rather than warned about.
 	if cfg.Env.IsProduction() && !cfg.Server.AllowPublicBind && bindsPublicly(cfg.Server.Addr) {
-		l.errorf("%s: %q listens on a public interface, and FRIDAY speaks plain HTTP. "+
+		l.errorf("%s: %q listens on a public interface, and this server speaks plain HTTP. "+
 			"Bind 127.0.0.1 and put TLS in front of it, or set %s if something else already does",
 			l.where("server", "addr"), cfg.Server.Addr, l.where("server", "allow_public_bind"))
 	}

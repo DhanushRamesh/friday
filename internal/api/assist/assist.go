@@ -245,10 +245,10 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.runner.Submit(t); err != nil {
 		h.Logger.ErrorContext(ctx, "cannot submit chat", slog.Any("error", err))
-		if failErr := t.Fail("FRIDAY could not start this."); failErr == nil {
+		if failErr := t.Fail("That could not be started."); failErr == nil {
 			_ = h.repo.Update(ctx, t)
 		}
-		httpx.WriteError(ctx, w, http.StatusServiceUnavailable, "FRIDAY is not accepting work at the moment.")
+		httpx.WriteError(ctx, w, http.StatusServiceUnavailable, "Not accepting work at the moment.")
 		return
 	}
 

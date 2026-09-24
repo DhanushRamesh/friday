@@ -32,14 +32,14 @@ const (
 
 	// interruptedReason : Recorded against chats found still running at
 	// startup, which no process is working on any more.
-	interruptedReason = "FRIDAY restarted while this was running, so it did not finish."
+	interruptedReason = "The server restarted while this was running, so it did not finish."
 
 	// timeoutReason : Recorded when a chat outlives its deadline.
 	timeoutReason = "This took too long, so I stopped it."
 
 	// shutdownReason : Recorded when a chat is stopped because FRIDAY is
 	// shutting down.
-	shutdownReason = "FRIDAY shut down before this finished."
+	shutdownReason = "The server shut down before this finished."
 )
 
 // Publisher : Somewhere to announce what a chat is doing.

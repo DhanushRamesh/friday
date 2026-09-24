@@ -30,7 +30,8 @@ const (
 	// DefaultTimeout : How long a single call may take.
 	DefaultTimeout = 120 * time.Second
 
-	// DefaultSystemPrompt : How FRIDAY is told to answer.
+	// promptBody : How the model is told to answer, after it has been told
+	// what it is.
 	//
 	// It asks for speech rather than prose because replies are read aloud:
 	// headings, bullet lists and code fences are noise when heard.
@@ -41,12 +42,14 @@ const (
 	// "is there anything else?" therefore leaves the microphone open and the
 	// wake word unnecessary, which is the opposite of how this is meant to be
 	// spoken to.
-	DefaultSystemPrompt = "You are FRIDAY, a personal assistant. " +
-		"Your replies are read aloud, so answer in plain spoken sentences. " +
+	promptBody = "Your replies are read aloud, so answer in plain spoken sentences. " +
 		"Do not use markdown, headings, bullet points or code blocks. " +
 		"Be brief and direct: say the answer first, then only the detail that matters. " +
 		"Do not end with a question or an offer of further help; " +
 		"stop once the answer is given."
+
+	// DefaultSystemPrompt : How an unnamed assistant is told to answer.
+	DefaultSystemPrompt = "You are a personal assistant. " + promptBody
 )
 
 // Default endpoints.
@@ -63,6 +66,20 @@ const (
 	DefaultVendor      = "anthropic"
 	DefaultModel       = "claude-sonnet-4-6"
 )
+
+// SystemPromptFor : Returns the instructions for an assistant called name.
+//
+// The name is configuration rather than a constant: the owner chooses what
+// the assistant is called, and the same binary has to serve whatever that is
+// without being rebuilt. An empty name gives a working assistant that simply
+// never says what it is called.
+func SystemPromptFor(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return DefaultSystemPrompt
+	}
+	return "You are " + name + ", a personal assistant. " + promptBody
+}
 
 // Config : What the provider needs in order to reach the service.
 type Config struct {

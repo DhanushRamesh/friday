@@ -187,6 +187,7 @@ func buildProvider(cfg config.Config, logger *slog.Logger) (provider.Provider, e
 			RedirectURI:        cfg.PlatformAI.RedirectURI,
 			Vendor:             cfg.PlatformAI.Vendor,
 			Model:              cfg.PlatformAI.Model,
+			SystemPrompt:       platformai.SystemPromptFor(cfg.Assistant.Name),
 			Timeout:            cfg.PlatformAI.Timeout,
 			InsecureSkipVerify: cfg.PlatformAI.InsecureSkipVerify,
 		}, logger)
