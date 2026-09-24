@@ -1,11 +1,11 @@
 # Nightly database backup.
 #
-#   sudo cp friday-backup.service friday-backup.timer /etc/systemd/system/
+#   sudo cp personal-assistant-backup.service personal-assistant-backup.timer /etc/systemd/system/
 #   sudo systemctl daemon-reload
-#   sudo systemctl enable --now friday-backup.timer
+#   sudo systemctl enable --now personal-assistant-backup.timer
 
 [Unit]
-Description=Nightly FRIDAY database backup
+Description=Nightly the assistant database backup
 
 [Timer]
 OnCalendar=*-*-* 03:30:00

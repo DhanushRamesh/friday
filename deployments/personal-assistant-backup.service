@@ -1,0 +1,10 @@
+[Unit]
+Description=Back up the assistant's database
+After=mysql.service
+Requires=mysql.service
+
+[Service]
+Type=oneshot
+User=assistant
+Group=assistant
+ExecStart=/opt/personal-assistant/backup.sh

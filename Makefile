@@ -7,7 +7,7 @@
 #
 #   production   the server, `env = production`, behind Caddy and TLS,
 #                run by systemd and restarted on failure,
-#                config.ini in /opt/friday
+#                config.ini in /opt/personal-assistant
 #
 # Local targets have no prefix. Production targets all start with `prod-`
 # and act over SSH.
@@ -23,7 +23,11 @@ LOGFILE  := personal-assistant.log
 #   make prod-status PROD_HOST=1.2.3.4
 PROD_HOST ?= 136.111.221.56
 PROD_USER ?= dhanush-12514
-PROD_DIR  ?= /opt/friday
+# What the service, its unit, its directory and its OS user are called on the
+# deployed machine. Renaming these on a running server is a migration, not an
+# edit: see deployments/README.md.
+PROD_NAME ?= personal-assistant
+PROD_DIR  ?= /opt/$(PROD_NAME)
 PROD_URL  ?= https://friday-server.duckdns.org
 SSH       := ssh -o ConnectTimeout=20 $(PROD_USER)@$(PROD_HOST)
 
@@ -124,35 +128,35 @@ deploy-build: ## Build the binary the server runs (linux/amd64)
 
 .PHONY: prod-deploy
 prod-deploy: check deploy-build ## Test, build, upload and restart the server
-	@scp -q $(BUILD)/$(BINARY) $(PROD_USER)@$(PROD_HOST):/tmp/friday.new
-	@$(SSH) 'sudo systemctl stop friday \
-		&& sudo mv /tmp/friday.new $(PROD_DIR)/friday \
-		&& sudo chown friday:friday $(PROD_DIR)/friday \
-		&& sudo chmod 750 $(PROD_DIR)/friday \
-		&& sudo systemctl start friday'
+	@scp -q $(BUILD)/$(BINARY) $(PROD_USER)@$(PROD_HOST):/tmp/$(PROD_NAME).new
+	@$(SSH) 'sudo systemctl stop $(PROD_NAME) \
+		&& sudo mv /tmp/$(PROD_NAME).new $(PROD_DIR)/$(PROD_NAME) \
+		&& sudo chown assistant:assistant $(PROD_DIR)/$(PROD_NAME) \
+		&& sudo chmod 750 $(PROD_DIR)/$(PROD_NAME) \
+		&& sudo systemctl start $(PROD_NAME)'
 	@sleep 4
 	@$(MAKE) --no-print-directory prod-status
 
 .PHONY: prod-start
 prod-start: ## Start it on the server
-	@$(SSH) 'sudo systemctl start friday' && echo "started"
+	@$(SSH) 'sudo systemctl start $(PROD_NAME)' && echo "started"
 	@sleep 3
 	@$(MAKE) --no-print-directory prod-status
 
 .PHONY: prod-stop
 prod-stop: ## Stop it on the server (drains first)
-	@$(SSH) 'sudo systemctl stop friday' && echo "stopped"
+	@$(SSH) 'sudo systemctl stop $(PROD_NAME)' && echo "stopped"
 
 .PHONY: prod-restart
 prod-restart: ## Restart it on the server
-	@$(SSH) 'sudo systemctl restart friday' && echo "restarted"
+	@$(SSH) 'sudo systemctl restart $(PROD_NAME)' && echo "restarted"
 	@sleep 3
 	@$(MAKE) --no-print-directory prod-status
 
 .PHONY: prod-status
 prod-status: ## What the server is doing
-	@$(SSH) 'printf "  friday: %s   mysql: %s   caddy: %s\n" \
-		"$$(systemctl is-active friday)" "$$(systemctl is-active mysql)" "$$(systemctl is-active caddy)"; \
+	@$(SSH) 'printf "  $(PROD_NAME): %s   mysql: %s   caddy: %s\n" \
+		"$$(systemctl is-active $(PROD_NAME))" "$$(systemctl is-active mysql)" "$$(systemctl is-active caddy)"; \
 		free -m | awk "/Mem:/ {printf \"  memory: %s MB used, %s MB free\\n\", \$$3, \$$7}"' 2>/dev/null || echo "  unreachable"
 	@printf "  %s/health -> " "$(PROD_URL)"
 	@curl -s -m 10 -o /dev/null -w "%{http_code}\n" $(PROD_URL)/health 2>/dev/null || echo "no answer"
@@ -160,7 +164,7 @@ prod-status: ## What the server is doing
 
 .PHONY: prod-logs
 prod-logs: ## Follow the server's log
-	@$(SSH) -t 'sudo journalctl -u friday -f -n 40'
+	@$(SSH) -t 'sudo journalctl -u $(PROD_NAME) -f -n 40'
 
 .PHONY: prod-ssh
 prod-ssh: ## Open a shell on the server
@@ -168,8 +172,8 @@ prod-ssh: ## Open a shell on the server
 
 .PHONY: prod-createuser
 prod-createuser: ## Create a user on the server (prompts for a password)
-	@$(SSH) -t 'sudo -u friday $(PROD_DIR)/friday createuser $(USER_NAME)'
+	@$(SSH) -t 'sudo -u assistant $(PROD_DIR)/$(PROD_NAME) createuser $(USER_NAME)'
 
 .PHONY: prod-backup
 prod-backup: ## Run a database backup on the server now
-	@$(SSH) 'sudo systemctl start friday-backup.service && sleep 5 && sudo ls -lh /var/backups/friday/ | tail -3'
+	@$(SSH) 'sudo systemctl start $(PROD_NAME)-backup.service && sleep 5 && sudo ls -lh /var/backups/$(PROD_NAME)/ | tail -3'

@@ -23,7 +23,7 @@ func testDatabase(t *testing.T) config.Database {
 	cfg, err := config.Load("", func(key string) (string, bool) {
 		// Defaults already describe the local development database; only the
 		// password differs between machines.
-		if key == "FRIDAY_DATABASE_PASSWORD" {
+		if key == "ASSISTANT_DATABASE_PASSWORD" {
 			return "friday_dev", true
 		}
 		return "", false

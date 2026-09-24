@@ -25,7 +25,7 @@ func newRepository(t *testing.T) *chatmysql.Repository {
 	t.Helper()
 
 	cfg, err := config.Load("", func(key string) (string, bool) {
-		if key == "FRIDAY_DATABASE_PASSWORD" {
+		if key == "ASSISTANT_DATABASE_PASSWORD" {
 			return "friday_dev", true
 		}
 		return "", false

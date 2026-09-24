@@ -1,7 +1,7 @@
-# FRIDAY on a 1 GB machine.
+# The assistant server on a 1 GB machine.
 #
 # MySQL 8 defaults assume a server with memory to spare and would take most
-# of this one, leaving nothing for FRIDAY, Caddy and the kernel. These bring
+# of this one, leaving nothing for the server, Caddy and the kernel. These bring
 # it to roughly 200 MB, which is ample for a personal assistant's traffic.
 [mysqld]
 # The single biggest consumer. 128 MB holds this entire database in memory

@@ -1,25 +1,25 @@
-# FRIDAY, as a service.
+# The personal assistant server, as a service.
 #
-#   sudo cp friday.service /etc/systemd/system/
+#   sudo cp personal-assistant.service /etc/systemd/system/
 #   sudo systemctl daemon-reload
-#   sudo systemctl enable --now friday
+#   sudo systemctl enable --now personal-assistant
 
 [Unit]
-Description=FRIDAY personal assistant
-Documentation=https://github.com/DhanushRamesh/friday
-# MySQL is on the same machine, and FRIDAY refuses to start without it.
+Description=Personal assistant server
+Documentation=https://github.com/DhanushRamesh/personal-assistant
+# MySQL is on the same machine, and the server refuses to start without it.
 After=network-online.target mysql.service
 Wants=network-online.target
 Requires=mysql.service
 
 [Service]
 Type=simple
-User=friday
-Group=friday
-WorkingDirectory=/opt/friday
-ExecStart=/opt/friday/friday
+User=assistant
+Group=assistant
+WorkingDirectory=/opt/personal-assistant
+ExecStart=/opt/personal-assistant/personal-assistant
 
-# FRIDAY drains in-flight requests and lets running tasks record where they
+# The server drains in-flight requests and lets running chats record where they
 # got to, so it is given time to do so rather than being killed outright.
 KillSignal=SIGTERM
 TimeoutStopSec=45
@@ -44,7 +44,7 @@ RestrictNamespaces=true
 RestrictSUIDSGID=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
-ReadWritePaths=/opt/friday
+ReadWritePaths=/opt/personal-assistant
 # Nothing is served to the outside; Caddy reaches it over loopback.
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 
