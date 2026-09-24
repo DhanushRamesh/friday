@@ -4,8 +4,8 @@
 //
 //	built-in defaults  <  config.ini  <  environment variables
 //
-// Every setting has an environment equivalent named FRIDAY_<SECTION>_<KEY>,
-// uppercased; a setting outside any section uses FRIDAY_<KEY>.
+// Every setting has an environment equivalent named ASSISTANT_<SECTION>_<KEY>,
+// uppercased; a setting outside any section uses ASSISTANT_<KEY>.
 //
 // Loading reports every problem it finds rather than stopping at the first,
 // and treats a setting present in the file that nothing reads as an error.
@@ -34,7 +34,7 @@ const DefaultPath = "config.ini"
 
 // PathEnvVar : Names the environment variable holding an explicit
 // configuration file path. When it is set, the file must exist.
-const PathEnvVar = "FRIDAY_CONFIG"
+const PathEnvVar = "ASSISTANT_CONFIG"
 
 // Environment : Names a deployment context. Validation is stricter outside
 // EnvDev.
@@ -383,12 +383,12 @@ type loader struct {
 }
 
 // envName : Returns the environment variable that overrides the given setting,
-// such as FRIDAY_SERVER_ADDR for [server] addr.
+// such as ASSISTANT_SERVER_ADDR for [server] addr.
 func envName(section, key string) string {
 	if section == "" {
-		return "FRIDAY_" + strings.ToUpper(key)
+		return "ASSISTANT_" + strings.ToUpper(key)
 	}
-	return "FRIDAY_" + strings.ToUpper(section) + "_" + strings.ToUpper(key)
+	return "ASSISTANT_" + strings.ToUpper(section) + "_" + strings.ToUpper(key)
 }
 
 // where : Renders a setting in both spellings, for use in error messages.
@@ -405,7 +405,7 @@ func (l *loader) value(section, key string) (string, bool) {
 	l.known[fieldKey{section, key}] = true
 
 	if v, ok := l.lookup(envName(section, key)); ok {
-		// An empty variable counts as unset, so that FRIDAY_SERVER_ADDR= in a
+		// An empty variable counts as unset, so that ASSISTANT_SERVER_ADDR= in a
 		// shell script falls through to the next layer.
 		if v = strings.TrimSpace(v); v != "" {
 			return v, true

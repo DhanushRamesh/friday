@@ -5,9 +5,9 @@
 # edit is as dangerous to commit as the file itself.
 /config.ini.*
 .env
-/friday
-/friday.log
-/.friday.pid
+/personal-assistant
+/personal-assistant.log
+/.personal-assistant.pid
 
 
 # Picovoice: the access key and the wake-word models are tied to an

@@ -120,8 +120,8 @@ host     = from-file-host
 `)
 
 	cfg, err := config.Load(path, env(map[string]string{
-		"FRIDAY_SERVER_ADDR":       ":7070",
-		"FRIDAY_DATABASE_PASSWORD": "from-env",
+		"ASSISTANT_SERVER_ADDR":       ":7070",
+		"ASSISTANT_DATABASE_PASSWORD": "from-env",
 	}))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -143,7 +143,7 @@ host     = from-file-host
 func TestEmptyEnvFallsThroughToFile(t *testing.T) {
 	path := writeINI(t, "[server]\naddr = :9090\n")
 
-	cfg, err := config.Load(path, env(map[string]string{"FRIDAY_SERVER_ADDR": "  "}))
+	cfg, err := config.Load(path, env(map[string]string{"ASSISTANT_SERVER_ADDR": "  "}))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -210,7 +210,7 @@ func TestErrorsNameFileAndEnvSpelling(t *testing.T) {
 	if err == nil {
 		t.Fatal("want error")
 	}
-	for _, want := range []string{"[database] port", "FRIDAY_DATABASE_PORT"} {
+	for _, want := range []string{"[database] port", "ASSISTANT_DATABASE_PORT"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error does not mention %q:\n%v", want, err)
 		}
@@ -218,13 +218,13 @@ func TestErrorsNameFileAndEnvSpelling(t *testing.T) {
 }
 
 func TestProductionRequiresDatabasePassword(t *testing.T) {
-	_, err := config.Load("", env(map[string]string{"FRIDAY_ENV": "production"}))
+	_, err := config.Load("", env(map[string]string{"ASSISTANT_ENV": "production"}))
 	if err == nil || !strings.Contains(err.Error(), "password") {
 		t.Fatalf("want a password error in production, got %v", err)
 	}
 
 	// The same blank password is fine on a developer machine.
-	if _, err := config.Load("", env(map[string]string{"FRIDAY_ENV": "dev"})); err != nil {
+	if _, err := config.Load("", env(map[string]string{"ASSISTANT_ENV": "dev"})); err != nil {
 		t.Errorf("dev with blank password: %v", err)
 	}
 }
@@ -279,7 +279,7 @@ func TestDSNRoundTripsThroughDriver(t *testing.T) {
 // The password must not be reachable through logging, printing or a config dump.
 func TestPasswordNeverAppearsInLogsOrSafeAddr(t *testing.T) {
 	const password = "hunter2-do-not-log"
-	cfg, err := config.Load("", env(map[string]string{"FRIDAY_DATABASE_PASSWORD": password}))
+	cfg, err := config.Load("", env(map[string]string{"ASSISTANT_DATABASE_PASSWORD": password}))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}

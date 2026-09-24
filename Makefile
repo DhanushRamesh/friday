@@ -12,12 +12,12 @@
 # Local targets have no prefix. Production targets all start with `prod-`
 # and act over SSH.
 
-BINARY   := friday
+BINARY   := personal-assistant
 PKG      := ./cmd/server
 
 BUILD    := build
-PIDFILE  := .friday.pid
-LOGFILE  := friday.log
+PIDFILE  := .personal-assistant.pid
+LOGFILE  := personal-assistant.log
 
 # The server. Override on the command line if it moves:
 #   make prod-status PROD_HOST=1.2.3.4

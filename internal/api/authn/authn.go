@@ -218,6 +218,6 @@ func (h *Handler) Require(next http.Handler) http.Handler {
 
 // Unauthorised : Refuses a request, naming the scheme a caller should use.
 func Unauthorised(ctx context.Context, w http.ResponseWriter, message string) {
-	w.Header().Set("WWW-Authenticate", `Bearer realm="friday"`)
+	w.Header().Set("WWW-Authenticate", `Bearer realm="assistant"`)
 	httpx.WriteError(ctx, w, http.StatusUnauthorized, message)
 }

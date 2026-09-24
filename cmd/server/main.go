@@ -25,6 +25,13 @@ import (
 )
 
 // main : Runs the server, or the named command.
+// serviceName : What this process calls itself in its own logs.
+//
+// Not the assistant's name, which is configuration: this identifies the
+// process to whoever is reading the journal, and stays the same whatever the
+// assistant is called today.
+const serviceName = "assistant"
+
 func main() {
 	if len(os.Args) > 2 && os.Args[1] == "createuser" {
 		osExitOnError(runCreateUser(os.Args[2]))
@@ -54,7 +61,7 @@ func runCreateUser(username string) error {
 		return err
 	}
 	logger, err := logging.New(os.Stdout, logging.Config{
-		Level: "warn", Format: cfg.Log.Format, Service: "friday",
+		Level: "warn", Format: cfg.Log.Format, Service: serviceName,
 	})
 	if err != nil {
 		return err
@@ -86,7 +93,7 @@ func run() error {
 		Level:     cfg.Log.Level,
 		Format:    cfg.Log.Format,
 		AddSource: cfg.Log.AddSource,
-		Service:   "friday",
+		Service:   serviceName,
 		Version:   version(),
 		Env:       string(cfg.Env),
 	})

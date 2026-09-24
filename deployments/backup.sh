@@ -10,8 +10,8 @@
 
 set -euo pipefail
 
-CONFIG="${FRIDAY_CONFIG:-/opt/friday/config.ini}"
-DEST="${FRIDAY_BACKUP_DIR:-/var/backups/friday}"
+CONFIG="${ASSISTANT_CONFIG:-/opt/friday/config.ini}"
+DEST="${ASSISTANT_BACKUP_DIR:-/var/backups/friday}"
 KEEP_DAYS="${FRIDAY_BACKUP_KEEP_DAYS:-14}"
 
 # users, clients, sessions, tasks, task_messages, and goose's own. A dump with
