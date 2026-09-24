@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -18,21 +19,52 @@ import (
 // discard : A logger that writes nowhere.
 func discard() *slog.Logger { return slog.New(slog.NewJSONHandler(io.Discard, nil)) }
 
+// testEnv : The settings the database tests run against.
+//
+// A dedicated database, never the one the server uses. These tests migrate the
+// schema and write rows they do not clean up, and pointing them at the live
+// database filled it with a hundred and forty fixture users before anyone
+// noticed. The name must end in _test, and the helper refuses to run if it
+// does not, so a mistake here skips rather than writes.
+//
+//	ASSISTANT_TEST_DATABASE   which database to use, default assistant_test
+//	ASSISTANT_DATABASE_PASSWORD   the password, default friday_dev
+func testEnv(key string) (string, bool) {
+	switch key {
+	case "ASSISTANT_DATABASE_NAME":
+		if name := os.Getenv("ASSISTANT_TEST_DATABASE"); name != "" {
+			return name, true
+		}
+		return "assistant_test", true
+	case "ASSISTANT_DATABASE_PASSWORD":
+		if pw := os.Getenv("ASSISTANT_DATABASE_PASSWORD"); pw != "" {
+			return pw, true
+		}
+		return "friday_dev", true
+	}
+	return "", false
+}
+
+// refuseLiveDatabase : Skips unless the configured database is plainly a test
+// one, so these tests cannot write into the database the server is using.
+func refuseLiveDatabase(t *testing.T, name string) {
+	t.Helper()
+	if !strings.HasSuffix(name, "_test") {
+		t.Skipf("refusing to run against %q: the database tests need one whose name ends in _test", name)
+	}
+}
+
 // newRepository : Opens the development database, migrates it, and returns a
 // repository. It skips the test when MySQL is not reachable, so the suite
 // still runs on a bare checkout.
 func newRepository(t *testing.T) *chatmysql.Repository {
 	t.Helper()
 
-	cfg, err := config.Load("", func(key string) (string, bool) {
-		if key == "ASSISTANT_DATABASE_PASSWORD" {
-			return "friday_dev", true
-		}
-		return "", false
-	})
+	cfg, err := config.Load("", testEnv)
 	if err != nil {
 		t.Fatalf("config: %v", err)
 	}
+	refuseLiveDatabase(t, cfg.Database.Name)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

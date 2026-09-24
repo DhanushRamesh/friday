@@ -200,6 +200,31 @@ go vet ./...
 go test ./... -race
 ```
 
+### The database tests need their own database
+
+`internal/storage` and `internal/chat/mysql` talk to a real MySQL. They
+migrate the schema and write rows they never clean up, so they run against
+`assistant_test` and never the database the server uses.
+
+They did not always. They took the defaults from `config.Load`, which name the
+server's own database, and quietly filled it with a hundred and forty fixture
+users, four hundred chats and six hundred messages before anyone looked. The
+counts were only noticed while migrating the database to its new name.
+
+Two things stop it recurring. The tests set `ASSISTANT_DATABASE_NAME`
+themselves, and `refuseLiveDatabase` skips unless the name ends in `_test`, so
+a mistake in the override cannot write anywhere real.
+
+Create it once, as a MySQL administrator:
+
+```sql
+CREATE DATABASE assistant_test CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+GRANT ALL PRIVILEGES ON assistant_test.* TO 'assistant'@'127.0.0.1';
+```
+
+Without it the tests skip, which is why the suite still passes on a bare
+checkout. `ASSISTANT_TEST_DATABASE` points them somewhere else if needed.
+
 ### Errors
 
 Collect and report all problems at once where a user is going to act on them,
