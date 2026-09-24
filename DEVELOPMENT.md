@@ -1196,15 +1196,24 @@ needs is complete, end to end.
 
 ## 11. Deploying
 
-`deployments/` holds what a deployment needs; `deployments/README.md` is the
-procedure. The shape is one machine running Caddy, the assistant and MySQL, with only
-Caddy reachable:
+**The deployed machine is deliberately behind, and is not being touched.**
+The owner has parked it: nothing is being deployed there for a while.
 
-```
-internet --:443--> Caddy --loopback--> the assistant --loopback--> MySQL
-```
+So it is still the old install in every respect. It runs the binary from
+before the rename, out of `/opt/friday` as `friday.service` under the OS user
+`friday`, against a `friday` database. It has none of the work that followed:
+no `internal/api/assist`, so no `/api/tags` or `/api/chat`, so Home Assistant
+cannot reach it. Voice works against a server running on the owner's laptop
+instead.
+
+Two things follow. The migration section in `deployments/README.md` is not
+pending work waiting to be finished — it is there for whenever that machine
+is next visited. And deploying is not one step: the rename has to happen
+alongside it, because the unit, directory, user and database on that box no
+longer match anything in this repository.
 
 **the assistant binds the loopback and refuses a public interface in production.**
+
 It speaks plain HTTP and its tokens are bearer credentials, so anyone who can
 read one becomes that client. The default address is `127.0.0.1:8080` rather
 than `:8080`, because the latter looks like localhost and binds everything —
