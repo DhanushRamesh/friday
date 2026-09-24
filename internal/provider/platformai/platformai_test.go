@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DhanushRamesh/friday/internal/logging"
-	"github.com/DhanushRamesh/friday/internal/provider"
-	"github.com/DhanushRamesh/friday/internal/provider/platformai"
+	"github.com/DhanushRamesh/personal-assistant/internal/logging"
+	"github.com/DhanushRamesh/personal-assistant/internal/provider"
+	"github.com/DhanushRamesh/personal-assistant/internal/provider/platformai"
 )
 
 // discard : A logger that writes nowhere.

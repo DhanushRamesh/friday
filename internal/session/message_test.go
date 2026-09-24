@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DhanushRamesh/friday/internal/session"
+	"github.com/DhanushRamesh/personal-assistant/internal/session"
 )
 
 // said : A message of the given role and length, so a test can say how much

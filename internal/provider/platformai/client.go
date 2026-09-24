@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DhanushRamesh/friday/internal/provider"
+	"github.com/DhanushRamesh/personal-assistant/internal/provider"
 )
 
 // tokenRefreshMargin : How long before expiry a cached token is replaced,

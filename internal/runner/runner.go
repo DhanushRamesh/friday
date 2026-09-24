@@ -13,11 +13,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DhanushRamesh/friday/internal/chat"
-	"github.com/DhanushRamesh/friday/internal/events"
-	"github.com/DhanushRamesh/friday/internal/logging"
-	"github.com/DhanushRamesh/friday/internal/provider"
-	"github.com/DhanushRamesh/friday/internal/session"
+	"github.com/DhanushRamesh/personal-assistant/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/events"
+	"github.com/DhanushRamesh/personal-assistant/internal/logging"
+	"github.com/DhanushRamesh/personal-assistant/internal/provider"
+	"github.com/DhanushRamesh/personal-assistant/internal/session"
 )
 
 const (

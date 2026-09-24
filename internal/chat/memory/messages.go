@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/DhanushRamesh/friday/internal/session"
+	"github.com/DhanushRamesh/personal-assistant/internal/session"
 )
 
 // Append : Stores a message at the end of its session.

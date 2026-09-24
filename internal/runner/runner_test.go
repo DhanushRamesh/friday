@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DhanushRamesh/friday/internal/chat"
-	"github.com/DhanushRamesh/friday/internal/chat/memory"
-	"github.com/DhanushRamesh/friday/internal/provider"
-	"github.com/DhanushRamesh/friday/internal/runner"
+	"github.com/DhanushRamesh/personal-assistant/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/chat/memory"
+	"github.com/DhanushRamesh/personal-assistant/internal/provider"
+	"github.com/DhanushRamesh/personal-assistant/internal/runner"
 )
 
 // discard : A logger that writes nowhere.

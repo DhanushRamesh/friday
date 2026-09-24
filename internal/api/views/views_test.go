@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DhanushRamesh/friday/internal/api/views"
-	"github.com/DhanushRamesh/friday/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/views"
+	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 )
 
 // The JSON names here are the API's published contract: a client reads them,

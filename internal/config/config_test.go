@@ -9,8 +9,8 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 
-	"github.com/DhanushRamesh/friday/internal/config"
-	"github.com/DhanushRamesh/friday/internal/logging"
+	"github.com/DhanushRamesh/personal-assistant/internal/config"
+	"github.com/DhanushRamesh/personal-assistant/internal/logging"
 )
 
 // env : Builds a Lookup over a map, standing in for the process environment.

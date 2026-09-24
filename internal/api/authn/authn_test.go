@@ -8,9 +8,9 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/DhanushRamesh/friday/internal/api/apitest"
-	"github.com/DhanushRamesh/friday/internal/auth"
-	"github.com/DhanushRamesh/friday/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/apitest"
+	"github.com/DhanushRamesh/personal-assistant/internal/auth"
+	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 )
 
 // TestMain : Lowers the password work factor for this package's tests.

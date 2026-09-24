@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DhanushRamesh/friday/internal/logging"
+	"github.com/DhanushRamesh/personal-assistant/internal/logging"
 )
 
 // newTestLogger : Returns a logger writing JSON into buf.

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DhanushRamesh/friday/internal/api/apitest"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/apitest"
 )
 
 // What is tested here is true of the assembled API rather than of any one

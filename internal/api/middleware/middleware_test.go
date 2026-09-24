@@ -12,9 +12,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
-	"github.com/DhanushRamesh/friday/internal/api/apitest"
-	"github.com/DhanushRamesh/friday/internal/api/middleware"
-	"github.com/DhanushRamesh/friday/internal/logging"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/apitest"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/middleware"
+	"github.com/DhanushRamesh/personal-assistant/internal/logging"
 )
 
 // newRouter : Builds a router carrying the whole middleware stack in the

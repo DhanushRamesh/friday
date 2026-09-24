@@ -4,10 +4,10 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/DhanushRamesh/friday/internal/api/apitest"
-	"github.com/DhanushRamesh/friday/internal/api/sessions"
-	"github.com/DhanushRamesh/friday/internal/api/views"
-	"github.com/DhanushRamesh/friday/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/apitest"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/sessions"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/views"
+	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 )
 
 // Creating a session moves this client into it, since starting one almost

@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DhanushRamesh/friday/internal/chat"
-	chatmysql "github.com/DhanushRamesh/friday/internal/chat/mysql"
-	"github.com/DhanushRamesh/friday/internal/config"
-	"github.com/DhanushRamesh/friday/internal/storage"
+	"github.com/DhanushRamesh/personal-assistant/internal/chat"
+	chatmysql "github.com/DhanushRamesh/personal-assistant/internal/chat/mysql"
+	"github.com/DhanushRamesh/personal-assistant/internal/config"
+	"github.com/DhanushRamesh/personal-assistant/internal/storage"
 )
 
 // discard : A logger that writes nowhere.

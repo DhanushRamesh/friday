@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DhanushRamesh/friday/internal/auth"
+	"github.com/DhanushRamesh/personal-assistant/internal/auth"
 )
 
 func TestNewTokenIsUniqueAndWellFormed(t *testing.T) {

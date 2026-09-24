@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DhanushRamesh/friday/internal/api/apitest"
-	"github.com/DhanushRamesh/friday/internal/api/views"
-	"github.com/DhanushRamesh/friday/internal/chat"
-	"github.com/DhanushRamesh/friday/internal/provider"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/apitest"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/views"
+	"github.com/DhanushRamesh/personal-assistant/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/provider"
 )
 
 // Where a prompt lands, and what happens to what was already running there,

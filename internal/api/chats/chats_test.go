@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DhanushRamesh/friday/internal/api/apitest"
-	"github.com/DhanushRamesh/friday/internal/api/chats"
-	"github.com/DhanushRamesh/friday/internal/api/httpx"
-	"github.com/DhanushRamesh/friday/internal/api/views"
-	"github.com/DhanushRamesh/friday/internal/chat"
-	"github.com/DhanushRamesh/friday/internal/provider"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/apitest"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/chats"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/httpx"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/views"
+	"github.com/DhanushRamesh/personal-assistant/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/provider"
 )
 
 func TestCreateChatAcceptsAndRuns(t *testing.T) {

@@ -12,10 +12,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/DhanushRamesh/friday/internal/api/authn"
-	"github.com/DhanushRamesh/friday/internal/api/httpx"
-	"github.com/DhanushRamesh/friday/internal/api/views"
-	"github.com/DhanushRamesh/friday/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/authn"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/httpx"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/views"
+	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 )
 
 // ListResponse : The body of a listing of clients.

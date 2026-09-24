@@ -25,7 +25,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"gopkg.in/ini.v1"
 
-	"github.com/DhanushRamesh/friday/internal/logging"
+	"github.com/DhanushRamesh/personal-assistant/internal/logging"
 )
 
 // DefaultPath : The configuration file read when none is named. It is

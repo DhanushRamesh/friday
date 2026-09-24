@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DhanushRamesh/friday/internal/session"
+	"github.com/DhanushRamesh/personal-assistant/internal/session"
 )
 
 func TestAppendNumbersMessagesInOrder(t *testing.T) {

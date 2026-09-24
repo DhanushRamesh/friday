@@ -11,9 +11,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/DhanushRamesh/friday/internal/api/apitest"
-	"github.com/DhanushRamesh/friday/internal/api/health"
-	"github.com/DhanushRamesh/friday/internal/logging"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/apitest"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/health"
+	"github.com/DhanushRamesh/personal-assistant/internal/logging"
 )
 
 // body : Decodes a liveness or readiness response.

@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/DhanushRamesh/friday/internal/api/apitest"
-	"github.com/DhanushRamesh/friday/internal/api/clients"
-	"github.com/DhanushRamesh/friday/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/apitest"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/clients"
+	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 )
 
 // Me reports who is calling, from what, and where a prompt will land.

@@ -11,9 +11,9 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/DhanushRamesh/friday/internal/auth"
-	"github.com/DhanushRamesh/friday/internal/chat"
-	chatmysql "github.com/DhanushRamesh/friday/internal/chat/mysql"
+	"github.com/DhanushRamesh/personal-assistant/internal/auth"
+	"github.com/DhanushRamesh/personal-assistant/internal/chat"
+	chatmysql "github.com/DhanushRamesh/personal-assistant/internal/chat/mysql"
 )
 
 // createUser : Creates a user from the terminal.

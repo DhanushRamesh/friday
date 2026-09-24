@@ -15,7 +15,7 @@ import (
 	mysqldriver "gorm.io/driver/mysql"
 	"gorm.io/gorm"
 
-	"github.com/DhanushRamesh/friday/internal/config"
+	"github.com/DhanushRamesh/personal-assistant/internal/config"
 )
 
 // DefaultSlowQueryThreshold : The duration past which a successful query is

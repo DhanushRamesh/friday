@@ -19,14 +19,14 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
-	"github.com/DhanushRamesh/friday/internal/api/assist"
-	"github.com/DhanushRamesh/friday/internal/api/authn"
-	"github.com/DhanushRamesh/friday/internal/api/chats"
-	"github.com/DhanushRamesh/friday/internal/api/clients"
-	"github.com/DhanushRamesh/friday/internal/api/health"
-	"github.com/DhanushRamesh/friday/internal/api/middleware"
-	"github.com/DhanushRamesh/friday/internal/api/sessions"
-	"github.com/DhanushRamesh/friday/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/assist"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/authn"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/chats"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/clients"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/health"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/middleware"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/sessions"
+	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 )
 
 // DefaultRequestTimeout : The per-request deadline applied when Options does

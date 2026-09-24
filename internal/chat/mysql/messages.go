@@ -8,7 +8,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/DhanushRamesh/friday/internal/session"
+	"github.com/DhanushRamesh/personal-assistant/internal/session"
 )
 
 // sessionMessageRow : The messages table, as GORM sees it.

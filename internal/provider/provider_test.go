@@ -3,7 +3,7 @@ package provider_test
 import (
 	"testing"
 
-	"github.com/DhanushRamesh/friday/internal/provider"
+	"github.com/DhanushRamesh/personal-assistant/internal/provider"
 )
 
 func TestKindPredicates(t *testing.T) {

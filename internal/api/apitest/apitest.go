@@ -28,16 +28,16 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/DhanushRamesh/friday/internal/api"
-	"github.com/DhanushRamesh/friday/internal/api/authn"
-	"github.com/DhanushRamesh/friday/internal/api/views"
-	"github.com/DhanushRamesh/friday/internal/auth"
-	"github.com/DhanushRamesh/friday/internal/chat"
-	"github.com/DhanushRamesh/friday/internal/chat/memory"
-	"github.com/DhanushRamesh/friday/internal/events"
-	"github.com/DhanushRamesh/friday/internal/logging"
-	"github.com/DhanushRamesh/friday/internal/provider"
-	"github.com/DhanushRamesh/friday/internal/runner"
+	"github.com/DhanushRamesh/personal-assistant/internal/api"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/authn"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/views"
+	"github.com/DhanushRamesh/personal-assistant/internal/auth"
+	"github.com/DhanushRamesh/personal-assistant/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/chat/memory"
+	"github.com/DhanushRamesh/personal-assistant/internal/events"
+	"github.com/DhanushRamesh/personal-assistant/internal/logging"
+	"github.com/DhanushRamesh/personal-assistant/internal/provider"
+	"github.com/DhanushRamesh/personal-assistant/internal/runner"
 )
 
 // Username and Password : The account every environment is given.

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DhanushRamesh/friday/internal/events"
+	"github.com/DhanushRamesh/personal-assistant/internal/events"
 )
 
 // newBus : Returns a Bus that logs nowhere.

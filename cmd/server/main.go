@@ -13,15 +13,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/DhanushRamesh/friday/internal/api"
-	chatmysql "github.com/DhanushRamesh/friday/internal/chat/mysql"
-	"github.com/DhanushRamesh/friday/internal/config"
-	"github.com/DhanushRamesh/friday/internal/events"
-	"github.com/DhanushRamesh/friday/internal/logging"
-	"github.com/DhanushRamesh/friday/internal/provider"
-	"github.com/DhanushRamesh/friday/internal/provider/platformai"
-	"github.com/DhanushRamesh/friday/internal/runner"
-	"github.com/DhanushRamesh/friday/internal/storage"
+	"github.com/DhanushRamesh/personal-assistant/internal/api"
+	chatmysql "github.com/DhanushRamesh/personal-assistant/internal/chat/mysql"
+	"github.com/DhanushRamesh/personal-assistant/internal/config"
+	"github.com/DhanushRamesh/personal-assistant/internal/events"
+	"github.com/DhanushRamesh/personal-assistant/internal/logging"
+	"github.com/DhanushRamesh/personal-assistant/internal/provider"
+	"github.com/DhanushRamesh/personal-assistant/internal/provider/platformai"
+	"github.com/DhanushRamesh/personal-assistant/internal/runner"
+	"github.com/DhanushRamesh/personal-assistant/internal/storage"
 )
 
 // main : Runs the server, or the named command.

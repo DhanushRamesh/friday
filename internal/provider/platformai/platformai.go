@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DhanushRamesh/friday/internal/logging"
-	"github.com/DhanushRamesh/friday/internal/provider"
+	"github.com/DhanushRamesh/personal-assistant/internal/logging"
+	"github.com/DhanushRamesh/personal-assistant/internal/provider"
 )
 
 const (

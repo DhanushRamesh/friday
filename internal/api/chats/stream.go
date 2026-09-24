@@ -11,9 +11,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/DhanushRamesh/friday/internal/api/httpx"
-	"github.com/DhanushRamesh/friday/internal/chat"
-	"github.com/DhanushRamesh/friday/internal/events"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/httpx"
+	"github.com/DhanushRamesh/personal-assistant/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/events"
 )
 
 // heartbeatInterval : How often a comment is sent on an idle stream.

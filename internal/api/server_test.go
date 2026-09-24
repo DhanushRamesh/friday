@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/DhanushRamesh/friday/internal/chat/memory"
+	"github.com/DhanushRamesh/personal-assistant/internal/chat/memory"
 )
 
 // These tests are inside the package because they reach the router and the

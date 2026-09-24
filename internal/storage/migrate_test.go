@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DhanushRamesh/friday/internal/storage"
+	"github.com/DhanushRamesh/personal-assistant/internal/storage"
 )
 
 // migrated : Opens the test database and brings its schema up to date.

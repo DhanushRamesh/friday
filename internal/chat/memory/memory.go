@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DhanushRamesh/friday/internal/chat"
-	"github.com/DhanushRamesh/friday/internal/session"
+	"github.com/DhanushRamesh/personal-assistant/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/session"
 )
 
 // Repository : An in-memory chat.Repository.

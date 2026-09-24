@@ -3,7 +3,7 @@ package mysql
 import (
 	"time"
 
-	"github.com/DhanushRamesh/friday/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 )
 
 // chatRow : The chats table, as GORM sees it.
