@@ -48,8 +48,8 @@ func TestDefaultsWithNoFile(t *testing.T) {
 	if cfg.Log.Format != logging.FormatText || !cfg.Log.AddSource {
 		t.Errorf("dev logging = %q source=%v, want text with source", cfg.Log.Format, cfg.Log.AddSource)
 	}
-	if cfg.Database.Port != 3306 || cfg.Database.Name != "friday" {
-		t.Errorf("Database = %s, want friday on 3306", cfg.Database.SafeAddr())
+	if cfg.Database.Port != 3306 || cfg.Database.Name != "assistant" {
+		t.Errorf("Database = %s, want assistant on 3306", cfg.Database.SafeAddr())
 	}
 }
 
@@ -263,8 +263,8 @@ func TestDSNRoundTripsThroughDriver(t *testing.T) {
 	if parsed.Passwd != password {
 		t.Errorf("Passwd = %q, want it to survive the round trip intact", parsed.Passwd)
 	}
-	if parsed.Addr != "127.0.0.1:3306" || parsed.DBName != "friday" {
-		t.Errorf("target = %s/%s, want 127.0.0.1:3306/friday", parsed.Addr, parsed.DBName)
+	if parsed.Addr != "127.0.0.1:3306" || parsed.DBName != "assistant" {
+		t.Errorf("target = %s/%s, want 127.0.0.1:3306/assistant", parsed.Addr, parsed.DBName)
 	}
 	// Without ParseTime, DATETIME columns scan as []byte rather than time.Time.
 	if !parsed.ParseTime {

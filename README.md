@@ -162,9 +162,9 @@ ASSISTANT_DATABASE_PASSWORD=... ./personal-assistant
 | `log` | `source` | `true` in dev | Attach source file and line |
 | `database` | `host` | `127.0.0.1` | |
 | `database` | `port` | `3306` | |
-| `database` | `user` | `friday` | |
+| `database` | `user` | `assistant` | |
 | `database` | `password` | empty | Required when `env = production` |
-| `database` | `name` | `friday` | |
+| `database` | `name` | `assistant` | |
 | `database` | `auto_migrate` | `true` | Apply outstanding migrations at startup |
 | `database` | `max_open_conns` | `25` | |
 | `database` | `max_idle_conns` | `5` | Must not exceed `max_open_conns` |

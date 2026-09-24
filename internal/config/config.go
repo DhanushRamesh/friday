@@ -283,9 +283,9 @@ func Load(path string, lookup Lookup) (Config, error) {
 		Database: Database{
 			Host:            l.str("database", "host", "127.0.0.1"),
 			Port:            l.integer("database", "port", 3306),
-			User:            l.str("database", "user", "friday"),
+			User:            l.str("database", "user", "assistant"),
 			Password:        logging.Secret(l.str("database", "password", "")),
-			Name:            l.str("database", "name", "friday"),
+			Name:            l.str("database", "name", "assistant"),
 			MaxOpenConns:    l.integer("database", "max_open_conns", 25),
 			MaxIdleConns:    l.integer("database", "max_idle_conns", 5),
 			ConnMaxLifetime: l.duration("database", "conn_max_lifetime", 5*time.Minute),
