@@ -9,12 +9,6 @@
 /friday.log
 /.friday.pid
 
-# Flutter client
-client/build/
-client/.dart_tool/
-client/.flutter-plugins-dependencies
 
 # Picovoice: the access key and the wake-word models are tied to an
 # account, so they are obtained per machine rather than committed.
-/client/.picovoice
-/client/assets/wake/*.ppn
