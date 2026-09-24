@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/DhanushRamesh/friday/internal/api"
+	chatmysql "github.com/DhanushRamesh/friday/internal/chat/mysql"
 	"github.com/DhanushRamesh/friday/internal/config"
 	"github.com/DhanushRamesh/friday/internal/events"
 	"github.com/DhanushRamesh/friday/internal/logging"
@@ -21,7 +22,6 @@ import (
 	"github.com/DhanushRamesh/friday/internal/provider/platformai"
 	"github.com/DhanushRamesh/friday/internal/runner"
 	"github.com/DhanushRamesh/friday/internal/storage"
-	taskmysql "github.com/DhanushRamesh/friday/internal/task/mysql"
 )
 
 // main : Runs the server, or the named command.
@@ -120,9 +120,9 @@ func run() error {
 		}
 	}
 
-	tasks := taskmysql.NewRepository(db)
+	chats := chatmysql.NewRepository(db)
 
-	// Carries a task's messages to whoever is listening for them.
+	// Carries a chat's messages to whoever is listening for them.
 	bus := events.NewBus(logger.Logger)
 	defer bus.Close()
 
@@ -132,8 +132,9 @@ func run() error {
 	}
 	logger.Info("provider selected", slog.String("provider", answerer.Name()))
 
-	taskRunner, err := runner.New(runner.Options{
-		Repository: tasks,
+	chatRunner, err := runner.New(runner.Options{
+		Repository: chats,
+		Messages:   chats,
 		Provider:   answerer,
 		Logger:     logger.Logger,
 		Publisher:  bus,
@@ -142,18 +143,22 @@ func run() error {
 		return err
 	}
 
-	// Tasks the previous process was running are no longer being worked on.
-	if err := taskRunner.Recover(context.Background()); err != nil {
+	// Chats the previous process was running are no longer being worked on.
+	if err := chatRunner.Recover(context.Background()); err != nil {
 		return err
 	}
 
 	handler := api.New(api.Options{
 		Logger:         logger.Logger,
 		DB:             db,
-		Tasks:          tasks,
-		Runner:         taskRunner,
+		Chats:          chats,
+		Runner:         chatRunner,
 		Events:         bus,
 		RequestTimeout: cfg.Server.RequestTimeout,
+		// Development only: `flutter run` serves the UI from its own port so
+		// that hot reload works. In production FRIDAY serves it, so every
+		// call is same-origin.
+		AllowCrossOrigin: !cfg.Env.IsProduction(),
 	})
 
 	srv := &http.Server{
@@ -163,10 +168,10 @@ func run() error {
 		IdleTimeout:       cfg.Server.IdleTimeout,
 	}
 
-	return serve(srv, taskRunner, logger, cfg.Server.ShutdownTimeout)
+	return serve(srv, chatRunner, logger, cfg.Server.ShutdownTimeout)
 }
 
-// buildProvider : Returns the engine that answers tasks, as configuration
+// buildProvider : Returns the engine that answers chats, as configuration
 // selects it.
 func buildProvider(cfg config.Config, logger *slog.Logger) (provider.Provider, error) {
 	switch cfg.Provider.Name {
@@ -195,7 +200,7 @@ func buildProvider(cfg config.Config, logger *slog.Logger) (provider.Provider, e
 
 // serve : Starts srv and blocks until an interrupt arrives, then drains
 // in-flight requests before returning.
-func serve(srv *http.Server, taskRunner *runner.Runner, logger *logging.Logger, shutdownTimeout time.Duration) error {
+func serve(srv *http.Server, chatRunner *runner.Runner, logger *logging.Logger, shutdownTimeout time.Duration) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -221,14 +226,14 @@ func serve(srv *http.Server, taskRunner *runner.Runner, logger *logging.Logger, 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
-	// Stop accepting requests first, then let running tasks record where they
-	// got to. A task cut off without that is left reading running for ever.
+	// Stop accepting requests first, then let running chats record where they
+	// got to. A chat cut off without that is left reading running for ever.
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("graceful shutdown failed", slog.Any("error", err))
 		return err
 	}
-	if err := taskRunner.Shutdown(shutdownCtx); err != nil {
-		logger.Error("running tasks did not stop cleanly", slog.Any("error", err))
+	if err := chatRunner.Shutdown(shutdownCtx); err != nil {
+		logger.Error("running chats did not stop cleanly", slog.Any("error", err))
 		return err
 	}
 

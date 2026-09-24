@@ -12,8 +12,8 @@ import (
 	"golang.org/x/term"
 
 	"github.com/DhanushRamesh/friday/internal/auth"
-	"github.com/DhanushRamesh/friday/internal/task"
-	taskmysql "github.com/DhanushRamesh/friday/internal/task/mysql"
+	"github.com/DhanushRamesh/friday/internal/chat"
+	chatmysql "github.com/DhanushRamesh/friday/internal/chat/mysql"
 )
 
 // createUser : Creates a user from the terminal.
@@ -23,7 +23,7 @@ import (
 // a shared secret, which is the same problem one level up. A command run by
 // whoever already has the machine avoids both, and is needed exactly once.
 func createUser(username string, db *storageDB) error {
-	username = task.NormaliseUsername(username)
+	username = chat.NormaliseUsername(username)
 
 	password, err := readPassword()
 	if err != nil {
@@ -35,11 +35,11 @@ func createUser(username string, db *storageDB) error {
 		return err
 	}
 
-	user, err := task.NewUser(username, hash)
+	user, err := chat.NewUser(username, hash)
 	if err != nil {
-		if errors.Is(err, task.ErrInvalidUsername) {
+		if errors.Is(err, chat.ErrInvalidUsername) {
 			return fmt.Errorf("a username must be %d to %d characters of letters, digits, dots, dashes or underscores",
-				task.MinUsernameLen, task.MaxUsernameLen)
+				chat.MinUsernameLen, chat.MaxUsernameLen)
 		}
 		return err
 	}
@@ -47,9 +47,9 @@ func createUser(username string, db *storageDB) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	repo := taskmysql.NewRepository(db)
+	repo := chatmysql.NewRepository(db)
 	if err := repo.CreateUser(ctx, user); err != nil {
-		if errors.Is(err, task.ErrUsernameTaken) {
+		if errors.Is(err, chat.ErrUsernameTaken) {
 			return fmt.Errorf("the username %q is already taken", username)
 		}
 		return err

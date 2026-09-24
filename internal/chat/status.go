@@ -1,8 +1,8 @@
-package task
+package chat
 
 import "fmt"
 
-// Status : The lifecycle state of a task.
+// Status : The lifecycle state of a chat.
 type Status string
 
 const (
@@ -46,7 +46,7 @@ func (s Status) IsTerminal() bool {
 	}
 }
 
-// CanTransitionTo : Reports whether a task may move from s to next.
+// CanTransitionTo : Reports whether a chat may move from s to next.
 func (s Status) CanTransitionTo(next Status) bool {
 	for _, allowed := range allowedTransitions[s] {
 		if allowed == next {
@@ -66,10 +66,10 @@ type TransitionError struct {
 }
 
 // Error : Describes the rejected transition, noting when the cause is that the
-// task had already finished.
+// chat had already finished.
 func (e *TransitionError) Error() string {
 	if e.From.IsTerminal() {
-		return fmt.Sprintf("task: cannot move from %s to %s: %s is a final state", e.From, e.To, e.From)
+		return fmt.Sprintf("chat: cannot move from %s to %s: %s is a final state", e.From, e.To, e.From)
 	}
-	return fmt.Sprintf("task: cannot move from %s to %s", e.From, e.To)
+	return fmt.Sprintf("chat: cannot move from %s to %s", e.From, e.To)
 }

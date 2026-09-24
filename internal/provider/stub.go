@@ -21,7 +21,7 @@ var defaultStubUpdates = []string{
 
 // Stub : A provider that answers from a script rather than a model.
 //
-// It exists so that the task lifecycle, streaming and cancellation can be
+// It exists so that the chat lifecycle, streaming and cancellation can be
 // built and debugged without an API key, a network, or the latency and
 // variability of a real model. A real provider replaces it behind the same
 // interface.

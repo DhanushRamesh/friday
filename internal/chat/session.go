@@ -1,6 +1,7 @@
-package task
+package chat
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -13,14 +14,9 @@ const (
 	SessionIDPrefix = "sess_"
 	// sessionIDLen : The length of a prefixed session identifier.
 	sessionIDLen = len(SessionIDPrefix) + ulid.EncodedSize
-
-	// DefaultHistoryTurns : How many turns of a session are sent to a
-	// provider by default. Enough for a correction or a follow-up to make
-	// sense, without paying for the whole exchange on every request.
-	DefaultHistoryTurns = 20
 )
 
-// Session : One exchange, grouping the tasks that belong to it.
+// Session : One exchange, grouping the chats that belong to it.
 //
 // It exists so that a follow-up or a correction can be understood in the light
 // of what came before it. Without one, "no, make it four" reaches a model with
@@ -35,7 +31,7 @@ type Session struct {
 	Title string
 	// CreatedAt : When the exchange began.
 	CreatedAt time.Time
-	// UpdatedAt : When a task was last added to it.
+	// UpdatedAt : When a chat was last added to it.
 	UpdatedAt time.Time
 }
 
@@ -67,39 +63,25 @@ func ValidSessionID(id string) bool {
 	return err == nil
 }
 
-// Role : Who said something in a session.
-type Role string
-
-const (
-	// RoleUser : The person asking.
-	RoleUser Role = "user"
-	// RoleAssistant : FRIDAY answering.
-	RoleAssistant Role = "assistant"
-)
-
-// Turn : One thing said in a session.
-type Turn struct {
-	Role Role
-	Text string
-}
-
-// MergeTurns : Joins consecutive turns by the same speaker into one.
+// EnsureSession : Returns a session for userID to talk in, reusing their most
+// recent one and creating one only when there is none.
 //
-// A task that was cancelled or failed contributes a prompt with no answer, so
-// two questions can end up adjacent. Models that require the roles to
-// alternate reject that, and joining them also reads correctly: a question
-// followed by its correction becomes one request.
-func MergeTurns(turns []Turn) []Turn {
-	merged := make([]Turn, 0, len(turns))
-	for _, turn := range turns {
-		if turn.Text == "" {
-			continue
-		}
-		if n := len(merged); n > 0 && merged[n-1].Role == turn.Role {
-			merged[n-1].Text += "\n\n" + turn.Text
-			continue
-		}
-		merged = append(merged, turn)
+// A person always has somewhere to talk: logging in from a second client, or
+// finding the active session gone, must not start a fresh thread and lose the
+// history. Reuse rather than creation is therefore the default, and a new
+// session is something the user asks for explicitly.
+func EnsureSession(ctx context.Context, repo Repository, userID string) (string, error) {
+	existing, err := repo.ListSessions(ctx, userID, 1)
+	if err != nil {
+		return "", err
 	}
-	return merged
+	if len(existing) > 0 {
+		return existing[0].ID, nil
+	}
+
+	session := NewSession(userID, "")
+	if err := repo.CreateSession(ctx, session); err != nil {
+		return "", err
+	}
+	return session.ID, nil
 }

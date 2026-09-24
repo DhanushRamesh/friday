@@ -89,7 +89,7 @@ type Log struct {
 	AddSource bool
 }
 
-// ProviderName : Which engine answers a task.
+// ProviderName : Which engine answers a chat.
 type ProviderName string
 
 const (
@@ -100,7 +100,7 @@ const (
 	ProviderPlatformAI ProviderName = "platformai"
 )
 
-// Provider : Chooses which engine answers tasks.
+// Provider : Chooses which engine answers chats.
 type Provider struct {
 	// Name : Which provider to use.
 	Name ProviderName

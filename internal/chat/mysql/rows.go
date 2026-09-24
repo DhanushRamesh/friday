@@ -3,18 +3,18 @@ package mysql
 import (
 	"time"
 
-	"github.com/DhanushRamesh/friday/internal/task"
+	"github.com/DhanushRamesh/friday/internal/chat"
 )
 
-// taskRow : The tasks table, as GORM sees it.
+// chatRow : The chats table, as GORM sees it.
 //
-// It is kept separate from task.Task so that the domain type carries no
+// It is kept separate from chat.Chat so that the domain type carries no
 // persistence tags and no knowledge of how it is stored.
 //
 // CreatedAt and UpdatedAt disable GORM's automatic timestamps. GORM would
 // otherwise overwrite them on every write, discarding the times the domain
-// recorded and making a task's own history disagree with the row.
-type taskRow struct {
+// recorded and making a chat's own history disagree with the row.
+type chatRow struct {
 	ID         string     `gorm:"column:id;primaryKey"`
 	SessionID  *string    `gorm:"column:session_id"`
 	Prompt     string     `gorm:"column:prompt"`
@@ -28,9 +28,9 @@ type taskRow struct {
 }
 
 // TableName : Names the table this row maps to.
-func (taskRow) TableName() string { return "tasks" }
+func (chatRow) TableName() string { return "chats" }
 
-// summaryRow : The columns of tasks that a listing needs, which is every one
+// summaryRow : The columns of chats that a listing needs, which is every one
 // except the response.
 type summaryRow struct {
 	ID         string     `gorm:"column:id"`
@@ -73,8 +73,8 @@ type userRow struct {
 func (userRow) TableName() string { return "users" }
 
 // toUser : Converts a stored row back into a user.
-func (r *userRow) toUser() *task.User {
-	return &task.User{
+func (r *userRow) toUser() *chat.User {
+	return &chat.User{
 		ID:           r.ID,
 		Username:     r.Username,
 		PasswordHash: r.PasswordHash,
@@ -99,8 +99,8 @@ type clientRow struct {
 func (clientRow) TableName() string { return "clients" }
 
 // toClient : Converts a stored row back into a client.
-func (r *clientRow) toClient() *task.Client {
-	return &task.Client{
+func (r *clientRow) toClient() *chat.Client {
+	return &chat.Client{
 		ID:              r.ID,
 		UserID:          value(r.UserID),
 		Name:            r.Name,
@@ -116,8 +116,8 @@ func (r *clientRow) toClient() *task.Client {
 func (sessionRow) TableName() string { return "sessions" }
 
 // toSession : Converts a stored row back into a session.
-func (r *sessionRow) toSession() task.Session {
-	return task.Session{
+func (r *sessionRow) toSession() chat.Session {
+	return chat.Session{
 		ID:        r.ID,
 		UserID:    value(r.UserID),
 		Title:     r.Title,
@@ -126,9 +126,9 @@ func (r *sessionRow) toSession() task.Session {
 	}
 }
 
-// messageRow : The task_messages table, as GORM sees it.
+// messageRow : The chat_updates table, as GORM sees it.
 type messageRow struct {
-	TaskID    string    `gorm:"column:task_id;primaryKey"`
+	ChatID    string    `gorm:"column:chat_id;primaryKey"`
 	Seq       int       `gorm:"column:seq;primaryKey"`
 	Kind      string    `gorm:"column:kind"`
 	Text      string    `gorm:"column:text"`
@@ -136,14 +136,14 @@ type messageRow struct {
 }
 
 // TableName : Names the table this row maps to.
-func (messageRow) TableName() string { return "task_messages" }
+func (messageRow) TableName() string { return "chat_updates" }
 
-// toRow : Converts a task into the row that stores it.
+// toRow : Converts a chat into the row that stores it.
 //
 // An empty response or error becomes NULL rather than an empty string, so
 // that "produced nothing" and "not finished" read the same way in the table.
-func toRow(t *task.Task) *taskRow {
-	return &taskRow{
+func toRow(t *chat.Chat) *chatRow {
+	return &chatRow{
 		ID:         t.ID,
 		SessionID:  nullable(t.SessionID),
 		Prompt:     t.Prompt,
@@ -157,13 +157,13 @@ func toRow(t *task.Task) *taskRow {
 	}
 }
 
-// toTask : Converts a stored row back into a task.
-func (r *taskRow) toTask() *task.Task {
-	return &task.Task{
+// toChat : Converts a stored row back into a chat.
+func (r *chatRow) toChat() *chat.Chat {
+	return &chat.Chat{
 		ID:         r.ID,
 		SessionID:  value(r.SessionID),
 		Prompt:     r.Prompt,
-		Status:     task.Status(r.Status),
+		Status:     chat.Status(r.Status),
 		Response:   value(r.Response),
 		Error:      value(r.Error),
 		CreatedAt:  r.CreatedAt.UTC(),
@@ -174,12 +174,12 @@ func (r *taskRow) toTask() *task.Task {
 }
 
 // toSummary : Converts a listing row into a summary.
-func (r *summaryRow) toSummary() task.Summary {
-	return task.Summary{
+func (r *summaryRow) toSummary() chat.Summary {
+	return chat.Summary{
 		ID:         r.ID,
 		SessionID:  value(r.SessionID),
 		Prompt:     r.Prompt,
-		Status:     task.Status(r.Status),
+		Status:     chat.Status(r.Status),
 		Error:      value(r.Error),
 		CreatedAt:  r.CreatedAt.UTC(),
 		UpdatedAt:  r.UpdatedAt.UTC(),
@@ -189,9 +189,9 @@ func (r *summaryRow) toSummary() task.Summary {
 }
 
 // toMessage : Converts a stored row into a message.
-func (r *messageRow) toMessage() task.Message {
-	return task.Message{
-		TaskID:    r.TaskID,
+func (r *messageRow) toMessage() chat.Message {
+	return chat.Message{
+		ChatID:    r.ChatID,
 		Seq:       r.Seq,
 		Kind:      r.Kind,
 		Text:      r.Text,

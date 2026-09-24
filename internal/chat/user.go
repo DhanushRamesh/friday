@@ -1,4 +1,4 @@
-package task
+package chat
 
 import (
 	"errors"
@@ -30,9 +30,9 @@ var usernamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 var (
 	// ErrInvalidUsername : The username was empty, too long, or held
 	// characters that are not allowed.
-	ErrInvalidUsername = errors.New("task: username is not valid")
+	ErrInvalidUsername = errors.New("chat: username is not valid")
 	// ErrUsernameTaken : Another user already has that username.
-	ErrUsernameTaken = errors.New("task: username is taken")
+	ErrUsernameTaken = errors.New("chat: username is taken")
 )
 
 // User : The person FRIDAY belongs to.
@@ -63,7 +63,7 @@ func NewUser(username, passwordHash string) (*User, error) {
 		return nil, ErrInvalidUsername
 	}
 	if passwordHash == "" {
-		return nil, errors.New("task: a password hash is required")
+		return nil, errors.New("chat: a password hash is required")
 	}
 
 	created := now()

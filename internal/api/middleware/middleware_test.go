@@ -1,26 +1,57 @@
-package api
+package middleware_test
 
 import (
+	"bytes"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
+	chimw "github.com/go-chi/chi/v5/middleware"
+
+	"github.com/DhanushRamesh/friday/internal/api/apitest"
+	"github.com/DhanushRamesh/friday/internal/api/middleware"
+	"github.com/DhanushRamesh/friday/internal/logging"
 )
+
+// newRouter : Builds a router carrying the whole middleware stack in the
+// order the server applies it, and returns where it logs.
+//
+// Built here rather than taken from a running server so that these tests
+// cover the middleware alone: a failure means the middleware is wrong, not
+// that something was mounted behind it wrongly.
+func newRouter(t *testing.T) (chi.Router, *slog.Logger, *bytes.Buffer) {
+	t.Helper()
+
+	buf := &bytes.Buffer{}
+	logger, err := logging.New(buf, logging.Config{Level: "debug"})
+	if err != nil {
+		t.Fatalf("logging.New: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Use(chimw.RequestID)
+	r.Use(middleware.RequestContext)
+	r.Use(middleware.RequestLogger(logger.Logger))
+	r.Use(middleware.Recoverer(logger.Logger))
+	return r, logger.Logger, buf
+}
 
 // A handler logging through the request context must produce the same
 // request_id as the middleware's own request record.
 func TestRequestIDReachesHandlerLogs(t *testing.T) {
-	s, buf := newTestServer(t, stubPinger{})
-
-	s.router.Get("/probe", func(w http.ResponseWriter, r *http.Request) {
-		s.logger.InfoContext(r.Context(), "handler work")
+	r, logger, buf := newRouter(t)
+	r.Get("/probe", func(w http.ResponseWriter, req *http.Request) {
+		logger.InfoContext(req.Context(), "handler work")
 		w.WriteHeader(http.StatusOK)
 	})
 
-	s.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/probe", nil))
+	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/probe", nil))
 
-	got := records(t, buf)
+	got := apitest.Records(t, buf)
 	if len(got) != 2 {
 		t.Fatalf("got %d records, want 2 (handler + request): %v", len(got), got)
 	}
@@ -35,6 +66,7 @@ func TestRequestIDReachesHandlerLogs(t *testing.T) {
 	}
 }
 
+// Alerting keys on the level alone, so the level must follow the status.
 func TestRequestLoggerLevelsByStatus(t *testing.T) {
 	cases := []struct {
 		path      string
@@ -44,19 +76,24 @@ func TestRequestLoggerLevelsByStatus(t *testing.T) {
 		{"/probe", http.StatusOK, "INFO"},
 		{"/probe", http.StatusNotFound, "WARN"},
 		{"/probe", http.StatusInternalServerError, "ERROR"},
+		// Health checks are polled continuously; at info they would crowd out
+		// real traffic.
 		{"/health", http.StatusOK, "DEBUG"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.path+"/"+http.StatusText(tc.status), func(t *testing.T) {
-			s, buf := newTestServer(t, stubPinger{})
+			buf := &bytes.Buffer{}
+			logger, err := logging.New(buf, logging.Config{Level: "debug"})
+			if err != nil {
+				t.Fatalf("logging.New: %v", err)
+			}
 
-			handler := s.requestLogger(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(tc.status)
-			}))
+			handler := middleware.RequestLogger(logger.Logger)(http.HandlerFunc(
+				func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(tc.status) }))
 			handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, tc.path, nil))
 
-			got := records(t, buf)
+			got := apitest.Records(t, buf)
 			if len(got) != 1 {
 				t.Fatalf("got %d records, want 1", len(got))
 			}
@@ -71,14 +108,13 @@ func TestRequestLoggerLevelsByStatus(t *testing.T) {
 }
 
 func TestRecovererLogsAndReturns500(t *testing.T) {
-	s, buf := newTestServer(t, stubPinger{})
-
-	s.router.Get("/boom", func(w http.ResponseWriter, r *http.Request) {
+	r, _, buf := newRouter(t)
+	r.Get("/boom", func(w http.ResponseWriter, req *http.Request) {
 		panic("tool registry not initialised")
 	})
 
 	rec := httptest.NewRecorder()
-	s.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/boom", nil))
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/boom", nil))
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want 500", rec.Code)
@@ -88,9 +124,9 @@ func TestRecovererLogsAndReturns500(t *testing.T) {
 	}
 
 	var panicRec map[string]any
-	for _, r := range records(t, buf) {
-		if r["msg"] == "panic recovered" {
-			panicRec = r
+	for _, record := range apitest.Records(t, buf) {
+		if record["msg"] == "panic recovered" {
+			panicRec = record
 		}
 	}
 	if panicRec == nil {
@@ -110,11 +146,14 @@ func TestRecovererLogsAndReturns500(t *testing.T) {
 // http.ErrAbortHandler is net/http's way of aborting a response; swallowing it
 // would turn a deliberate abort into a spurious 500.
 func TestRecovererRepanicsOnErrAbortHandler(t *testing.T) {
-	s, _ := newTestServer(t, stubPinger{})
+	buf := &bytes.Buffer{}
+	logger, err := logging.New(buf, logging.Config{Level: "debug"})
+	if err != nil {
+		t.Fatalf("logging.New: %v", err)
+	}
 
-	handler := s.recoverer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		panic(http.ErrAbortHandler)
-	}))
+	handler := middleware.Recoverer(logger.Logger)(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) { panic(http.ErrAbortHandler) }))
 
 	defer func() {
 		if rec := recover(); rec != http.ErrAbortHandler {
@@ -127,13 +166,13 @@ func TestRecovererRepanicsOnErrAbortHandler(t *testing.T) {
 
 // The panic value must not reach the client.
 func TestRecovererDoesNotLeakPanicToClient(t *testing.T) {
-	s, _ := newTestServer(t, stubPinger{})
-	s.router.Get("/boom", func(w http.ResponseWriter, r *http.Request) {
+	r, _, _ := newRouter(t)
+	r.Get("/boom", func(w http.ResponseWriter, req *http.Request) {
 		panic(errors.New("dsn=user:password@tcp(host)/db"))
 	})
 
 	rec := httptest.NewRecorder()
-	s.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/boom", nil))
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/boom", nil))
 
 	if strings.Contains(rec.Body.String(), "password") {
 		t.Errorf("panic detail leaked to the client: %s", rec.Body.String())

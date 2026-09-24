@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DhanushRamesh/friday/internal/chat"
+	chatmysql "github.com/DhanushRamesh/friday/internal/chat/mysql"
 	"github.com/DhanushRamesh/friday/internal/config"
 	"github.com/DhanushRamesh/friday/internal/storage"
-	"github.com/DhanushRamesh/friday/internal/task"
-	taskmysql "github.com/DhanushRamesh/friday/internal/task/mysql"
 )
 
 // discard : A logger that writes nowhere.
@@ -21,7 +21,7 @@ func discard() *slog.Logger { return slog.New(slog.NewJSONHandler(io.Discard, ni
 // newRepository : Opens the development database, migrates it, and returns a
 // repository. It skips the test when MySQL is not reachable, so the suite
 // still runs on a bare checkout.
-func newRepository(t *testing.T) *taskmysql.Repository {
+func newRepository(t *testing.T) *chatmysql.Repository {
 	t.Helper()
 
 	cfg, err := config.Load("", func(key string) (string, bool) {
@@ -46,32 +46,32 @@ func newRepository(t *testing.T) *taskmysql.Repository {
 	if err := storage.Migrate(ctx, db, discard()); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	return taskmysql.NewRepository(db)
+	return chatmysql.NewRepository(db)
 }
 
-// storedSession : Creates a session for a test to attach tasks to.
-func storedSession(t *testing.T, r *taskmysql.Repository) string {
+// storedSession : Creates a session for a test to attach chats to.
+func storedSession(t *testing.T, r *chatmysql.Repository) string {
 	t.Helper()
-	owner, err := task.NewUser("tester"+task.NewUserID()[4:14], "hash")
+	owner, err := chat.NewUser("tester"+chat.NewUserID()[4:14], "hash")
 	if err != nil {
-		t.Fatalf("task.NewUser: %v", err)
+		t.Fatalf("chat.NewUser: %v", err)
 	}
 	if err := r.CreateUser(context.Background(), owner); err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
-	c := task.NewSession(owner.ID, "")
+	c := chat.NewSession(owner.ID, "")
 	if err := r.CreateSession(context.Background(), c); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 	return c.ID
 }
 
-// storedTask : Creates a task, stores it, and removes it when the test ends.
-func storedTask(t *testing.T, r *taskmysql.Repository, prompt string) *task.Task {
+// storedChat : Creates a chat, stores it, and removes it when the test ends.
+func storedChat(t *testing.T, r *chatmysql.Repository, prompt string) *chat.Chat {
 	t.Helper()
-	tk, err := task.New(storedSession(t, r), prompt)
+	tk, err := chat.New(storedSession(t, r), prompt)
 	if err != nil {
-		t.Fatalf("task.New: %v", err)
+		t.Fatalf("chat.New: %v", err)
 	}
 	if err := r.Create(context.Background(), tk); err != nil {
 		t.Fatalf("Create: %v", err)
@@ -83,7 +83,7 @@ func TestCreateAndGetRoundTrip(t *testing.T) {
 	r := newRepository(t)
 	ctx := context.Background()
 
-	tk := storedTask(t, r, "check my merge requests")
+	tk := storedChat(t, r, "check my merge requests")
 
 	got, err := r.Get(ctx, tk.ID)
 	if err != nil {
@@ -91,23 +91,23 @@ func TestCreateAndGetRoundTrip(t *testing.T) {
 	}
 
 	if got.ID != tk.ID || got.Prompt != tk.Prompt || got.Status != tk.Status {
-		t.Errorf("round trip changed the task:\n stored %+v\n loaded %+v", tk, got)
+		t.Errorf("round trip changed the chat:\n stored %+v\n loaded %+v", tk, got)
 	}
 	if got.Response != "" || got.Error != "" {
-		t.Errorf("a new task came back with a response or error: %+v", got)
+		t.Errorf("a new chat came back with a response or error: %+v", got)
 	}
 	if got.StartedAt != nil || got.FinishedAt != nil {
-		t.Error("a pending task came back with start or finish times")
+		t.Error("a pending chat came back with start or finish times")
 	}
 }
 
 // GORM sets CreatedAt and UpdatedAt automatically unless told not to. The
-// domain owns those times, and a task's own history must match its row.
+// domain owns those times, and a chat's own history must match its row.
 func TestTimestampsAreNotOverwrittenByGORM(t *testing.T) {
 	r := newRepository(t)
 	ctx := context.Background()
 
-	tk := storedTask(t, r, "keep my timestamps")
+	tk := storedChat(t, r, "keep my timestamps")
 
 	got, err := r.Get(ctx, tk.ID)
 	if err != nil {
@@ -125,12 +125,12 @@ func TestTimestampsAreNotOverwrittenByGORM(t *testing.T) {
 	}
 }
 
-// Milliseconds must survive. Without them a task's duration is unmeasurable.
+// Milliseconds must survive. Without them a chat's duration is unmeasurable.
 func TestSubSecondPrecisionSurvives(t *testing.T) {
 	r := newRepository(t)
 	ctx := context.Background()
 
-	tk := storedTask(t, r, "measure me")
+	tk := storedChat(t, r, "measure me")
 
 	got, err := r.Get(ctx, tk.ID)
 	if err != nil {
@@ -149,7 +149,7 @@ func TestUpdatePersistsTheWholeLifecycle(t *testing.T) {
 	r := newRepository(t)
 	ctx := context.Background()
 
-	tk := storedTask(t, r, "run to completion")
+	tk := storedChat(t, r, "run to completion")
 
 	if err := tk.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -162,7 +162,7 @@ func TestUpdatePersistsTheWholeLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if running.Status != task.StatusRunning {
+	if running.Status != chat.StatusRunning {
 		t.Errorf("Status = %q, want running", running.Status)
 	}
 	if running.StartedAt == nil {
@@ -181,7 +181,7 @@ func TestUpdatePersistsTheWholeLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if done.Status != task.StatusCompleted {
+	if done.Status != chat.StatusCompleted {
 		t.Errorf("Status = %q, want completed", done.Status)
 	}
 	if done.Response != answer {
@@ -192,22 +192,22 @@ func TestUpdatePersistsTheWholeLifecycle(t *testing.T) {
 	}
 }
 
-func TestGetAndUpdateReportMissingTasks(t *testing.T) {
+func TestGetAndUpdateReportMissingChats(t *testing.T) {
 	r := newRepository(t)
 	ctx := context.Background()
 
-	missing := task.NewID()
+	missing := chat.NewID()
 
-	if _, err := r.Get(ctx, missing); !errors.Is(err, task.ErrNotFound) {
-		t.Errorf("Get on a missing task: error = %v, want ErrNotFound", err)
+	if _, err := r.Get(ctx, missing); !errors.Is(err, chat.ErrNotFound) {
+		t.Errorf("Get on a missing chat: error = %v, want ErrNotFound", err)
 	}
 
-	ghost, err := task.New("", "never stored")
+	ghost, err := chat.New("", "never stored")
 	if err != nil {
-		t.Fatalf("task.New: %v", err)
+		t.Fatalf("chat.New: %v", err)
 	}
-	if err := r.Update(ctx, ghost); !errors.Is(err, task.ErrNotFound) {
-		t.Errorf("Update on a missing task: error = %v, want ErrNotFound", err)
+	if err := r.Update(ctx, ghost); !errors.Is(err, chat.ErrNotFound) {
+		t.Errorf("Update on a missing chat: error = %v, want ErrNotFound", err)
 	}
 }
 
@@ -217,7 +217,7 @@ func TestListOmitsResponses(t *testing.T) {
 	r := newRepository(t)
 	ctx := context.Background()
 
-	tk := storedTask(t, r, "list me")
+	tk := storedChat(t, r, "list me")
 	if err := tk.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -228,7 +228,7 @@ func TestListOmitsResponses(t *testing.T) {
 		t.Fatalf("Update: %v", err)
 	}
 
-	got, err := r.List(ctx, task.Filter{Limit: 10})
+	got, err := r.List(ctx, chat.Filter{Limit: 10})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -237,13 +237,13 @@ func TestListOmitsResponses(t *testing.T) {
 	for _, s := range got {
 		if s.ID == tk.ID {
 			found = true
-			if s.Status != task.StatusCompleted {
+			if s.Status != chat.StatusCompleted {
 				t.Errorf("Status = %q, want completed", s.Status)
 			}
 		}
 	}
 	if !found {
-		t.Fatalf("task %s missing from the listing", tk.ID)
+		t.Fatalf("chat %s missing from the listing", tk.ID)
 	}
 	// Summary has no Response field at all, so this is a compile-time
 	// guarantee as much as a runtime one. Confirm the full read still has it.
@@ -262,15 +262,15 @@ func TestListOrdersNewestFirstAndHonoursLimits(t *testing.T) {
 
 	var created []string
 	for i := 0; i < 3; i++ {
-		created = append(created, storedTask(t, r, "ordering probe").ID)
+		created = append(created, storedChat(t, r, "ordering probe").ID)
 	}
 
-	got, err := r.List(ctx, task.Filter{Limit: 3})
+	got, err := r.List(ctx, chat.Filter{Limit: 3})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
 	if len(got) != 3 {
-		t.Fatalf("got %d tasks, want 3", len(got))
+		t.Fatalf("got %d chats, want 3", len(got))
 	}
 	// The three just created are the newest, most recent first.
 	for i, want := range []string{created[2], created[1], created[0]} {
@@ -280,12 +280,12 @@ func TestListOrdersNewestFirstAndHonoursLimits(t *testing.T) {
 	}
 
 	// A limit beyond the maximum is capped rather than obeyed.
-	capped, err := r.List(ctx, task.Filter{Limit: task.MaxListLimit + 500})
+	capped, err := r.List(ctx, chat.Filter{Limit: chat.MaxListLimit + 500})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if len(capped) > task.MaxListLimit {
-		t.Errorf("got %d tasks, want no more than %d", len(capped), task.MaxListLimit)
+	if len(capped) > chat.MaxListLimit {
+		t.Errorf("got %d chats, want no more than %d", len(capped), chat.MaxListLimit)
 	}
 }
 
@@ -293,9 +293,9 @@ func TestListFiltersByStatus(t *testing.T) {
 	r := newRepository(t)
 	ctx := context.Background()
 
-	pending := storedTask(t, r, "stays pending")
+	pending := storedChat(t, r, "stays pending")
 
-	cancelled := storedTask(t, r, "gets cancelled")
+	cancelled := storedChat(t, r, "gets cancelled")
 	if err := cancelled.Cancel(); err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
@@ -303,15 +303,15 @@ func TestListFiltersByStatus(t *testing.T) {
 		t.Fatalf("Update: %v", err)
 	}
 
-	got, err := r.List(ctx, task.Filter{Status: task.StatusCancelled, Limit: 100})
+	got, err := r.List(ctx, chat.Filter{Status: chat.StatusCancelled, Limit: 100})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
 
 	var sawCancelled, sawPending bool
 	for _, s := range got {
-		if s.Status != task.StatusCancelled {
-			t.Errorf("listing by cancelled returned a %s task", s.Status)
+		if s.Status != chat.StatusCancelled {
+			t.Errorf("listing by cancelled returned a %s chat", s.Status)
 		}
 		switch s.ID {
 		case cancelled.ID:
@@ -321,10 +321,10 @@ func TestListFiltersByStatus(t *testing.T) {
 		}
 	}
 	if !sawCancelled {
-		t.Error("the cancelled task is missing from its own listing")
+		t.Error("the cancelled chat is missing from its own listing")
 	}
 	if sawPending {
-		t.Error("a pending task appeared in a listing filtered to cancelled")
+		t.Error("a pending chat appeared in a listing filtered to cancelled")
 	}
 }
 
@@ -332,7 +332,7 @@ func TestAppendMessageNumbersInOrder(t *testing.T) {
 	r := newRepository(t)
 	ctx := context.Background()
 
-	tk := storedTask(t, r, "talk to me")
+	tk := storedChat(t, r, "talk to me")
 
 	texts := []string{"Let me take a look.", "Still working on it.", "Nearly there."}
 	for i, text := range texts {
@@ -365,21 +365,21 @@ func TestAppendMessageNumbersInOrder(t *testing.T) {
 	}
 }
 
-// Messages belong to a task; one cannot be recorded against a task that does
+// Messages belong to a chat; one cannot be recorded against a chat that does
 // not exist.
-func TestAppendMessageRejectsMissingTask(t *testing.T) {
+func TestAppendMessageRejectsMissingChat(t *testing.T) {
 	r := newRepository(t)
 
-	_, err := r.AppendMessage(context.Background(), task.NewID(), "update", "orphan")
-	if !errors.Is(err, task.ErrNotFound) {
+	_, err := r.AppendMessage(context.Background(), chat.NewID(), "update", "orphan")
+	if !errors.Is(err, chat.ErrNotFound) {
 		t.Errorf("error = %v, want ErrNotFound", err)
 	}
 }
 
-func TestMessagesForATaskWithNoneIsEmpty(t *testing.T) {
+func TestMessagesForAChatWithNoneIsEmpty(t *testing.T) {
 	r := newRepository(t)
 
-	tk := storedTask(t, r, "silent task")
+	tk := storedChat(t, r, "silent chat")
 
 	got, err := r.Messages(context.Background(), tk.ID)
 	if err != nil {
@@ -390,13 +390,13 @@ func TestMessagesForATaskWithNoneIsEmpty(t *testing.T) {
 	}
 }
 
-// A process that stops mid-task leaves rows reading running that nothing will
+// A process that stops mid-chat leaves rows reading running that nothing will
 // ever move.
-func TestFailRunningRecoversInterruptedTasks(t *testing.T) {
+func TestFailRunningRecoversInterruptedChats(t *testing.T) {
 	r := newRepository(t)
 	ctx := context.Background()
 
-	interrupted := storedTask(t, r, "was running when the server died")
+	interrupted := storedChat(t, r, "was running when the server died")
 	if err := interrupted.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -404,7 +404,7 @@ func TestFailRunningRecoversInterruptedTasks(t *testing.T) {
 		t.Fatalf("Update: %v", err)
 	}
 
-	untouched := storedTask(t, r, "still queued")
+	untouched := storedChat(t, r, "still queued")
 
 	const reason = "FRIDAY restarted while this was running."
 	changed, err := r.FailRunning(ctx, reason)
@@ -412,30 +412,30 @@ func TestFailRunningRecoversInterruptedTasks(t *testing.T) {
 		t.Fatalf("FailRunning: %v", err)
 	}
 	if changed < 1 {
-		t.Errorf("FailRunning changed %d tasks, want at least 1", changed)
+		t.Errorf("FailRunning changed %d chats, want at least 1", changed)
 	}
 
 	recovered, err := r.Get(ctx, interrupted.ID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if recovered.Status != task.StatusFailed {
+	if recovered.Status != chat.StatusFailed {
 		t.Errorf("Status = %q, want failed", recovered.Status)
 	}
 	if recovered.Error != reason {
 		t.Errorf("Error = %q, want %q", recovered.Error, reason)
 	}
 	if recovered.FinishedAt == nil {
-		t.Error("FinishedAt not stamped on a recovered task")
+		t.Error("FinishedAt not stamped on a recovered chat")
 	}
 
-	// A queued task was not running, so it must be left alone.
+	// A queued chat was not running, so it must be left alone.
 	stillPending, err := r.Get(ctx, untouched.ID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if stillPending.Status != task.StatusPending {
-		t.Errorf("a pending task became %q; only running tasks should be failed", stillPending.Status)
+	if stillPending.Status != chat.StatusPending {
+		t.Errorf("a pending chat became %q; only running chats should be failed", stillPending.Status)
 	}
 }
 
@@ -446,7 +446,7 @@ func TestUnicodeSurvivesTheRoundTrip(t *testing.T) {
 	ctx := context.Background()
 
 	const prompt = "எனது merge requests சரிபார்க்கவும் 🎧"
-	tk := storedTask(t, r, prompt)
+	tk := storedChat(t, r, prompt)
 
 	got, err := r.Get(ctx, tk.ID)
 	if err != nil {

@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DhanushRamesh/friday/internal/chat"
+	"github.com/DhanushRamesh/friday/internal/chat/memory"
 	"github.com/DhanushRamesh/friday/internal/provider"
 	"github.com/DhanushRamesh/friday/internal/runner"
-	"github.com/DhanushRamesh/friday/internal/task"
 )
 
 // discard : A logger that writes nowhere.
@@ -20,7 +21,7 @@ func discard() *slog.Logger { return slog.New(slog.NewJSONHandler(io.Discard, ni
 // harness : A runner with an in-memory repository and a stub provider.
 type harness struct {
 	runner *runner.Runner
-	repo   *memRepo
+	repo   *memory.Repository
 	convID string
 }
 
@@ -28,7 +29,7 @@ type harness struct {
 func (h *harness) session(t *testing.T) string {
 	t.Helper()
 	if h.convID == "" {
-		c := task.NewSession("", "")
+		c := chat.NewSession("", "")
 		if err := h.repo.CreateSession(context.Background(), c); err != nil {
 			t.Fatalf("CreateSession: %v", err)
 		}
@@ -41,8 +42,9 @@ func (h *harness) session(t *testing.T) string {
 func newHarness(t *testing.T, p provider.Provider, opts runner.Options) *harness {
 	t.Helper()
 
-	repo := newMemRepo()
+	repo := memory.New()
 	opts.Repository = repo
+	opts.Messages = repo
 	opts.Provider = p
 	opts.Logger = discard()
 
@@ -58,12 +60,12 @@ func newHarness(t *testing.T, p provider.Provider, opts runner.Options) *harness
 	return &harness{runner: r, repo: repo}
 }
 
-// submit : Creates and stores a task, then starts it running.
-func (h *harness) submit(t *testing.T, prompt string) *task.Task {
+// submit : Creates and stores a chat, then starts it running.
+func (h *harness) submit(t *testing.T, prompt string) *chat.Chat {
 	t.Helper()
-	tk, err := task.New(h.session(t), prompt)
+	tk, err := chat.New(h.session(t), prompt)
 	if err != nil {
-		t.Fatalf("task.New: %v", err)
+		t.Fatalf("chat.New: %v", err)
 	}
 	if err := h.repo.Create(context.Background(), tk); err != nil {
 		t.Fatalf("Create: %v", err)
@@ -74,11 +76,11 @@ func (h *harness) submit(t *testing.T, prompt string) *task.Task {
 	return tk
 }
 
-// await : Waits for a task to reach one of the given statuses.
-func (h *harness) await(t *testing.T, id string, want ...task.Status) *task.Task {
+// await : Waits for a chat to reach one of the given statuses.
+func (h *harness) await(t *testing.T, id string, want ...chat.Status) *chat.Chat {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
-	var last task.Status
+	var last chat.Status
 
 	for time.Now().Before(deadline) {
 		got, err := h.repo.Get(context.Background(), id)
@@ -93,7 +95,7 @@ func (h *harness) await(t *testing.T, id string, want ...task.Status) *task.Task
 		}
 		time.Sleep(2 * time.Millisecond)
 	}
-	t.Fatalf("task %s stayed %q, waiting for one of %v", id, last, want)
+	t.Fatalf("chat %s stayed %q, waiting for one of %v", id, last, want)
 	return nil
 }
 
@@ -102,9 +104,9 @@ func TestRunToCompletionStoresMessagesAndResult(t *testing.T) {
 	h := newHarness(t, &provider.Stub{Updates: updates}, runner.Options{})
 
 	tk := h.submit(t, "check my merge requests")
-	done := h.await(t, tk.ID, task.StatusCompleted, task.StatusFailed)
+	done := h.await(t, tk.ID, chat.StatusCompleted, chat.StatusFailed)
 
-	if done.Status != task.StatusCompleted {
+	if done.Status != chat.StatusCompleted {
 		t.Fatalf("Status = %q (%s), want completed", done.Status, done.Error)
 	}
 	if !strings.Contains(done.Response, "check my merge requests") {
@@ -115,8 +117,8 @@ func TestRunToCompletionStoresMessagesAndResult(t *testing.T) {
 	}
 
 	// The transient messages are stored; the final one is not, since it lives
-	// in the task's response.
-	got := h.repo.texts(tk.ID)
+	// in the chat's response.
+	got := h.repo.Texts(tk.ID)
 	if len(got) != len(updates) {
 		t.Fatalf("stored %d messages %v, want %d", len(got), got, len(updates))
 	}
@@ -132,34 +134,34 @@ func TestRunToCompletionStoresMessagesAndResult(t *testing.T) {
 	}
 }
 
-func TestProviderFailureFailsTheTask(t *testing.T) {
+func TestProviderFailureFailsTheChat(t *testing.T) {
 	const reason = "The service did not respond in time."
 	h := newHarness(t, &provider.Stub{Updates: []string{"working"}, FailWith: reason}, runner.Options{})
 
 	tk := h.submit(t, "do something")
-	done := h.await(t, tk.ID, task.StatusFailed, task.StatusCompleted)
+	done := h.await(t, tk.ID, chat.StatusFailed, chat.StatusCompleted)
 
-	if done.Status != task.StatusFailed {
+	if done.Status != chat.StatusFailed {
 		t.Fatalf("Status = %q, want failed", done.Status)
 	}
 	if done.Error != reason {
 		t.Errorf("Error = %q, want %q", done.Error, reason)
 	}
 	// Progress before the failure is still worth keeping.
-	if len(h.repo.texts(tk.ID)) != 1 {
-		t.Errorf("stored %v, want the update sent before the failure", h.repo.texts(tk.ID))
+	if len(h.repo.Texts(tk.ID)) != 1 {
+		t.Errorf("stored %v, want the update sent before the failure", h.repo.Texts(tk.ID))
 	}
 }
 
-// A provider that cannot start at all must fail the task with something a
+// A provider that cannot start at all must fail the chat with something a
 // user can hear, not a raw error.
-func TestProviderThatWillNotStartFailsTheTask(t *testing.T) {
+func TestProviderThatWillNotStartFailsTheChat(t *testing.T) {
 	h := newHarness(t, &refusingProvider{}, runner.Options{})
 
 	tk := h.submit(t, "do something")
-	done := h.await(t, tk.ID, task.StatusFailed, task.StatusCompleted)
+	done := h.await(t, tk.ID, chat.StatusFailed, chat.StatusCompleted)
 
-	if done.Status != task.StatusFailed {
+	if done.Status != chat.StatusFailed {
 		t.Fatalf("Status = %q, want failed", done.Status)
 	}
 	if done.Error == "" {
@@ -170,66 +172,67 @@ func TestProviderThatWillNotStartFailsTheTask(t *testing.T) {
 	}
 }
 
-// Cancelling mid-run must stop the task and record it, which is what saying
+// Cancelling mid-run must stop the chat and record it, which is what saying
 // "stop" while FRIDAY is speaking will do.
-func TestCancelStopsARunningTask(t *testing.T) {
+func TestCancelStopsARunningChat(t *testing.T) {
 	h := newHarness(t, &provider.Stub{
 		Updates: []string{"one", "two", "three", "four", "five"},
 		Delay:   30 * time.Millisecond,
 	}, runner.Options{})
 
 	tk := h.submit(t, "a long job")
-	h.await(t, tk.ID, task.StatusRunning)
+	h.await(t, tk.ID, chat.StatusRunning)
 
 	if !h.runner.Cancel(tk.ID) {
-		t.Fatal("Cancel reported no running task")
+		t.Fatal("Cancel reported no running chat")
 	}
 
-	done := h.await(t, tk.ID, task.StatusCancelled, task.StatusCompleted, task.StatusFailed)
-	if done.Status != task.StatusCancelled {
+	done := h.await(t, tk.ID, chat.StatusCancelled, chat.StatusCompleted, chat.StatusFailed)
+	if done.Status != chat.StatusCancelled {
 		t.Errorf("Status = %q, want cancelled", done.Status)
 	}
 	if done.Response != "" {
-		t.Errorf("a cancelled task has a response: %q", done.Response)
+		t.Errorf("a cancelled chat has a response: %q", done.Response)
 	}
 	if done.FinishedAt == nil {
-		t.Error("finish time not recorded for a cancelled task")
+		t.Error("finish time not recorded for a cancelled chat")
 	}
 }
 
 func TestCancelReportsWhenNothingIsRunning(t *testing.T) {
 	h := newHarness(t, &provider.Stub{}, runner.Options{})
 
-	if h.runner.Cancel(task.NewID()) {
-		t.Error("Cancel reported stopping a task that was never running")
+	if h.runner.Cancel(chat.NewID()) {
+		t.Error("Cancel reported stopping a chat that was never running")
 	}
 }
 
-// A task that outlives its deadline must be stopped and explained, rather
+// A chat that outlives its deadline must be stopped and explained, rather
 // than holding its slot until the process restarts.
-func TestTaskExceedingItsDeadlineFails(t *testing.T) {
+func TestChatExceedingItsDeadlineFails(t *testing.T) {
 	h := newHarness(t, &provider.Stub{
 		Updates: []string{"one", "two", "three", "four", "five", "six"},
 		Delay:   50 * time.Millisecond,
-	}, runner.Options{TaskTimeout: 40 * time.Millisecond})
+	}, runner.Options{ChatTimeout: 40 * time.Millisecond})
 
 	tk := h.submit(t, "a job that runs too long")
-	done := h.await(t, tk.ID, task.StatusFailed, task.StatusCompleted, task.StatusCancelled)
+	done := h.await(t, tk.ID, chat.StatusFailed, chat.StatusCompleted, chat.StatusCancelled)
 
-	if done.Status != task.StatusFailed {
+	if done.Status != chat.StatusFailed {
 		t.Fatalf("Status = %q, want failed", done.Status)
 	}
 	if !strings.Contains(strings.ToLower(done.Error), "too long") {
-		t.Errorf("Error = %q, want it to explain the task took too long", done.Error)
+		t.Errorf("Error = %q, want it to explain the chat took too long", done.Error)
 	}
 }
 
-// Shutdown must leave no task stuck running, and must say what happened
+// Shutdown must leave no chat stuck running, and must say what happened
 // rather than looking like the user cancelled it.
-func TestShutdownStopsAndRecordsRunningTasks(t *testing.T) {
-	repo := newMemRepo()
+func TestShutdownStopsAndRecordsRunningChats(t *testing.T) {
+	repo := memory.New()
 	r, err := runner.New(runner.Options{
 		Repository: repo,
+		Messages:   repo,
 		Provider:   &provider.Stub{Updates: []string{"a", "b", "c", "d"}, Delay: 40 * time.Millisecond},
 		Logger:     discard(),
 	})
@@ -237,9 +240,9 @@ func TestShutdownStopsAndRecordsRunningTasks(t *testing.T) {
 		t.Fatalf("runner.New: %v", err)
 	}
 
-	tk, err := task.New("", "interrupted by shutdown")
+	tk, err := chat.New("", "interrupted by shutdown")
 	if err != nil {
-		t.Fatalf("task.New: %v", err)
+		t.Fatalf("chat.New: %v", err)
 	}
 	if err := repo.Create(context.Background(), tk); err != nil {
 		t.Fatalf("Create: %v", err)
@@ -252,7 +255,7 @@ func TestShutdownStopsAndRecordsRunningTasks(t *testing.T) {
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		got, _ := repo.Get(context.Background(), tk.ID)
-		if got.Status == task.StatusRunning {
+		if got.Status == chat.StatusRunning {
 			break
 		}
 		time.Sleep(2 * time.Millisecond)
@@ -281,13 +284,13 @@ func TestShutdownStopsAndRecordsRunningTasks(t *testing.T) {
 	}
 }
 
-func TestRecoverFailsTasksLeftRunning(t *testing.T) {
+func TestRecoverFailsChatsLeftRunning(t *testing.T) {
 	h := newHarness(t, &provider.Stub{}, runner.Options{})
 	ctx := context.Background()
 
-	stranded, err := task.New("", "was running when the process died")
+	stranded, err := chat.New("", "was running when the process died")
 	if err != nil {
-		t.Fatalf("task.New: %v", err)
+		t.Fatalf("chat.New: %v", err)
 	}
 	if err := stranded.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -304,7 +307,7 @@ func TestRecoverFailsTasksLeftRunning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if got.Status != task.StatusFailed {
+	if got.Status != chat.StatusFailed {
 		t.Errorf("Status = %q, want failed", got.Status)
 	}
 	if !strings.Contains(strings.ToLower(got.Error), "restarted") {
@@ -312,7 +315,7 @@ func TestRecoverFailsTasksLeftRunning(t *testing.T) {
 	}
 }
 
-// Only MaxConcurrent tasks run at once; the rest stay pending until a slot
+// Only MaxConcurrent chats run at once; the rest stay pending until a slot
 // frees, rather than appearing to run while they wait.
 func TestConcurrencyIsLimited(t *testing.T) {
 	const limit = 2
@@ -336,14 +339,14 @@ func TestConcurrencyIsLimited(t *testing.T) {
 				t.Fatalf("Get: %v", err)
 			}
 			switch got.Status {
-			case task.StatusRunning:
+			case chat.StatusRunning:
 				running++
-			case task.StatusPending:
+			case chat.StatusPending:
 				pending++
 			}
 		}
 		if running > limit {
-			t.Fatalf("%d tasks running at once, want no more than %d", running, limit)
+			t.Fatalf("%d chats running at once, want no more than %d", running, limit)
 		}
 		if pending > 0 && running == limit {
 			sawPending = true
@@ -351,30 +354,43 @@ func TestConcurrencyIsLimited(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	if !sawPending {
-		t.Error("never observed a task waiting while the limit was in use")
+		t.Error("never observed a chat waiting while the limit was in use")
 	}
 }
 
 // A message that cannot be stored must not lose the answer with it.
-func TestUnstorableMessageDoesNotFailTheTask(t *testing.T) {
+func TestUnstorableMessageDoesNotFailTheChat(t *testing.T) {
 	h := newHarness(t, &provider.Stub{Updates: []string{"progress"}}, runner.Options{})
-	h.repo.appendErr = errors.New("messages table is full")
+	h.repo.FailAppends(errors.New("messages table is full"))
 
 	tk := h.submit(t, "answer me anyway")
-	done := h.await(t, tk.ID, task.StatusCompleted, task.StatusFailed)
+	done := h.await(t, tk.ID, chat.StatusCompleted, chat.StatusFailed)
 
-	if done.Status != task.StatusCompleted {
-		t.Errorf("Status = %q, want the task to complete despite the message failing", done.Status)
+	if done.Status != chat.StatusCompleted {
+		t.Errorf("Status = %q, want the chat to complete despite the message failing", done.Status)
 	}
 }
 
 func TestNewRequiresItsDependencies(t *testing.T) {
-	cases := map[string]runner.Options{
-		"no repository": {Provider: &provider.Stub{}, Logger: discard()},
-		"no provider":   {Repository: newMemRepo(), Logger: discard()},
-		"no logger":     {Repository: newMemRepo(), Provider: &provider.Stub{}},
+	full := func() runner.Options {
+		repo := memory.New()
+		return runner.Options{
+			Repository: repo,
+			Messages:   repo,
+			Provider:   &provider.Stub{},
+			Logger:     discard(),
+		}
 	}
-	for name, opts := range cases {
+
+	cases := map[string]func(*runner.Options){
+		"no repository": func(o *runner.Options) { o.Repository = nil },
+		"no provider":   func(o *runner.Options) { o.Provider = nil },
+		"no logger":     func(o *runner.Options) { o.Logger = nil },
+		"no messages":   func(o *runner.Options) { o.Messages = nil },
+	}
+	for name, remove := range cases {
+		opts := full()
+		remove(&opts)
 		if _, err := runner.New(opts); err == nil {
 			t.Errorf("New with %s: want an error, got nil", name)
 		}
@@ -384,7 +400,7 @@ func TestNewRequiresItsDependencies(t *testing.T) {
 func TestDefaultsApplied(t *testing.T) {
 	h := newHarness(t, &provider.Stub{}, runner.Options{})
 	tk := h.submit(t, "use the defaults")
-	if got := h.await(t, tk.ID, task.StatusCompleted, task.StatusFailed); got.Status != task.StatusCompleted {
+	if got := h.await(t, tk.ID, chat.StatusCompleted, chat.StatusFailed); got.Status != chat.StatusCompleted {
 		t.Errorf("Status = %q, want completed with default settings", got.Status)
 	}
 }
@@ -400,17 +416,17 @@ func (refusingProvider) Run(context.Context, provider.Request) (<-chan provider.
 	return nil, errors.New("refusing: no credentials configured")
 }
 
-// A task waiting for a slot must be cancellable, not only one already
+// A chat waiting for a slot must be cancellable, not only one already
 // running. Saying "stop" should work whichever it is.
-func TestCancelStopsAQueuedTask(t *testing.T) {
+func TestCancelStopsAQueuedChat(t *testing.T) {
 	h := newHarness(t, &provider.Stub{
 		Updates: []string{"a", "b", "c"},
 		Delay:   80 * time.Millisecond,
 	}, runner.Options{MaxConcurrent: 1})
 
-	// The first task takes the only slot.
+	// The first chat takes the only slot.
 	blocker := h.submit(t, "holds the slot")
-	h.await(t, blocker.ID, task.StatusRunning)
+	h.await(t, blocker.ID, chat.StatusRunning)
 
 	queued := h.submit(t, "waits behind it")
 
@@ -419,19 +435,19 @@ func TestCancelStopsAQueuedTask(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if got.Status != task.StatusPending {
+	if got.Status != chat.StatusPending {
 		t.Fatalf("Status = %q, want pending while waiting for a slot", got.Status)
 	}
 
 	if !h.runner.Cancel(queued.ID) {
-		t.Fatal("Cancel reported nothing to stop for a queued task")
+		t.Fatal("Cancel reported nothing to stop for a queued chat")
 	}
 
-	done := h.await(t, queued.ID, task.StatusCancelled, task.StatusRunning, task.StatusCompleted)
-	if done.Status != task.StatusCancelled {
+	done := h.await(t, queued.ID, chat.StatusCancelled, chat.StatusRunning, chat.StatusCompleted)
+	if done.Status != chat.StatusCancelled {
 		t.Errorf("Status = %q, want cancelled", done.Status)
 	}
 	if done.StartedAt != nil {
-		t.Error("a task cancelled before running has a start time")
+		t.Error("a chat cancelled before running has a start time")
 	}
 }

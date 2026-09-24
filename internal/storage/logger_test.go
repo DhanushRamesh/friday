@@ -98,7 +98,7 @@ func TestRecordNotFoundIsNotAnError(t *testing.T) {
 // Statements carry interpolated parameters, which for FRIDAY means user
 // messages and tool output. They must not appear unless explicitly enabled.
 func TestStatementsOmittedUnlessEnabled(t *testing.T) {
-	const statement = `INSERT INTO tasks (input) VALUES ('private user message')`
+	const statement = `INSERT INTO chats (input) VALUES ('private user message')`
 
 	logger, buf := captureLogger(t)
 	trace(newGormLogger(logger, time.Second, false), time.Millisecond, statement, 1, nil)

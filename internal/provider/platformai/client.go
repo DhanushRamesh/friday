@@ -73,7 +73,7 @@ func (e *APIError) Error() string {
 // accessToken : Returns a valid token, refreshing it when it is missing or
 // close to expiry.
 //
-// The whole refresh is serialised, so concurrent tasks share one token rather
+// The whole refresh is serialised, so concurrent chats share one token rather
 // than each fetching their own.
 func (p *Provider) accessToken(ctx context.Context) (string, error) {
 	p.tokenMu.Lock()
@@ -82,6 +82,26 @@ func (p *Provider) accessToken(ctx context.Context) (string, error) {
 	if p.token != "" && time.Now().Before(p.tokenExpiry.Add(-tokenRefreshMargin)) {
 		return p.token, nil
 	}
+	return p.mintToken(ctx)
+}
+
+// forgetToken : Drops the cached token, so the next call mints a new one.
+//
+// Called when the service refuses one that had not expired as far as we
+// knew. That happens: Zoho invalidates an access token when another is
+// issued for the same client, so authorising from anywhere else — or a
+// second copy of FRIDAY running — silently revokes ours long before the
+// expiry we calculated.
+func (p *Provider) forgetToken() {
+	p.tokenMu.Lock()
+	defer p.tokenMu.Unlock()
+	p.token = ""
+	p.tokenExpiry = time.Time{}
+}
+
+// mintToken : Exchanges the refresh token for a new access token. The
+// caller holds tokenMu.
+func (p *Provider) mintToken(ctx context.Context) (string, error) {
 
 	params := url.Values{}
 	params.Set("grant_type", "refresh_token")
@@ -127,17 +147,45 @@ func (p *Provider) accessToken(ctx context.Context) (string, error) {
 
 // chat : Sends a prompt, preceded by what was said earlier, and returns the
 // assistant's reply.
-func (p *Provider) chat(ctx context.Context, prompt string, history []provider.Turn) (string, error) {
-	token, err := p.accessToken(ctx)
-	if err != nil {
-		return "", err
+func (p *Provider) chat(ctx context.Context, ask provider.Request) (string, error) {
+	text, status, err := p.attemptChat(ctx, ask)
+	if err == nil {
+		return text, nil
 	}
 
-	messages := make([]chatMessage, 0, len(history)+1)
-	for _, turn := range history {
-		messages = append(messages, chatMessage{Role: string(turn.Role), Content: turn.Text})
+	// A token can be refused before we believe it has expired, so a
+	// refusal is not final on the first try: drop the cached one, mint a
+	// fresh one and go again. Once only — a refresh token that has itself
+	// been revoked would otherwise loop.
+	if status == http.StatusUnauthorized {
+		p.forgetToken()
+		text, _, err = p.attemptChat(ctx, ask)
+		return text, err
 	}
-	messages = append(messages, chatMessage{Role: string(provider.RoleUser), Content: prompt})
+	return "", err
+}
+
+// attemptChat : One try, returning the HTTP status alongside the failure
+// so the caller can tell a refused token from anything else.
+func (p *Provider) attemptChat(ctx context.Context, ask provider.Request) (string, int, error) {
+	token, err := p.accessToken(ctx)
+	if err != nil {
+		// A refusal minting the token is the same problem as a refusal
+		// using one, and is reported the same way.
+		return "", statusOf(err), err
+	}
+
+	messages := make([]chatMessage, 0, len(ask.History)+1)
+	for _, turn := range ask.History {
+		messages = append(messages, chatMessage{
+			Role:    string(turn.Role),
+			Content: turn.Text,
+		})
+	}
+	messages = append(messages, chatMessage{
+		Role:    string(provider.RoleUser),
+		Content: ask.Prompt,
+	})
 
 	body, err := json.Marshal(chatRequest{
 		Vendor:   p.cfg.Vendor,
@@ -146,12 +194,12 @@ func (p *Provider) chat(ctx context.Context, prompt string, history []provider.T
 		Messages: messages,
 	})
 	if err != nil {
-		return "", fmt.Errorf("platformai: building chat request: %w", err)
+		return "", 0, fmt.Errorf("platformai: building chat request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.cfg.ChatURL, bytes.NewReader(body))
 	if err != nil {
-		return "", fmt.Errorf("platformai: building chat request: %w", err)
+		return "", 0, fmt.Errorf("platformai: building chat request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Zoho-oauthtoken "+token)
@@ -160,28 +208,39 @@ func (p *Provider) chat(ctx context.Context, prompt string, history []provider.T
 
 	resp, err := p.http.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("platformai: sending chat request: %w", scrubURL(err))
+		return "", 0, fmt.Errorf("platformai: sending chat request: %w", scrubURL(err))
 	}
 	defer resp.Body.Close()
 
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
-		return "", fmt.Errorf("platformai: reading chat response: %w", err)
+		return "", resp.StatusCode, fmt.Errorf("platformai: reading chat response: %w", err)
 	}
 
 	var parsed chatResponse
 	if err := json.Unmarshal(raw, &parsed); err != nil || len(parsed.Data.Messages) == 0 {
 		if msg := errorMessage(raw); msg != "" {
-			return "", &APIError{Message: msg, Status: resp.StatusCode}
+			return "", resp.StatusCode, &APIError{Message: msg, Status: resp.StatusCode}
 		}
-		return "", fmt.Errorf("platformai: chat response was not usable (HTTP %d)", resp.StatusCode)
+		return "", resp.StatusCode,
+			fmt.Errorf("platformai: chat response was not usable (HTTP %d)", resp.StatusCode)
 	}
 
 	text := contentText(parsed.Data.Messages[0].Content)
 	if strings.TrimSpace(text) == "" {
-		return "", fmt.Errorf("platformai: the reply was empty")
+		return "", resp.StatusCode, fmt.Errorf("platformai: the reply was empty")
 	}
-	return text, nil
+	return text, resp.StatusCode, nil
+}
+
+// statusOf : The HTTP status a failure carries, or zero if it carries
+// none.
+func statusOf(err error) int {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Status
+	}
+	return 0
 }
 
 // contentText : Reads a message's content, which arrives either as a plain

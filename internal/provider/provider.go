@@ -1,8 +1,8 @@
-// Package provider : Defines the engines that carry out a task.
+// Package provider : Defines the engines that carry out a chat.
 //
 // A provider is whatever can turn a prompt into an answer: Claude, GPT, a
-// local model, or the stub in this package. Which one runs a given task is a
-// routing decision made elsewhere; a task does not know or care which answered
+// local model, or the stub in this package. Which one runs a given chat is a
+// routing decision made elsewhere; a chat does not know or care which answered
 // it.
 //
 // A run is a stream rather than a single reply, because an answer can take

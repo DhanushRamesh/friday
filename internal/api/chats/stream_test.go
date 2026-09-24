@@ -1,24 +1,25 @@
-package api
+package chats_test
 
 import (
 	"bufio"
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/DhanushRamesh/friday/internal/api/apitest"
+	"github.com/DhanushRamesh/friday/internal/api/chats"
+	"github.com/DhanushRamesh/friday/internal/chat"
 	"github.com/DhanushRamesh/friday/internal/provider"
-	"github.com/DhanushRamesh/friday/internal/task"
 )
 
 // sseEvent : One parsed server-sent event.
 type sseEvent struct {
 	ID    string
 	Event string
-	Data  streamEvent
+	Data  chats.Event
 }
 
 // readStream : Reads events from a live SSE response until it closes.
@@ -59,18 +60,19 @@ func readStream(t *testing.T, body *bufio.Reader) []sseEvent {
 	}
 }
 
-// streamTask : Opens a stream against a live test server.
-func streamTask(t *testing.T, s *Server, base, id string, headers map[string]string) []sseEvent {
+// streamChat : Opens a stream against a live test server and reads it to the
+// end.
+func streamChat(t *testing.T, e *apitest.Env, base, id string, headers map[string]string) []sseEvent {
 	t.Helper()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/v1/tasks/"+id+"/stream", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/v1/chats/"+id+"/stream", nil)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+tokenOf(s))
+	req.Header.Set("Authorization", "Bearer "+e.Token)
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
@@ -90,42 +92,22 @@ func streamTask(t *testing.T, s *Server, base, id string, headers map[string]str
 	return readStream(t, bufio.NewReader(resp.Body))
 }
 
-// liveServer : Runs the API on a real listener, which SSE needs in order to
-// flush a response progressively.
-func liveServer(t *testing.T, p provider.Provider) (*Server, string) {
+// live : An environment served on a real listener, which SSE needs in order
+// to flush a response progressively.
+func live(t *testing.T, p provider.Provider) (*apitest.Env, string) {
 	t.Helper()
-	s, _, _, _ := newTaskServer(t, stubPinger{}, p)
-	ts := httptest.NewServer(s)
-	t.Cleanup(ts.Close)
-	return s, ts.URL
+	e := apitest.NewWith(t, apitest.Options{Provider: p})
+	return e, e.Live(t)
 }
 
-// createTask : Submits a prompt and returns the created task.
-func createTask(t *testing.T, s *Server, path, prompt string) taskView {
-	t.Helper()
-	rec := do(t, s, http.MethodPost, path, `{"prompt":`+quote(prompt)+`}`)
-	if rec.Code != http.StatusAccepted && rec.Code != http.StatusOK {
-		t.Fatalf("create: status %d: %s", rec.Code, rec.Body)
-	}
-	var view taskView
-	decodeInto(t, rec, &view)
-	return view
-}
-
-// quote : Renders a string as a JSON string.
-func quote(s string) string {
-	b, _ := json.Marshal(s)
-	return string(b)
-}
-
-// A client listening while a task runs hears each message as it is produced,
+// A client listening while a chat runs hears each message as it is produced,
 // then the answer, and the stream ends.
 func TestStreamDeliversMessagesThenTheAnswer(t *testing.T) {
 	updates := []string{"Let me take a look.", "Still working on it."}
-	s, base := liveServer(t, &provider.Stub{Updates: updates, Delay: 40 * time.Millisecond})
+	e, base := live(t, &provider.Stub{Updates: updates, Delay: 40 * time.Millisecond})
 
-	created := createTask(t, s, "/v1/tasks", "check my merge requests")
-	got := streamTask(t, s, base, created.ID, nil)
+	created := e.CreateChat(t, "/v1/chats", "check my merge requests")
+	got := streamChat(t, e, base, created.ID, nil)
 
 	if len(got) < len(updates)+1 {
 		t.Fatalf("got %d events, want %d updates and a final: %+v", len(got), len(updates), got)
@@ -152,18 +134,18 @@ func TestStreamDeliversMessagesThenTheAnswer(t *testing.T) {
 	}
 }
 
-// A task that finished before anyone connected must still deliver everything
+// A chat that finished before anyone connected must still deliver everything
 // it said and how it ended, rather than an empty stream.
-func TestStreamReplaysAFinishedTask(t *testing.T) {
+func TestStreamReplaysAFinishedChat(t *testing.T) {
 	updates := []string{"one", "two"}
-	s, base := liveServer(t, &provider.Stub{Updates: updates})
+	e, base := live(t, &provider.Stub{Updates: updates})
 
-	created := createTask(t, s, "/v1/tasks?wait=5s", "already done")
-	if created.Status != string(task.StatusCompleted) {
-		t.Fatalf("status = %q, want the task finished before streaming", created.Status)
+	created := e.CreateChat(t, "/v1/chats?wait=5s", "already done")
+	if created.Status != string(chat.StatusCompleted) {
+		t.Fatalf("status = %q, want the chat finished before streaming", created.Status)
 	}
 
-	got := streamTask(t, s, base, created.ID, nil)
+	got := streamChat(t, e, base, created.ID, nil)
 
 	if len(got) != len(updates)+1 {
 		t.Fatalf("got %d events, want %d replayed updates and a final: %+v", len(got), len(updates), got)
@@ -177,11 +159,11 @@ func TestStreamReplaysAFinishedTask(t *testing.T) {
 // for a voice client would mean repeating itself.
 func TestStreamResumesFromLastEventID(t *testing.T) {
 	updates := []string{"one", "two", "three"}
-	s, base := liveServer(t, &provider.Stub{Updates: updates})
+	e, base := live(t, &provider.Stub{Updates: updates})
 
-	created := createTask(t, s, "/v1/tasks?wait=5s", "resume me")
+	created := e.CreateChat(t, "/v1/chats?wait=5s", "resume me")
 
-	got := streamTask(t, s, base, created.ID, map[string]string{"Last-Event-ID": "2"})
+	got := streamChat(t, e, base, created.ID, map[string]string{"Last-Event-ID": "2"})
 
 	for _, ev := range got {
 		if ev.Data.Seq > 0 && ev.Data.Seq <= 2 {
@@ -193,13 +175,13 @@ func TestStreamResumesFromLastEventID(t *testing.T) {
 	}
 }
 
-// A failed task ends the stream with the reason, which is what the user hears.
+// A failed chat ends the stream with the reason, which is what the user hears.
 func TestStreamEndsWithTheFailure(t *testing.T) {
 	const reason = "I could not reach GitLab."
-	s, base := liveServer(t, &provider.Stub{Updates: []string{"trying"}, FailWith: reason})
+	e, base := live(t, &provider.Stub{Updates: []string{"trying"}, FailWith: reason})
 
-	created := createTask(t, s, "/v1/tasks", "will fail")
-	got := streamTask(t, s, base, created.ID, nil)
+	created := e.CreateChat(t, "/v1/chats", "will fail")
+	got := streamChat(t, e, base, created.ID, nil)
 
 	last := got[len(got)-1]
 	if last.Event != "error" {
@@ -211,19 +193,19 @@ func TestStreamEndsWithTheFailure(t *testing.T) {
 }
 
 // Cancelling ends the stream, which is what saying "stop" must do.
-func TestStreamEndsWhenTheTaskIsCancelled(t *testing.T) {
-	s, base := liveServer(t, &provider.Stub{
+func TestStreamEndsWhenTheChatIsCancelled(t *testing.T) {
+	e, base := live(t, &provider.Stub{
 		Updates: []string{"a", "b", "c", "d", "e"},
 		Delay:   60 * time.Millisecond,
 	})
 
-	created := createTask(t, s, "/v1/tasks", "stop me midway")
+	created := e.CreateChat(t, "/v1/chats", "stop me midway")
 
 	done := make(chan []sseEvent, 1)
-	go func() { done <- streamTask(t, s, base, created.ID, nil) }()
+	go func() { done <- streamChat(t, e, base, created.ID, nil) }()
 
 	time.Sleep(120 * time.Millisecond)
-	rec := do(t, s, http.MethodPost, "/v1/tasks/"+created.ID+"/cancel", "")
+	rec := e.Do(t, http.MethodPost, "/v1/chats/"+created.ID+"/cancel", "")
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("cancel: status %d: %s", rec.Code, rec.Body)
 	}
@@ -237,32 +219,32 @@ func TestStreamEndsWhenTheTaskIsCancelled(t *testing.T) {
 			t.Errorf("last event = %q, want cancelled: %+v", last, got)
 		}
 	case <-time.After(10 * time.Second):
-		t.Fatal("stream did not close after the task was cancelled")
+		t.Fatal("stream did not close after the chat was cancelled")
 	}
 }
 
-func TestStreamOfAnUnknownTaskIsNotFound(t *testing.T) {
-	s, _, _, _ := newTaskServer(t, stubPinger{}, &provider.Stub{})
+func TestStreamOfAnUnknownChatIsNotFound(t *testing.T) {
+	e := apitest.New(t)
 
-	for _, id := range []string{task.NewID(), "nonsense"} {
-		rec := do(t, s, http.MethodGet, "/v1/tasks/"+id+"/stream", "")
+	for _, id := range []string{chat.NewID(), "nonsense"} {
+		rec := e.Get(t, "/v1/chats/"+id+"/stream")
 		if rec.Code != http.StatusNotFound {
 			t.Errorf("stream %s: status = %d, want 404", id, rec.Code)
 		}
 	}
 }
 
-// Two listeners on one task both hear everything, as a phone and a desktop
+// Two listeners on one chat both hear everything, as a phone and a desktop
 // might.
 func TestTwoListenersBothHearEverything(t *testing.T) {
-	s, base := liveServer(t, &provider.Stub{Updates: []string{"one", "two"}, Delay: 50 * time.Millisecond})
+	e, base := live(t, &provider.Stub{Updates: []string{"one", "two"}, Delay: 50 * time.Millisecond})
 
-	created := createTask(t, s, "/v1/tasks", "heard twice")
+	created := e.CreateChat(t, "/v1/chats", "heard twice")
 
 	first := make(chan []sseEvent, 1)
 	second := make(chan []sseEvent, 1)
-	go func() { first <- streamTask(t, s, base, created.ID, nil) }()
-	go func() { second <- streamTask(t, s, base, created.ID, nil) }()
+	go func() { first <- streamChat(t, e, base, created.ID, nil) }()
+	go func() { second <- streamChat(t, e, base, created.ID, nil) }()
 
 	for i, ch := range []chan []sseEvent{first, second} {
 		select {

@@ -25,7 +25,7 @@ func TestMigrateCreatesTheSchema(t *testing.T) {
 	db := migrated(t)
 	ctx := context.Background()
 
-	for _, table := range []string{"tasks", "task_messages"} {
+	for _, table := range []string{"chats", "chat_updates"} {
 		var count int
 		err := db.Raw(`SELECT COUNT(*) FROM information_schema.tables
 		               WHERE table_schema = DATABASE() AND table_name = ?`, table).
@@ -74,7 +74,7 @@ func TestMigrateIsRepeatable(t *testing.T) {
 }
 
 // Timestamps must keep milliseconds. Plain DATETIME truncates to the second,
-// which would make a task's duration unmeasurable.
+// which would make a chat's duration unmeasurable.
 func TestTimestampColumnsKeepMilliseconds(t *testing.T) {
 	db := migrated(t)
 
@@ -87,56 +87,56 @@ func TestTimestampColumnsKeepMilliseconds(t *testing.T) {
 	for column, want := range columns {
 		var got string
 		err := db.Raw(`SELECT column_type FROM information_schema.columns
-		               WHERE table_schema = DATABASE() AND table_name = 'tasks' AND column_name = ?`, column).
+		               WHERE table_schema = DATABASE() AND table_name = 'chats' AND column_name = ?`, column).
 			Scan(&got).Error
 		if err != nil {
 			t.Fatalf("reading %s: %v", column, err)
 		}
 		if got != want {
-			t.Errorf("tasks.%s is %s, want %s", column, got, want)
+			t.Errorf("chats.%s is %s, want %s", column, got, want)
 		}
 	}
 }
 
-// Deleting a task must take its messages with it, or they accumulate with no
-// task to belong to.
-func TestDeletingATaskRemovesItsMessages(t *testing.T) {
+// Deleting a chat must take its messages with it, or they accumulate with no
+// chat to belong to.
+func TestDeletingAChatRemovesItsMessages(t *testing.T) {
 	db := migrated(t)
 
-	const id = "task_01TESTCASCADE0000000000000"
-	t.Cleanup(func() { db.Exec(`DELETE FROM tasks WHERE id = ?`, id) })
+	const id = "chat_01TESTCASCADE0000000000000"
+	t.Cleanup(func() { db.Exec(`DELETE FROM chats WHERE id = ?`, id) })
 
-	if err := db.Exec(`INSERT INTO tasks (id, prompt, status, created_at, updated_at)
+	if err := db.Exec(`INSERT INTO chats (id, prompt, status, created_at, updated_at)
 	                   VALUES (?, 'x', 'pending', NOW(3), NOW(3))`, id).Error; err != nil {
-		t.Fatalf("insert task: %v", err)
+		t.Fatalf("insert chat: %v", err)
 	}
-	if err := db.Exec("INSERT INTO task_messages (task_id, seq, kind, `text`, created_at)\n"+
+	if err := db.Exec("INSERT INTO chat_updates (chat_id, seq, kind, `text`, created_at)\n"+
 		"VALUES (?, 1, 'update', 'working', NOW(3))", id).Error; err != nil {
 		t.Fatalf("insert message: %v", err)
 	}
 
-	if err := db.Exec(`DELETE FROM tasks WHERE id = ?`, id).Error; err != nil {
-		t.Fatalf("delete task: %v", err)
+	if err := db.Exec(`DELETE FROM chats WHERE id = ?`, id).Error; err != nil {
+		t.Fatalf("delete chat: %v", err)
 	}
 
 	var remaining int
-	if err := db.Raw(`SELECT COUNT(*) FROM task_messages WHERE task_id = ?`, id).Scan(&remaining).Error; err != nil {
+	if err := db.Raw(`SELECT COUNT(*) FROM chat_updates WHERE chat_id = ?`, id).Scan(&remaining).Error; err != nil {
 		t.Fatalf("count messages: %v", err)
 	}
 	if remaining != 0 {
-		t.Errorf("%d messages left behind after the task was deleted", remaining)
+		t.Errorf("%d messages left behind after the chat was deleted", remaining)
 	}
 }
 
-// A message cannot belong to a task that does not exist.
-func TestMessageRequiresAnExistingTask(t *testing.T) {
+// A message cannot belong to a chat that does not exist.
+func TestMessageRequiresAnExistingChat(t *testing.T) {
 	db := migrated(t)
 
-	err := db.Exec("INSERT INTO task_messages (task_id, seq, kind, `text`, created_at)\n" +
-		"VALUES ('task_01NOSUCHTASK00000000000000', 1, 'update', 'orphan', NOW(3))").Error
+	err := db.Exec("INSERT INTO chat_updates (chat_id, seq, kind, `text`, created_at)\n" +
+		"VALUES ('chat_01NOSUCHCHAT00000000000000', 1, 'update', 'orphan', NOW(3))").Error
 	if err == nil {
-		db.Exec(`DELETE FROM task_messages WHERE task_id = 'task_01NOSUCHTASK00000000000000'`)
-		t.Fatal("inserting a message for a missing task succeeded, want a foreign key error")
+		db.Exec(`DELETE FROM chat_updates WHERE chat_id = 'chat_01NOSUCHCHAT00000000000000'`)
+		t.Fatal("inserting a message for a missing chat succeeded, want a foreign key error")
 	}
 }
 

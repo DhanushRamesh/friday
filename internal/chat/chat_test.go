@@ -1,4 +1,4 @@
-package task_test
+package chat_test
 
 import (
 	"errors"
@@ -6,30 +6,30 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DhanushRamesh/friday/internal/task"
+	"github.com/DhanushRamesh/friday/internal/chat"
 )
 
-// mustNew : Creates a task, failing the test if the prompt is rejected.
-func mustNew(t *testing.T, prompt string) *task.Task {
+// mustNew : Creates a chat, failing the test if the prompt is rejected.
+func mustNew(t *testing.T, prompt string) *chat.Chat {
 	t.Helper()
-	tk, err := task.New("", prompt)
+	tk, err := chat.New("", prompt)
 	if err != nil {
 		t.Fatalf("New(%q): %v", prompt, err)
 	}
 	return tk
 }
 
-func TestNewTaskStartsPending(t *testing.T) {
+func TestNewChatStartsPending(t *testing.T) {
 	tk := mustNew(t, "  check my open merge requests  ")
 
-	if tk.Status != task.StatusPending {
+	if tk.Status != chat.StatusPending {
 		t.Errorf("Status = %q, want pending", tk.Status)
 	}
 	if tk.Prompt != "check my open merge requests" {
 		t.Errorf("Prompt = %q, want it trimmed", tk.Prompt)
 	}
-	if !task.ValidID(tk.ID) {
-		t.Errorf("ID = %q, want a valid task identifier", tk.ID)
+	if !chat.ValidID(tk.ID) {
+		t.Errorf("ID = %q, want a valid chat identifier", tk.ID)
 	}
 	if tk.CreatedAt.IsZero() || tk.UpdatedAt.IsZero() {
 		t.Error("timestamps not set")
@@ -38,25 +38,25 @@ func TestNewTaskStartsPending(t *testing.T) {
 		t.Errorf("CreatedAt location = %v, want UTC", tk.CreatedAt.Location())
 	}
 	if tk.StartedAt != nil {
-		t.Error("StartedAt set on a task that has not run")
+		t.Error("StartedAt set on a chat that has not run")
 	}
 	if tk.FinishedAt != nil {
-		t.Error("FinishedAt set on a task that has not finished")
+		t.Error("FinishedAt set on a chat that has not finished")
 	}
 }
 
 func TestNewRejectsBadPrompts(t *testing.T) {
 	for _, prompt := range []string{"", "   ", "\n\t "} {
-		if _, err := task.New("", prompt); !errors.Is(err, task.ErrEmptyPrompt) {
+		if _, err := chat.New("", prompt); !errors.Is(err, chat.ErrEmptyPrompt) {
 			t.Errorf("New(%q) error = %v, want ErrEmptyPrompt", prompt, err)
 		}
 	}
 
-	if _, err := task.New("", strings.Repeat("a", task.MaxPromptRunes+1)); !errors.Is(err, task.ErrPromptTooLong) {
+	if _, err := chat.New("", strings.Repeat("a", chat.MaxPromptRunes+1)); !errors.Is(err, chat.ErrPromptTooLong) {
 		t.Errorf("oversized prompt error = %v, want ErrPromptTooLong", err)
 	}
 	// The limit counts runes, so a multi-byte prompt at the limit is accepted.
-	if _, err := task.New("", strings.Repeat("こ", task.MaxPromptRunes)); err != nil {
+	if _, err := chat.New("", strings.Repeat("こ", chat.MaxPromptRunes)); err != nil {
 		t.Errorf("prompt of exactly MaxPromptRunes runes rejected: %v", err)
 	}
 }
@@ -67,7 +67,7 @@ func TestIDsAreUniqueAndOrderByCreation(t *testing.T) {
 	ids := make([]string, n)
 
 	for i := range ids {
-		ids[i] = task.NewID()
+		ids[i] = chat.NewID()
 		if seen[ids[i]] {
 			t.Fatalf("duplicate id generated: %s", ids[i])
 		}
@@ -75,7 +75,7 @@ func TestIDsAreUniqueAndOrderByCreation(t *testing.T) {
 	}
 
 	// ULIDs are monotonic, so lexical order matches creation order. Listing
-	// tasks relies on this to come back ordered without an explicit sort.
+	// chats relies on this to come back ordered without an explicit sort.
 	for i := 1; i < len(ids); i++ {
 		if ids[i-1] >= ids[i] {
 			t.Fatalf("ids not increasing: %s came before %s", ids[i-1], ids[i])
@@ -84,18 +84,18 @@ func TestIDsAreUniqueAndOrderByCreation(t *testing.T) {
 }
 
 func TestValidID(t *testing.T) {
-	valid := task.NewID()
+	valid := chat.NewID()
 	cases := map[string]bool{
 		valid:                              true,
 		"":                                 false,
-		"task_":                            false,
-		strings.TrimPrefix(valid, "task_"): false,
-		"task_not-a-ulid-at-all-xxxx":      false,
+		"chat_":                            false,
+		strings.TrimPrefix(valid, "chat_"): false,
+		"chat_not-a-ulid-at-all-xxxx":      false,
 		valid + "x":                        false,
 		"tusk_01J000000000000000000000":    false,
 	}
 	for id, want := range cases {
-		if got := task.ValidID(id); got != want {
+		if got := chat.ValidID(id); got != want {
 			t.Errorf("ValidID(%q) = %v, want %v", id, got, want)
 		}
 	}
@@ -107,36 +107,36 @@ func TestLifecycleToCompleted(t *testing.T) {
 	if err := tk.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if tk.Status != task.StatusRunning {
+	if tk.Status != chat.StatusRunning {
 		t.Fatalf("Status = %q, want running", tk.Status)
 	}
 	if tk.StartedAt == nil {
 		t.Fatal("StartedAt not stamped by Start")
 	}
 	if tk.FinishedAt != nil {
-		t.Error("FinishedAt stamped on a task that is only running")
+		t.Error("FinishedAt stamped on a chat that is only running")
 	}
 
 	const answer = "You have 4 open merge requests."
 	if err := tk.Complete(answer); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
-	if tk.Status != task.StatusCompleted {
+	if tk.Status != chat.StatusCompleted {
 		t.Errorf("Status = %q, want completed", tk.Status)
 	}
 	if tk.Response != answer {
 		t.Errorf("Response = %q, want the final answer", tk.Response)
 	}
 	if tk.FinishedAt == nil {
-		t.Error("FinishedAt not stamped on a finished task")
+		t.Error("FinishedAt not stamped on a finished chat")
 	}
 	if tk.Duration() < 0 {
 		t.Errorf("Duration = %v, want a non-negative span", tk.Duration())
 	}
 }
 
-// Timestamps are truncated to StoredPrecision, so a task finishing within the
-// same millisecond it started reports no duration at all. A task that takes
+// Timestamps are truncated to StoredPrecision, so a chat finishing within the
+// same millisecond it started reports no duration at all. A chat that takes
 // real time must report it.
 func TestDurationMeasuresElapsedTime(t *testing.T) {
 	tk := mustNew(t, "something slow")
@@ -155,7 +155,7 @@ func TestDurationMeasuresElapsedTime(t *testing.T) {
 }
 
 // Every timestamp the domain sets must already be at the precision it will be
-// stored at, so a task in memory matches the row written from it.
+// stored at, so a chat in memory matches the row written from it.
 func TestTimestampsAreAtStoredPrecision(t *testing.T) {
 	tk := mustNew(t, "check my precision")
 	if err := tk.Start(); err != nil {
@@ -172,17 +172,17 @@ func TestTimestampsAreAtStoredPrecision(t *testing.T) {
 		"FinishedAt": *tk.FinishedAt,
 	}
 	for name, ts := range stamps {
-		if ts.Truncate(task.StoredPrecision) != ts {
+		if ts.Truncate(chat.StoredPrecision) != ts {
 			t.Errorf("%s = %v, which carries more precision than can be stored", name, ts)
 		}
 	}
 }
 
 func TestTerminalStatesAreFinal(t *testing.T) {
-	endings := map[string]func(*task.Task) error{
-		"completed": func(tk *task.Task) error { return tk.Complete("done") },
-		"failed":    func(tk *task.Task) error { return tk.Fail("GitLab did not respond in time.") },
-		"cancelled": func(tk *task.Task) error { return tk.Cancel() },
+	endings := map[string]func(*chat.Chat) error{
+		"completed": func(tk *chat.Chat) error { return tk.Complete("done") },
+		"failed":    func(tk *chat.Chat) error { return tk.Fail("GitLab did not respond in time.") },
+		"cancelled": func(tk *chat.Chat) error { return tk.Cancel() },
 	}
 
 	for name, end := range endings {
@@ -201,33 +201,33 @@ func TestTerminalStatesAreFinal(t *testing.T) {
 				"Complete": func() error { return tk.Complete("again") },
 				"Fail":     func() error { return tk.Fail("again") },
 			} {
-				var te *task.TransitionError
+				var te *chat.TransitionError
 				if err := fn(); !errors.As(err, &te) {
-					t.Errorf("%s on a %s task: error = %v, want TransitionError", op, name, err)
+					t.Errorf("%s on a %s chat: error = %v, want TransitionError", op, name, err)
 				}
 			}
 		})
 	}
 }
 
-// A queued task can be cancelled or failed before it ever runs. Failing a
-// pending task is how a request rejected at dequeue is recorded.
+// A queued chat can be cancelled or failed before it ever runs. Failing a
+// pending chat is how a request rejected at dequeue is recorded.
 func TestPendingCanEndWithoutRunning(t *testing.T) {
-	for name, end := range map[string]func(*task.Task) error{
-		"cancel": func(tk *task.Task) error { return tk.Cancel() },
-		"fail":   func(tk *task.Task) error { return tk.Fail("no capacity") },
+	for name, end := range map[string]func(*chat.Chat) error{
+		"cancel": func(tk *chat.Chat) error { return tk.Cancel() },
+		"fail":   func(tk *chat.Chat) error { return tk.Fail("no capacity") },
 	} {
 		t.Run(name, func(t *testing.T) {
 			tk := mustNew(t, "never mind")
 			if err := end(tk); err != nil {
-				t.Fatalf("%s on a pending task: %v", name, err)
+				t.Fatalf("%s on a pending chat: %v", name, err)
 			}
 			if !tk.Status.IsTerminal() {
 				t.Errorf("Status = %q, want a terminal status", tk.Status)
 			}
 			// It never ran, so there is no duration to report.
 			if tk.StartedAt != nil {
-				t.Error("StartedAt stamped on a task that never ran")
+				t.Error("StartedAt stamped on a chat that never ran")
 			}
 			if tk.Duration() != 0 {
 				t.Errorf("Duration = %v, want 0", tk.Duration())
@@ -236,72 +236,72 @@ func TestPendingCanEndWithoutRunning(t *testing.T) {
 	}
 }
 
-// A task cannot skip straight from pending to completed; that would mean a
+// A chat cannot skip straight from pending to completed; that would mean a
 // result appearing for work that never ran.
 func TestCannotCompleteWithoutRunning(t *testing.T) {
 	tk := mustNew(t, "do something")
 
-	var te *task.TransitionError
+	var te *chat.TransitionError
 	if err := tk.Complete("result"); !errors.As(err, &te) {
-		t.Fatalf("Complete on a pending task: error = %v, want TransitionError", err)
+		t.Fatalf("Complete on a pending chat: error = %v, want TransitionError", err)
 	}
 }
 
-// A rejected transition must leave the task exactly as it was.
+// A rejected transition must leave the chat exactly as it was.
 func TestRejectedTransitionDoesNotMutate(t *testing.T) {
 	tk := mustNew(t, "do something")
 	before := *tk
 
 	if err := tk.Complete("skipping straight to done"); err == nil {
-		t.Fatal("Complete on a pending task: want error, got nil")
+		t.Fatal("Complete on a pending chat: want error, got nil")
 	}
 
 	if tk.Status != before.Status || tk.Response != before.Response || !tk.UpdatedAt.Equal(before.UpdatedAt) {
-		t.Errorf("task mutated by a rejected transition:\n before %+v\n after  %+v", before, *tk)
+		t.Errorf("chat mutated by a rejected transition:\n before %+v\n after  %+v", before, *tk)
 	}
 }
 
-// A response beyond what the column can hold must be refused before the task
+// A response beyond what the column can hold must be refused before the chat
 // is marked complete, so the caller can fail it rather than have the write
 // rejected by the database.
-func TestOversizedResponseRefusedAndTaskUnchanged(t *testing.T) {
+func TestOversizedResponseRefusedAndChatUnchanged(t *testing.T) {
 	tk := mustNew(t, "summarise everything")
 	if err := tk.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 
-	err := tk.Complete(strings.Repeat("a", task.MaxResponseBytes+1))
-	if !errors.Is(err, task.ErrResponseTooLarge) {
+	err := tk.Complete(strings.Repeat("a", chat.MaxResponseBytes+1))
+	if !errors.Is(err, chat.ErrResponseTooLarge) {
 		t.Fatalf("error = %v, want ErrResponseTooLarge", err)
 	}
-	if tk.Status != task.StatusRunning {
-		t.Errorf("Status = %q, want the task left running", tk.Status)
+	if tk.Status != chat.StatusRunning {
+		t.Errorf("Status = %q, want the chat left running", tk.Status)
 	}
 	if tk.Response != "" {
 		t.Error("Response set despite the transition being refused")
 	}
 
-	// The task can still be failed with an explanation.
+	// The chat can still be failed with an explanation.
 	if err := tk.Fail("The answer was too large to store."); err != nil {
 		t.Fatalf("Fail after an oversized response: %v", err)
 	}
 }
 
 func TestStatusPredicates(t *testing.T) {
-	for _, s := range []task.Status{task.StatusCompleted, task.StatusFailed, task.StatusCancelled} {
+	for _, s := range []chat.Status{chat.StatusCompleted, chat.StatusFailed, chat.StatusCancelled} {
 		if !s.IsTerminal() || !s.Valid() {
 			t.Errorf("%s: terminal=%v valid=%v, want both true", s, s.IsTerminal(), s.Valid())
 		}
 	}
-	for _, s := range []task.Status{task.StatusPending, task.StatusRunning} {
+	for _, s := range []chat.Status{chat.StatusPending, chat.StatusRunning} {
 		if s.IsTerminal() || !s.Valid() {
 			t.Errorf("%s: terminal=%v valid=%v, want false and true", s, s.IsTerminal(), s.Valid())
 		}
 	}
-	if task.Status("banana").Valid() {
+	if chat.Status("banana").Valid() {
 		t.Error(`Status("banana").Valid() = true, want false`)
 	}
-	if task.Status("banana").CanTransitionTo(task.StatusRunning) {
+	if chat.Status("banana").CanTransitionTo(chat.StatusRunning) {
 		t.Error("an unknown status should permit no transition")
 	}
 }
@@ -314,7 +314,7 @@ func TestTransitionErrorExplainsFinality(t *testing.T) {
 
 	err := tk.Start()
 	if err == nil {
-		t.Fatal("Start on a cancelled task: want error")
+		t.Fatal("Start on a cancelled chat: want error")
 	}
 	if !strings.Contains(err.Error(), "final state") {
 		t.Errorf("error %q should say the state is final", err)

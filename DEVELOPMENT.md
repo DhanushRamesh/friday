@@ -16,12 +16,12 @@ FRIDAY is a personal AI assistant server owned by one person.
 
 Work arrives over an API. An agent reasons about the request and uses tools to
 carry it out. Progress and results are reported back. Requests are
-long-running, so the API accepts a request, returns a task identifier
+long-running, so the API accepts a request, returns a chat identifier
 immediately, and the work continues in the background.
 
 FRIDAY is a platform, not a chatbot. The AI provider, the tools, the clients
 and the voice layer are all meant to be replaceable. The stable core is the
-agent, its memory, and its tasks.
+agent, its memory, and its chats.
 
 The assistant is called **FRIDAY**. Never JARVIS. An early planning document
 used that name; it was discarded.
@@ -37,19 +37,28 @@ else follows from that.
   spoken                "Friday, check my merge requests"
      ↓
   earbuds → phone       speech recognised as text
-     ↓  POST /v1/tasks
-  FRIDAY                runs the task
+     ↓  POST /v1/chats
+  FRIDAY                runs the chat
      ↓  pushed as they happen
   "Let me take a look."         → spoken
   "Found four, reading them."   → spoken
-  "Two look risky. …"           → spoken, and the task is done
+  "Two look risky. …"           → spoken, and the chat is done
 ```
 
-Three requirements follow, and they are not negotiable:
+Four requirements follow, and they are not negotiable:
 
-**Messages are pushed, not polled.** A client that has to ask repeatedly stands
-in silence while FRIDAY works and then hears everything at once. The transient
-messages exist so that the user hears something within a second of asking.
+**Messages are pushed, not polled.** A client that has to ask repeatedly
+stands in silence while FRIDAY works and then hears everything at once.
+Pushing is what lets a message reach the user the moment it exists.
+
+**A transient message must be something that happened.** The channel exists
+for real progress — an agent naming the tool it is using, a long job
+reporting where it has got to. It is not for filler. The Platform AI
+provider used to invent `"Let me look into that."` before every answer and
+repeat `"Still working on it."` while waiting; both are gone. Read aloud on
+every single question, a made-up phrase grates, and it is worse than silence
+because it sounds like an answer beginning. The client shows that FRIDAY is
+working without being told. Do not add canned progress back.
 
 **Messages are whole utterances, not tokens.** Token-by-token streaming is
 useless to a speech synthesiser, which needs complete, well-formed sentences.
@@ -62,7 +71,7 @@ but `Let me check your merge requests`. Anything a user hears, including the
 text of a failure, is phrased as speech.
 
 Interruption follows too: saying "stop" while FRIDAY is speaking must cancel
-the task, so cancellation has to work mid-run rather than only between steps.
+the chat, so cancellation has to work mid-run rather than only between steps.
 
 Server-sent events carry this, with the cancel endpoint as the return path.
 WebSocket is not needed for it and earns its place only if audio is one day
@@ -119,17 +128,29 @@ reader can tell a decision from an accident.
 | **GORM** for persistence | Owner's decision, made after the tradeoffs were laid out. The known costs: `AutoMigrate` is not a migration system, generated SQL is opaque, and the ORM's natural idiom (`db.Save`) bypasses domain invariants. Accepted. Do not re-argue this. |
 | Domain types stay **free of GORM** | The mitigation for the above. Persistence uses its own row structs with GORM tags, mapped to and from domain types at the repository boundary. A domain struct must never embed `gorm.Model` or carry a `gorm:` tag. |
 | GORM logs through **`internal/logging`** | GORM's default logger writes its own format to stdout, bypassing structured logging and credential redaction entirely. |
+| Providers **invent no progress** | Owner's decision, after hearing it. A transient message is for something that actually happened; a phrase the code made up before every answer is filler, and spoken aloud each time it grates. The Platform AI provider now streams the reply and nothing else. The stub keeps canned updates, because its job is to exercise the transient path without a network. |
+| **No signup endpoint** | Owner's decision. FRIDAY is on a public URL with the owner's Platform AI credentials behind it, so anyone who found the address and registered could spend the quota. Accounts are created with `make prod-createuser` over SSH instead. The web UI has a login page and no signup page. Do not add one. |
+| **The server serves the web UI** | The Flutter web bundle is served at `/` by FRIDAY itself, with the API staying under `/v1`. One origin, so no CORS in production, one artefact to deploy, and Caddy already terminates TLS in front of it. Cross-origin requests are permitted outside production only, so that `flutter run -d chrome` can reach a local server with hot reload. |
+| **Flutter** for the client | Owner's decision, made after the tradeoffs were laid out. One codebase for the Android app and the web UI. The known costs: STT and TTS come from community packages rather than the framework, server-sent events need a different path per platform, and Flutter Web renders text to a canvas so selecting and copying an answer is awkward. Accepted. Do not re-argue this. |
+| Hands-free uses a **wake word**, not speaker recognition | Owner's decision. The requirement is that FRIDAY ignores surrounding noise and other people's conversation — which is the question "is this addressed to FRIDAY?", not "who is speaking?". A phrase answers it cheaply and reliably. Recognising a particular person is voice biometrics: it needs raw audio and an enrolled voiceprint, and it refuses to recognise you when you have a cold. Assistants use a phrase for these reasons. |
+| The wake word is **the name at the front of the sentence**, with no model | Owner's decision, after Picovoice turned out to require a business email. Recognition runs continuously and only an utterance beginning with "FRIDAY" is acted on. It needs no account, no key and no model file, and it is said in one breath with the question — which a separate detector, having to hand the microphone over first, cannot do. The costs, accepted: audio streams continuously to the browser's recogniser rather than staying on the device, it is heavier on battery, and it will occasionally wake on the name said in conversation. An on-device detector can replace `NameFirst` without touching anything above it. |
+| The voice layer is built and tested **on the web first** | Owner's decision. `flutter_tts` and `speech_to_text` both wrap the Web Speech API in Chrome, so speaking and listening can be exercised without a phone, and the same code serves Android. Only what is genuinely phone-only — audio routed to a Bluetooth headset, the earbud button, staying alive in the background — waits for a device, and the owner verifies those. |
+| The earbud button is **Android platform code** | It is why Flutter was chosen over a PWA, and it is the one thing Flutter does not smooth over: media-button capture and background listening are reached through a plugin or a platform channel, not shared Dart. Budget for it as Android work. |
 | Semantic memory approach is **undecided** | MySQL Community has a `VECTOR` type but no distance function; similarity search is HeatWave-only. Decide when memory is actually built. |
 
 ### Hosting
 
-Not yet set up. The target is free hosting with **no cold starts** — the
-assistant is voice-driven, so a sleeping server is unusable. Render, Koyeb and
-Fly.io free tiers all sleep or no longer exist. Oracle Cloud Always Free is the
-current candidate (2 ARM OCPU / 12 GB as of mid-2026, reduced from 4/24).
+Running on a **Google Cloud e2-micro** always-free VM, reached at
+`https://friday-server.duckdns.org`. The requirement that decided it was **no
+cold starts**: the assistant is voice-driven, so a sleeping server is
+unusable, which ruled out the Render, Koyeb and Fly.io free tiers. Oracle
+Cloud Always Free was the first candidate and was abandoned when its signup
+declined the card. Section 11 has the shape of the deployment.
 
-Deployment target is `linux/arm64`. Go cross-compiles to it with no code
-changes; do not introduce anything architecture-specific.
+**The deployment target is `linux/amd64`.** The e2-micro is x86_64, not ARM —
+an earlier assumption that the free tier was ARM produced a binary that would
+not run. `make prod-deploy` sets this; do not introduce anything
+architecture-specific.
 
 ---
 
@@ -137,9 +158,21 @@ changes; do not introduce anything architecture-specific.
 
 ### Testing
 
-Every package has tests. Tests assert behaviour that matters, not
+Every package has tests, and they live in the package they cover — a test
+for `internal/api/chats` is in `internal/api/chats`, not somewhere that
+happens to have the helpers. Tests assert behaviour that matters, not
 implementation detail. Prefer a test that would catch a real bug over one that
 raises the coverage number.
+
+The API's tests are external test packages (`package chats_test`), which is
+what lets them share `internal/api/apitest`. That fixture assembles the real
+server, so a module's tests drive it through the real middleware and the real
+routes rather than a stack rebuilt for testing; a module cannot then pass its
+own tests while being mounted wrongly. `internal/api` also has a `package api`
+file for the two things that need the unexported router.
+
+`internal/chat/memory` is a real in-memory repository rather than a fixture,
+because the runner and the API both need one and a copy in each drifts apart.
 
 Where a test encodes a non-obvious requirement, say why in a comment. Existing
 examples worth imitating:
@@ -148,7 +181,12 @@ examples worth imitating:
   `token_count` survives while `token` is redacted;
 - a rejected state transition must leave the object unmutated;
 - a generated DSN is round-tripped back through the driver's parser using a
-  password containing `@ : / ?`.
+  password containing `@ : / ?`;
+- every chat endpoint is asked for another user's chat and must answer 404,
+  which is how the SSE stream was found to be missing its ownership check;
+- the route table is asserted whole, so a refactor cannot lose an endpoint;
+- `views` pins the published JSON field names, since those are the contract a
+  client reads, and asserts that no password hash or token hash appears.
 
 Before proposing work complete, all of these must pass:
 
@@ -189,11 +227,828 @@ Use `internal/logging`. Do not construct `slog` handlers elsewhere.
 logger, dependencies, HTTP server, graceful shutdown. It holds no routes and
 no handlers.
 
-Endpoints live in `internal/api`, on a `Server` that carries the dependencies
-its handlers need. Handlers are methods on it, so a new endpoint gains access
-to the logger and database without another parameter being threaded through.
-Keeping them out of package main is what allows the whole interface to be
-exercised in tests without starting a process.
+Endpoints live under `internal/api`, one package per resource. Each holds its
+own handlers and its own wire types on a `Handler` built from just the
+dependencies it needs, and exposes them through a `Mount(chi.Router)` method:
+
+    internal/api/          api.go — builds every module and mounts it; no handlers
+    internal/api/httpx/    reading and writing bodies; knows nothing of FRIDAY
+    internal/api/views/    the wire shapes of domain values, in one place because
+                           a session detail carries chats and a login carries both
+                           a user and a client
+    internal/api/middleware/  request id, request logging, panic recovery
+    internal/api/authn/    logging in, and the caller put on the context
+    internal/api/health/   liveness and readiness
+    internal/api/clients/  /v1/clients, /v1/me
+    internal/api/sessions/ /v1/sessions
+    internal/api/chats/    /v1/chats, including the SSE stream
+    internal/api/apitest/  the shared fixture the modules' tests are built on
+
+Dependencies point one way: every module may use `httpx`, `views` and
+`authn`, and nothing may import a sibling resource. A shape two modules both
+need goes to `views`; logic two modules both need goes to the domain, which is
+why `chat.EnsureSession` lives in `internal/chat` rather than in `sessions`
+— both `authn` and `chats` call it, and `authn` cannot depend on `sessions`
+without a cycle.
+
+`api.go` is therefore the whole surface in one screen. A module cannot
+register an endpoint anywhere else, and `routes_test.go` asserts the complete
+route table so that one cannot be lost or added unnoticed while code is moved
+about.
+
+Keeping all of it out of package main is what allows the whole interface to be
+exercised in tests without starting a process. Those tests live in
+`internal/api` and drive the assembled router, so they cover the middleware
+stack and the routing as well as the handlers.
+
+### The client
+
+`client/` is a Flutter app. Everything that talks to FRIDAY is in
+`lib/friday/` and imports no Flutter, so it is exercised by a plain Dart test
+and could be reused by anything that is not a widget:
+
+    models.dart       the wire shapes, mirroring internal/api/views
+    errors.dart       one exception type per decision a caller can make
+    api.dart          FridayApi — the calls, the token, the failure mapping
+    sse.dart          parsing the event stream
+    byte_source.dart  opening a response whose body is read as it arrives
+    token_store.dart  where the token survives a restart
+
+**Streaming on the web does not use EventSource.** EventSource cannot send an
+Authorization header, and the stream endpoint requires one; a token in the
+query string instead would be written into proxy logs and browser history.
+The web implementation uses `fetch`, which takes headers and exposes the body
+as it arrives, so the same parser serves both platforms and only the byte
+source differs. `dart analyze` does not catch everything in that file — a JS
+interop member cannot be torn off, and only the web compiler says so — so
+changes to it are checked with `flutter build web`.
+
+**A failure is a type, not a status code.** `NotAuthenticated` means log in
+again, `Unreachable` means try later, `Conflict` means it already finished.
+The server's own wording is preferred for the message, because it is written
+to be spoken aloud.
+
+### The design system
+
+`client/lib/design/` holds it. Two layers, and the rule between them is the
+whole point:
+
+    tokens.dart          colours, spacing, radii, type, motion
+    theme.dart           the two ThemeData, built from the tokens
+    components/          the widgets, every name prefixed `F`
+    gallery.dart         all of them on one screen, at /gallery
+
+**A screen never names a colour or a number.** No `Container`, no `Color`,
+no literal gap. Tokens are reached through the theme as `context.colors` and
+`context.text`, so a widget gets the values for the theme it is actually
+under. If a screen needs something the components do not have, the missing
+thing belongs in `components/`, not in the screen.
+
+The tokens ride on the theme as a `ThemeExtension`. Its field is called
+`typography` rather than `type` because `ThemeExtension` already declares
+`type` and Flutter uses it as the key an extension is looked up by —
+shadowing it compiles and then silently fails to find the tokens.
+
+Components so far: `FButton`, `FTextField`, `FBanner`, `FSurface`,
+`FWordmark`, `FDivider`, `FEmptyState`, `FSpinner`, `FThinkingDots`,
+`FStatusDot`, `FTurn`, `FThinkingTurn`, `FSessionTile`.
+
+Two of them carry decisions worth keeping. `FTurn` is not a chat bubble on
+alternating sides: an answer can be long, and half the width is hard to
+read, so the speaker is shown by a label and an accent bar and the text gets
+the full measure. It is selectable, because the usual thing to do with an
+answer is copy part of it. `FThinkingDots` exists because a voice assistant
+that goes quiet is indistinguishable from one that has crashed, and there is
+a gap between asking and the first transient message.
+
+`/gallery` is registered only when `kReleaseMode` is false. It is how the
+system is looked at, and it lives in the app rather than in a separate
+storybook so that it cannot drift from what the screens use.
+
+### The conversation
+
+`client/lib/state/conversation.dart` holds a session's exchanges and keeps
+them current. Everything asynchronous is there rather than in the widget:
+sending, streaming, resuming, and reattaching. The screen only draws what it
+exposes.
+
+An `Exchange` is one prompt and everything that came back for it. It exists
+before the server has given it an identifier, which is what lets the prompt
+appear the instant it is sent — the user has already committed to it, and
+waiting a round trip to redraw makes the interface feel slower than the
+network is. A prompt that never reached the server is marked `rejected`
+rather than failed, because that one can be sent again exactly as typed.
+
+**A dropped stream is the normal case, not an error.** A phone moves between
+networks and the chat keeps running on the server regardless, so the client
+reopens the stream up to four times with a backoff, passing `Last-Event-ID`
+so it does not repeat what the user already heard. A stream that closes
+without a terminal event means the connection went rather than the chat, so
+the outcome is asked for rather than assumed. The same machinery makes a
+page refresh mid-answer harmless: `load` reattaches to anything still
+running.
+
+**Superseding is applied locally as well as on the server.** Sending again
+cancels what was running — the server does this, but marking it here too is
+what makes the old exchange dim at once rather than when its stream catches
+up. It is struck through rather than removed, so the conversation still
+reads in the order it happened.
+
+### The web UI fetches nothing from a CDN
+
+Left to itself, Flutter web pulls CanvasKit from `gstatic.com` and Roboto
+from `fonts.gstatic.com` on every load. That is a request to Google on
+behalf of whoever opens FRIDAY, and on a network that cannot reach them the
+app does not start at all — which is how it was found.
+
+`--no-web-resources-cdn` bundles CanvasKit, and is baked into `make ui` and
+`make ui-build` so it cannot be forgotten. The font is handled in the
+design tokens: every style names `system-ui` with a fallback stack, because
+a style carrying only `fontFamilyFallback` still leaves Flutter defaulting
+to Roboto and fetching it.
+
+### Building for Android
+
+The SDK lives at `~/Android/Sdk`, which is where `ANDROID_HOME` already
+pointed, and `flutter config --android-sdk` records it so a build does not
+depend on the shell's environment.
+
+It was assembled rather than downloaded whole: a complete SDK was already
+on this machine under `~/home/home-1/Android/Sdk`, evidently restored from
+a backup. Its platforms are **symlinked in one by one** rather than the
+`platforms` directory being linked as a whole — `sdkmanager` writes new
+platforms into that directory, and linking it would have had the installer
+modifying the backup. `licenses`, `platform-tools` and `build-tools` are
+copied, being small and written to.
+
+    make apk            a debug APK to sideload
+    make apk-release    a release APK
+    make phone          run on a connected phone, with hot reload
+
+**A debug build talks to this machine; a release build talks to the deployed
+server.** The owner's words: *"the mobile and local server is on same
+network..for dev environment local server should connect..fpr roduction app,
+the prod server should connnect"*.
+
+The choice is made in `server_url.dart` by the build mode, not by how the
+build was invoked, so forgetting a flag cannot ship an app pointed at a laptop
+that will not be on the network tomorrow. `kReleaseMode` ignores
+`FRIDAY_DEV_URL` entirely; `FRIDAY_URL` still overrides both, which is what
+web development needs.
+
+The Makefile detects this machine's address on the network rather than reading
+it from a file, because it changes with the network and a stale one is a
+confusing way to fail:
+
+    LAN_IP := $(shell ip -4 route get 1.1.1.1 | awk '... src ...')
+
+Override it for a server somewhere else with
+`make apk PHONE_SERVER=http://192.168.1.20:8080`.
+
+**The local server must be told to accept it.** FRIDAY binds `127.0.0.1:8080`
+by default and a phone cannot reach loopback on another machine, so
+`config.ini` needs `addr = 0.0.0.0:8080` for this to work at all. That exposes
+a plain-HTTP service carrying bearer tokens to everything on the wifi, which
+is a fair trade at home and nowhere else. Production refuses a public bind
+outright unless `allow_public_bind` says otherwise.
+
+`chooseServerUrl` is the decision as a pure function, taking the build-mode
+constants as arguments, because those are fixed at compile time and a test run
+can otherwise only ever observe one answer. Writing that test immediately
+found a bug that had been shipping in the web build: `Uri.replace` cannot
+clear a query or a fragment, so asking it for empty ones left every base URL
+ending in `?#`. Harmless — a fragment is never sent and an empty query is
+ignored — but wrong, and now built rather than stripped.
+
+**Plain HTTP is permitted in debug builds only**, and only to private
+addresses, through a network security config under `src/debug`. From
+Android 9 an app cannot use cleartext, which is right: FRIDAY's tokens are
+bearer credentials and anyone who reads one becomes that client. A release
+build has no such allowance.
+
+### The recognition language is not a detail
+
+Both the recogniser and the synthesiser are given a language tag, and the
+recogniser uses it to pick an accent model. Asking for the wrong one costs
+accuracy steadily and invisibly — `en-GB` was hard-coded at first, and
+anyone not speaking that way is misheard no matter how clearly they speak.
+
+**Hearing and speaking are set separately**, and collapsing them into
+one setting was wrong: accuracy demands the first match the speaker,
+while the second is only a preference.
+
+    FRIDAY_LANG  ?= en-IN    how the owner speaks
+    FRIDAY_VOICE ?= en-US    how FRIDAY answers
+
+Both are defaulted in the Makefile rather than left to the device's
+locale, which on this machine reports `en_CA` — nobody's accent, and a
+steady tax on recognition for as long as it was believed. A locale is
+where a machine was set up, not how its owner speaks.
+
+Beyond the language tag there is little to be done about accuracy in a
+browser: its recogniser is not tunable — no grammar hints, no sensitivity,
+no access to the audio.
+
+### Android hears with its own recogniser, and Whisper is a flag away
+
+    make apk EARS=native     Android's SpeechRecognizer  (the default)
+    make apk EARS=whisper    Whisper on the device
+    make apk EARS=whisper WHISPER_MODEL=small.en
+
+Whisper was written first and is kept, behind the `Ears` interface. The
+default moved back because the case for it did not survive contact with the
+phone.
+
+**The accuracy complaints that motivated it were all from the browser.** Words
+missed, having to shout, sentences cut in half — every one of those was
+Chrome's Web Speech API, which is a different engine from Android's
+`SpeechRecognizer` and tells us nothing about it. That was said at the time
+and then skipped over.
+
+**What was measured says the opposite.** `small.en`, the model worth the
+trouble, decodes slower than speech on this phone: the words arrive after the
+speaking and sometimes never. `base.en` keeps up, but it is Whisper's weak
+tier, and the thing it is being compared against is a Google model trained for
+`en-IN` in particular. Against an Indian accent that is not a fight base.en
+should be expected to win.
+
+**Nothing else is given up.** On-device recognition buys working offline, and
+FRIDAY cannot answer offline anyway — Platform AI is a network call. It also
+costs 148 MB on first use, continuous inference, and the battery and heat that
+come with it.
+
+Whisper remains the right answer the day a larger model runs on the server,
+where decode speed is not a phone's problem. The work is done and tested; only
+the default changed.
+
+### What compiling Whisper needs
+
+`whisper_ggml` builds whisper.cpp from source, and the Android toolchain
+needed three things it did not have. Each one failed the build outright, and
+they are recorded because nothing about them is guessable from the error.
+
+- **NDK 29.0.13113456**, which that plugin pins while every other plugin
+  asks for whatever Flutter recommends. Left alone Gradle honours both and
+  fetches two NDKs of about two and a half gigabytes, for one of which
+  nothing native is ever built. `client/android/build.gradle.kts` holds
+  every library module to whisper's version.
+- **CMake and Ninja from the SDK** — `sdkmanager --install "cmake;3.22.1"`.
+  The error is `[CXX1416] Could not find Ninja`. A system `cmake` on the
+  PATH does not satisfy it; the Android Gradle Plugin looks in the SDK.
+- **compileSdk 35 or later on the library modules.** `whisper_ggml`
+  declares 34 but depends on ffmpeg-kit, which refuses to be consumed below
+  35. Every library module is raised to the level the application uses
+  rather than the one plugin being pinned; compiling against a newer API
+  changes no runtime behaviour, which `targetSdk` and `minSdk` govern.
+
+**The override has to run in `afterEvaluate`.** Configuring it on
+`plugins.withId` looked right and did nothing: that callback fires when the
+plugin is applied, and the plugin's own `android { ndkVersion ... }` runs
+afterwards and wins. The symptom was Gradle quietly downloading the second
+NDK anyway.
+
+**`sdkmanager` cannot be relied on to download.** It stalled twice with no
+error and no retry, once at 26% and once at 158 MB of 774 MB, leaving an
+empty version directory that looks installed. Fetching the archive with
+`curl -C -` in a retry loop and unzipping it into
+`$ANDROID_HOME/ndk/<version>/` works and resumes.
+
+### The APK is built for one architecture
+
+    make apk                    arm64-v8a, which every phone since ~2016 is
+    make apk ABI=armeabi-v7a    an older phone
+    make apk ABI=               every architecture, for a store upload
+
+whisper.cpp is compiled once per architecture and each takes minutes, so an
+APK meant for one known phone builds one. `friday.abi` reaches Gradle
+through `-P` and is applied in two places, because compiled code and
+packaged code are filtered separately: the library modules' `abiFilters`
+decide what is compiled, and the application's decide what is packaged.
+Without the second, ffmpeg-kit's prebuilt libraries for all three
+architectures were copied in regardless — fifty megabytes of machine code
+for processors the phone does not have.
+
+The debug APK is about 94 MB, of which 36 MB is Flutter itself, 15 MB a
+Vulkan validation layer that only debug builds carry, and 14 MB ffmpeg-kit,
+which `whisper_ggml` pulls in for the file-based transcription FRIDAY never
+calls. `libwhisper.so` is 2.8 MB. The weights are not in it.
+
+### Saying the name is answered with a chime
+
+Asked for directly: *"the mill be lway on ..wheni mention friday .i get a beep
+siniyd then wghareer is shoud be the content"*. The microphone stays open, the
+name is acknowledged out loud, and what follows it is the question.
+
+**The chime sounds when the name is heard, not when the turn ends.** Its whole
+purpose is to tell the speaker to carry on, and an acknowledgement that
+arrives after the question is finished acknowledges nothing. It is matched
+against every partial result, so it fires once per turn and is reset when the
+next turn opens — a phone that pinged at every partial would be worse than one
+that never pinged.
+
+It does not sound when the microphone was opened by hand. Pressing the button
+is already an acknowledgement.
+
+`SystemSound.play` and a haptic, rather than a package and an audio asset.
+Android decides what an alert sounds like and on some builds it is nothing, so
+the haptic goes with it; both are wrapped, because a missing chime is not a
+reason to stop listening. If it turns out to be inaudible on the owner's
+phone, a short bundled tone is the next step.
+
+**The name stays in the question.** Removing it was built twice and ruled
+against twice — *"dont strip out friday word"*. Every rule for deciding what
+counts as the question is wrong somewhere: "hello FRIDAY" loses its greeting,
+a name at the end means looking backwards, a name in the middle means guessing
+which side the question is on. The model reads "FRIDAY, what is a mutex"
+perfectly well, so the guessing buys nothing.
+
+**The name is a setting**, not a fact about the code:
+
+    make apk FRIDAY_NAME=jarvis
+
+One lower-case word, because it is matched word by word against the
+transcript. Only `friday` carries a list of the ways a recogniser commonly
+mishears it — freddie, frisbee, privacy — collected by listening to one get it
+wrong. Another name gets the loose match alone until somebody does the same
+work for it, which the tests say out loud.
+
+### Interrupting needs the name
+
+Subtracting what FRIDAY is saying from what was heard — echo cancellation
+on the words rather than the audio, so that a plain "stop" would work —
+was built and then removed at the owner's request. It added a way for an
+answer to be cut off that was hard to reason about, for a convenience the
+name already provides. Do not reintroduce it without asking.
+
+Saying the name over an answer still interrupts: `interruptionIn` takes
+the text from the name onwards, dropping the echo that reached the
+transcript before it.
+
+### Always awake on Android's recogniser
+
+The owner wants both: *"i dont want whisper but native always awake"*. They
+pull against each other, because Android's `SpeechRecognizer` is built for one
+deliberate utterance — press, speak, get a result, close — and always awake
+reopens it forever.
+
+Three things had to change before it would survive that.
+
+**Silence is not a failure.** Android raises `error_speech_timeout` and
+`error_no_match` whenever nobody speaks, which always awake produces
+constantly and by design. With `cancelOnError: true` each one stopped the
+engine; the caller then reopened, heard nothing, and stopped again. A loop
+that recognised nothing and clicked at every turn of it — *"its recognizing
+only once and then i get soinds coming repeaty like mic enabing/disabling"*.
+Those errors are named and ignored now, and `cancelOnError` is off.
+
+**A restart needs room.** Android refuses a session begun too soon after the
+last one, answering `ERROR_RECOGNIZER_BUSY`, and the refusals read as a broken
+microphone. The gap was one constant in `VoiceSession` — a quarter of a
+second, which suited a browser. It belongs to the engine instead, as
+`Ears.settleBeforeReopen`: 700 ms on Android, 250 ms in a browser, 150 ms for
+Whisper, which has no recognition service to let go of anything.
+
+**Fewer restarts.** `pauseFor` went from four seconds to twelve. Every restart
+is a new session and most Android builds play a tone for each, so a short
+pause here is a phone that beeps at an empty room for as long as it is left
+on.
+
+**A final result is a guess, and the wait has to allow for it.** Android and
+Chrome both declare an utterance over the moment they think it is — a filler,
+a second of thought, and the sentence is done. `_silenceAfterFinished` had been
+cut to 700 ms on the reasoning that the engine had already waited, which is
+true of Whisper and false of these: *"if add foilleres like umm or if u wait
+just for 1 sec its cut off"*, and "Friday is about" was sent as a complete
+question. Which wait applies is the engine's to say, through
+`Ears.endpointsItself`: 700 ms when a settled result is a measurement,
+1800 ms when it is a guess.
+
+**The staircase.** A question came back as
+
+    Friday Friday can Friday can you Friday can you go Friday can you go to sleep
+
+Android reports the whole utterance so far on *every* result, and with the
+session now surviving errors it can be recorded as ended while that same
+session carries on reporting. Each report was appended to what already
+contained it. `joinHeard` replaces instead of appending when a segment already
+begins with everything kept, comparing loosely because a recogniser revises
+its own capitalisation and punctuation as it goes. Six tests, including the
+whole climb.
+
+Both of these were introduced by the two changes just before them — the
+shortened wait, and keeping the session alive through silence errors. Neither
+was visible without a phone.
+
+**The tone, and the blunt instrument used on it.** Android plays a tone when
+a recognition session starts and another when it ends, and offers no way to
+turn them off. Always awake that is one per question and another every time
+the engine times out on an empty room, so the phone clicks at nothing all day
+— *"i get soinds coming repeaty like mic enabing/disabling"*.
+
+The only lever left is the volume. `MainActivity` exposes a `friday/quiet`
+channel that mutes the streams a tone might come out of — music, system and
+notification, because which one it is depends on the manufacturer — and
+`HushingTheTone` holds that for the moment a session takes to begin.
+
+It is blunt and it is worth being honest about: anything else coming out of
+the phone is silenced too, for about half a second, every time listening
+starts. On a phone propped on a charger being used as an assistant that is a
+fair trade. It would not be on a phone playing music.
+
+Three things make it safe rather than merely clever. A stream the user has
+already silenced is left alone and not remembered, so restoring never turns
+something back on that they turned off. `around` takes the work instead of
+offering mute and unmute separately, so a caller cannot forget the second
+half — the test that matters is the one where opening throws. And the
+activity restores the sound in `onPause` and `onDestroy`, because a phone left
+muted with nothing on screen to explain it is worse than the tone ever was.
+
+### The phone on a charger is the shape this is for
+
+*"il come hme put the phone in chsrger..keep the friday client on ans always
+awake ..and ill use it as alexa"*. That settles several arguments at once: the
+app is in front, the screen is on, and power does not matter.
+
+So `StayingAwake` holds two things. A wakelock, because Android dims and
+sleeps a screen that nobody is touching and the microphone goes with it —
+that is the case that actually gets used, and it cannot fail. And a
+foreground service, which is the only way an app that is *not* on screen may
+hold the microphone at all — that one can fail, and is asked for before the
+microphone is opened so a refusal is reported as itself rather than as
+listening that stops an hour later for no visible reason.
+
+**Always awake never gives up.** *"the mic should never stop no mattter what
+when always awakw option is chosen"*. Three places used to stop it and none
+do now:
+
+- Six consecutive failures to open switched it off. A phone left listening on
+  a charger had quietly stopped being an assistant, and the only way to find
+  out was to ask it something and get nothing. It retries for ever, backing
+  off from one second to ten, and says so in the banner after the fourth
+  failure — often enough to be visible, rarely enough not to be noise.
+- A recogniser that would not `prepare` ended the day's listening. It is
+  retried on the same backoff. A permission genuinely refused keeps saying so
+  rather than going quiet.
+- A refused foreground service turned always-awake off. It no longer does:
+  without the service FRIDAY still hears everything while it is the app on
+  screen, which on a charger is all the time. The refusal is reported and
+  listening continues.
+
+Backing off rather than hammering matters: retrying at one second for ever
+would keep a phone whose microphone has genuinely gone busy all night. Ten
+seconds costs at most a few seconds of deafness once whatever was wrong
+clears, and it still clears without anybody touching the phone — which the
+test checks, by fixing the microphone and waiting.
+
+### Always awake
+
+The microphone stays open and `WakeRule` decides what was meant for
+FRIDAY. `NameSpoken` is the rule: an utterance counts if the name is said
+**anywhere** in it.
+
+It began as "only at the front", which rejects more of the room and reads
+better on paper. In use it was wrong twice over: the recogniser drops or
+mangles the first word often enough that questions had to be repeated, and
+FRIDAY's own voice coming back reaches the transcript before the user
+does. The owner asked for the name to count wherever it is said. The
+accepted cost is that "I'll do it on Friday", said to somebody else, is
+answered.
+
+**The whole utterance is sent, name and all.** Taking the name off meant
+deciding what counted as the question, and every rule for that was wrong
+somewhere: stripping a lead-in made "hello FRIDAY" empty, so being
+greeted was silently ignored; the name at the end meant looking backwards
+instead of forwards. The model reads "FRIDAY, what is a mutex" perfectly
+well, so there is nothing to decide. Owner's decision, and it deleted a
+whole class of bug along with the `_expectingQuestion` state that went
+with it.
+
+The one exception is an interruption, where the transcript begins with
+FRIDAY's own answer echoing back; there the text from the name onwards is
+taken, the name included, and only the echo is dropped.
+
+Nothing that fails the rule is sent or even shown; without that gate every
+sentence in the room is a prompt, a nonsense answer and a bill.
+
+**The name is matched loosely**, because spoken normally rather than
+announced it comes back as "frida", "fridays" or "freddy" often enough
+that an exact match means saying it again, louder, until it lands — which
+is not what talking to an assistant should be like. One edit's distance,
+plus a list of common mishearings. Not two: that admits "sunday" and
+"monday", ordinary words in a room where somebody is arranging a meeting.
+A name under five letters is matched exactly, a single edit covering too
+much of the language at that size.
+
+The name alone leaves the question still to come, so "FRIDAY" — pause —
+"what is a mutex" works as well as saying it in one breath. Having
+answered, the name is wanted again: otherwise the next thing anyone says
+becomes a prompt.
+
+Holding the microphone open with the button uses `AlwaysAddressed`
+instead, because pressing it is itself how the user says who they are
+talking to.
+
+It is **off by default**. An always-open microphone is something a user
+turns on deliberately, not something they discover.
+
+**The browser's recogniser is driven directly, not through
+speech_to_text.** The plugin keeps its own idea of whether it is listening
+and on the web it drifts from the browser's: it decides it has stopped, so
+`cancel` becomes a no-op, while SpeechRecognition is still running and
+refuses every `start` with `InvalidStateError: recognition has already
+started`. Retrying with a longer backoff was tried first and cannot work —
+a cancel that does nothing does nothing however long you wait, and the log
+filled with failed attempts while nothing was heard at all.
+
+`ears_web.dart` holds the object, so `abort` genuinely stops it, and its
+handlers are cleared before it is dropped so a discarded recogniser cannot
+report on its way out. Same reason as `voice_web.dart`: on the web these
+two plugins each keep state that goes out of step with the browser, and
+the API underneath is small enough to own. Android keeps `speech_to_text`,
+where it is solid.
+
+The guards above it — a settle before reopening, and one retry in
+`_openSegment` — are kept as belt and braces, but should now be rare.
+
+A model-based detector (Porcupine, openWakeWord) would be cheaper in power
+and better at ignoring the room, and can replace `NameFirst` without
+touching anything above it. It is not worth an account and a key yet.
+
+### Voice
+
+`client/lib/voice/` is speaking and listening; `lib/state/voice_session.dart`
+joins them to a conversation. The interfaces — `Voice` and `Ears` — are kept
+apart from the plugins behind them so the logic above can be tested without
+a synthesiser or a microphone, and so Android can later use something a
+browser cannot offer.
+
+**Speech is a queue, not a call.** Messages arrive faster than they can be
+spoken: FRIDAY says "Let me look into that" and the answer lands before that
+sentence has finished. Without a queue the second cuts off the first, which
+is the single thing that makes a voice assistant sound broken. `Voice.say`
+therefore completes when the utterance has *finished* being spoken, which is
+what lets the queue run one at a time.
+
+Three rules the queue enforces, each of them a way it would otherwise be
+unpleasant:
+
+- **Talking over FRIDAY silences it.** Superseding a prompt or pressing stop
+  emits a `HushCue`, which clears the queue. Continuing to read an answer
+  the user has already talked past is the worst of it.
+- **A failure is urgent.** It clears what was queued rather than joining it:
+  reading "let me look into that" *after* "I could not reach GitLab" is
+  reading out something no longer true.
+- **Nothing is spoken while the microphone is held open by the button**, or
+  FRIDAY hears itself. Pressing it also silences whatever is being read,
+  since the user opening the microphone has stopped listening.
+
+  Always awake the microphone is open *all the time*, so the same rule
+  means never speaking at all — which is exactly what happened, and FRIDAY
+  went silent. **The microphone stays open while FRIDAY talks**, and what
+  arrives during an answer is filtered instead.
+
+  It has to stay open. Closing it was tried and is worse: a long answer
+  locks the user out for the whole of it, and cancelling or correcting by
+  voice is the thing a voice assistant most needs to allow.
+
+  On a laptop the speaker feeds straight back into the microphone, and the
+  Web Speech API exposes no audio constraints so echo cancellation is not
+  available. The name is what separates the user from the echo —
+  `interruptionIn` looks for it **anywhere** rather than at the front,
+  because the echo reaches the transcript first, so everything before the
+  name is FRIDAY quoting itself and what follows is the interruption.
+  Hearing it silences the answer at once and takes the rest as the new
+  question, and the gate is not applied a second time when the turn ends:
+  the name has already been taken off, and re-checking would reject the
+  very words the interruption was made of.
+
+  When the answer itself contains the name, an interruption cannot be told
+  from the echo, so none is claimed for that utterance.
+
+  **Once FRIDAY stops talking the transcript is thrown away and the
+  microphone started over.** Ignoring the echo as it arrives is not
+  enough: the recogniser keeps accumulating it, so after a long answer the
+  transcript holds the whole paragraph. The next thing the user says lands
+  on the end of that, and what would be sent is the answer read back with
+  a question attached — long enough to be refused outright, which from
+  outside looks exactly like being ignored.
+
+  Nothing of the user's is lost: an interruption is dealt with as it
+  happens and is flagged so the reset cannot wipe it. That flag is cleared
+  only at the moment speech stops — silencing notifies listeners before
+  the queue has drained, so clearing it on every notification threw it
+  away before the stop it was guarding.
+
+The conversation emits `VoiceCue`s and knows nothing about audio; the voice
+layer knows nothing about chats. `VoiceSession` is the only thing that knows
+both, so either can be switched off without the other noticing — which is
+also why a machine with no synthesiser gets a conversation that reads
+normally rather than controls that do nothing.
+
+A recogniser that heard nothing returns empty, which happens whenever the
+microphone opens by accident; that is dropped rather than sent, since an
+empty prompt gets a confused answer.
+
+**The recogniser stopping is not the user finishing.** Chrome's ends a
+stretch of recognition after a short silence — which happens mid-sentence,
+while someone is thinking — and `speech_to_text` ignores `pauseFor` and
+`listenFor` on the web entirely, so there is no setting that prevents it. A
+turn therefore spans several stretches: when one ends and the user has not
+said to stop, another is opened and what was heard so far is kept, because
+each stretch starts over from nothing.
+
+**What ends a turn is a timer of our own, counting from the last word
+heard** — not the recogniser reporting that it stopped.
+
+**The wait follows the recogniser's own view of whether you have
+finished.** One budget cannot serve both: short enough to answer promptly
+cuts people off mid-thought, and long enough to think leaves a dead pause
+after every question. The recogniser already distinguishes them — it marks
+a result *final* when it believes the utterance is complete and leaves it
+interim while somebody is still going — so a settled result waits 1.2
+seconds and an unsettled one waits 3. Waiting for that
+report and only then starting to count stacked Chrome's silence timeout on
+top of ours, and left a long dead pause after the user had finished
+speaking. Counting from the last word makes the wait exactly the budget,
+and predictable; every new word restarts it. Two seconds: long enough to
+draw breath mid-question, short enough that finishing does not feel like
+being ignored.
+
+A turn also ends when the user taps the microphone, and after two minutes
+regardless — a microphone that never closed would listen to the room
+indefinitely.
+
+**The countdown starts when something is heard, not when the microphone
+opens.** Started on opening, always awake, it ends the turn every two
+seconds in a silent room and the microphone is stopped and started again;
+each cycle is deaf for a moment, so a word spoken into one is missed and it
+feels like having to shout. Held open by the button there is no such loop,
+and a press with nothing said should still close on its own, so the
+countdown starts immediately there.
+
+**A recogniser does not stop cleanly, and listening turns are numbered
+because of it.** `speech_to_text` reports both `notListening` and `done`,
+and can deliver the final result between them. Guarding by clearing what
+was heard was not enough — the late result put it back and the second stop
+sent the same words again, which the server correctly read as the user
+correcting themselves and cancelled the first answer mid-sentence. The
+symptom was FRIDAY saying "Let me look into that", being cut off, and
+saying it again. Anything arriving from a turn already finished is now
+ignored outright.
+
+**The browser is driven directly; the phone uses flutter_tts.** The
+plugin's `getLanguages` reported no voices on a Chrome that had nineteen,
+so anything deciding on it was wrong. `voice_web.dart` calls the Web Speech
+API itself, which also means choosing a voice for the language rather than
+taking the browser's default, and finishing `say` on the utterance's own
+`end` event — which is what lets the queue run one at a time. The platform
+is picked by conditional import, as the byte source is.
+
+**A browser will not speak on a page nobody has touched.** Chrome's
+autoplay rules refuse `speechSynthesis` without a user gesture, reporting
+`not-allowed`, and it fails in total silence — indistinguishable from the
+volume being down. Asking by voice involves no click or keypress at all,
+so always-awake is precisely the case that hits it: typing a question
+works, speaking one produces nothing.
+
+`voice_web.dart` turns that refusal into a `VoiceRefused` carrying
+something the user can act on, `Speaker` keeps it, and `VoiceSession`
+shows it beside the listening problems. A synthesiser that declines in
+silence is the worst of both — nothing heard and nothing to act on.
+
+**Voices load asynchronously**, so the first utterance after a page loads
+finds an empty list and is spoken in whatever default the browser fancies
+— one answer in the wrong accent while every later one is right.
+`voice_web.dart` waits briefly for the list before speaking.
+
+**`make ui` serves the UI for your own browser rather than letting
+Flutter launch one.** The Chrome that `flutter run -d chrome` starts runs
+on a throwaway profile, and on this machine it produced no audio at all:
+the log showed one turn, one send, one `speaking … as Google US English`,
+no error of any kind, and silence. The same build in the developer's
+normal Chrome was audible. `make ui-chrome` keeps the old behaviour,
+including `--autoplay-policy=no-user-gesture-required` — that profile has
+never been clicked, and Chrome refuses speech without a gesture.
+
+Diagnosing this took far longer than it should have because each layer
+looked innocent on its own. What settled it was measuring rather than
+reasoning: `pactl list sink-inputs` during an answer shows whether Chrome
+has an audio stream open at all, and `pactl list sinks` shows the active
+port and whether anything is muted. Both were fine, which is what moved
+the search to the browser's own policy.
+
+Speech is **enabled at startup rather than probed for**. Probing is
+unreliable — a browser reports no voices until it has loaded them
+asynchronously — and the two ways of being wrong are not equal: starting
+muted on a device that can speak makes the feature look broken, while
+starting enabled on one that cannot just produces silence, with the answer
+still on screen.
+
+**Verified in Chrome**, by recording `speechSynthesis.speak`: the transient
+and then the answer, both in Google UK English Female at en-GB.
+
+**Not yet verified on a phone.** Audio routed to a Bluetooth headset, the
+earbud button, and staying alive in the background are Android-only and
+need a real device. The manifest already declares `RECORD_AUDIO`,
+`BLUETOOTH_CONNECT` and the Android 11 `queries` entries for the recogniser
+and the synthesiser — without those last two both are simply reported
+absent, with no error explaining why.
+
+### Listening the way Live Transcribe does
+
+The owner's design, and the right one: *"it will ne always in listenig mode
+(ike live transcribe)...and when i talk sonthing ..a few wors will be written
+..after a 3 second pause and if the word contains froday ..we can just get
+those words and send it as prompt..while the mic will be stoll on"*.
+
+One rule, and only one: **talk as long as you like, stop for three seconds,
+and if the name was in it, it is sent.** Nothing else ends a question — not
+the engine, not a second timer somewhere else, not the microphone.
+
+**The microphone never stops.** `WhisperEars` opens the recorder once and
+keeps it open, broadcasting to whichever stretch is listening. Only the
+decoder is started and stopped underneath. Before this the recorder was
+stopped and restarted per question, which was a gap where anything said was
+simply gone.
+
+That is also why this cannot be done on Android's own recogniser. It ends
+sessions itself, and every restart is a new session with a tone attached.
+Owning the audio is what buys a microphone that genuinely never stops — and
+the same thing buys echo cancellation, which is what lets it stay open while
+FRIDAY is talking without transcribing FRIDAY.
+
+**The second wait is gone.** `_silenceAfterFinished` is zero for an engine
+that endpoints itself. It existed because a platform recogniser calls a
+result final when it merely thinks the utterance ended; `Endpointer` is not
+guessing, it has measured three seconds on a microphone that never stopped.
+Waiting again was counting the same pause twice, which is precisely the bug
+it had become.
+
+Setting it to zero surfaced an ordering bug that had been latent: the
+countdown was armed before the words it would send were recorded, so a timer
+firing on the next tick read an empty segment. Recorded first now.
+
+**Decode time is logged**, because the choice of model turns on it and
+estimating it twice already led somewhere wrong:
+
+    FRIDAY: whisper decoded the last of it in 840ms (31 chars)
+
+`adb logcat -s flutter` says what this phone actually does, rather than what
+anyone thinks it does.
+
+### Where the wait actually goes
+
+Measured on the server's own log, an answer from Platform AI takes **2.1 s at
+best, 4.8 s typically, 9.6 s at worst**. Nothing on the phone changes that,
+and it is most of what a person feels as slowness.
+
+What the phone adds, in series:
+
+    ~0.8 s   Endpointer waiting out the silence that ends a stretch
+    ~0.3-1.5 s   whisper decoding the last of the buffered audio
+    ~0.7 s   VoiceSession waiting again before it sends
+    ~4.8 s   the model
+    then speaking
+
+The two silences were both 1200 ms, spent one after the other, so two and a
+half seconds passed before a word left the phone. They were set for different
+engines and never reconsidered together: `_silenceAfterFinished` exists
+because the Web Speech API calls a result final when it merely thinks the
+utterance ended, so a wait on top was the only protection. Whisper endpoints
+through code in this repository and has already measured its own silence
+before it calls anything settled, so the second wait was counting the same
+pause twice.
+
+Neither can go to zero. The microphone is shut while the last audio decodes
+and takes a moment to reopen; `_silenceAfterFinished` is the window in which
+somebody carrying on is still the same turn rather than a new one. They are
+800 ms and 700 ms now, which is about a second saved out of roughly eight.
+
+A pause for thought is protected by something else entirely —
+`_silenceMidSentence`, three seconds, armed whenever a result arrives
+unsettled. That is what stops a hesitation being read as the end of a
+question, and it is deliberately not part of this budget.
+
+### Scrolling follows only when it should
+
+The chat view sticks to the bottom while the user is already at the bottom,
+and stops the moment they scroll up to read something, offering a "Latest"
+button instead. A view that yanks itself down while you are reading is the
+single most common way a streaming chat interface is unpleasant.
+
+While streaming it jumps rather than animates: an animation restarted on
+every message never arrives, and the text appears to stutter.
+
+### Errors belong where they can be acted on
+
+The login screen shows a refused password against the password field and an
+unreachable server as a banner above the form. They are different problems
+with different remedies, and a single "login failed" for both tells the user
+nothing about which one they have.
+
+`tool/smoke.dart` runs the whole loop against a real server. It is not in the
+test suite: it needs a running FRIDAY, an account, and a provider that costs
+money to call.
 
 Startup does not use `init()`. It cannot return an error, so a failure to read
 configuration or reach the database could only panic or exit, losing the clear
@@ -248,27 +1103,27 @@ time, so history comes back ordered from an index scan without a sort.
 
 ---
 
-## 6. Tasks
+## 6. Chats
 
 The design agreed before any of it was built. Not yet implemented.
 
 ### Shape of the API
 
-A request is a task. Submitting one returns immediately; the work continues in
+A request is a chat. Submitting one returns immediately; the work continues in
 the background.
 
 ```
-POST /v1/tasks            {"prompt": "..."}   -> 202, the task with id and status
-POST /v1/tasks?wait=30s                       -> holds the connection up to 30s,
-                                                 returning the finished task if it
+POST /v1/chats            {"prompt": "..."}   -> 202, the chat with id and status
+POST /v1/chats?wait=30s                       -> holds the connection up to 30s,
+                                                 returning the finished chat if it
                                                  lands in time, else the pending one
-GET  /v1/tasks/{id}                           -> the task, with its response once done
-GET  /v1/tasks                                -> recent tasks, without response bodies
-POST /v1/tasks/{id}/cancel                    -> stops a task that has not finished
+GET  /v1/chats/{id}                           -> the chat, with its response once done
+GET  /v1/chats                                -> recent chats, without response bodies
+POST /v1/chats/{id}/cancel                    -> stops a chat that has not finished
 ```
 
 `wait` is a convenience for testing by hand, not a second execution mode. The
-task is created and run the same way either way.
+chat is created and run the same way either way.
 
 ### States
 
@@ -278,16 +1133,16 @@ pending ──→ running ──→ completed
    └───────────┴──────→ cancelled
 ```
 
-`completed`, `failed` and `cancelled` are terminal; nothing moves a task out
+`completed`, `failed` and `cancelled` are terminal; nothing moves a chat out
 of them. `waiting_approval` joins this set when tools need permission.
 
 ### Model
 
-Implemented in `internal/task`.
+Implemented in `internal/chat`.
 
 ```go
-type Task struct {
-    ID     string   // "task_" + ULID
+type Chat struct {
+    ID     string   // "chat_" + ULID
     Prompt string
 
     Status   Status
@@ -305,8 +1160,8 @@ type Task struct {
 different fact from "started at the zero time".
 
 ```sql
-CREATE TABLE tasks (
-  id          CHAR(31)    NOT NULL,   -- 'task_' + 26-char ULID
+CREATE TABLE chats (
+  id          CHAR(31)    NOT NULL,   -- 'chat_' + 26-char ULID
   prompt      TEXT        NOT NULL,
   status      VARCHAR(20) NOT NULL,
   response    MEDIUMTEXT  NULL,
@@ -316,20 +1171,20 @@ CREATE TABLE tasks (
   started_at  DATETIME(3) NULL,
   finished_at DATETIME(3) NULL,
   PRIMARY KEY (id),
-  KEY idx_tasks_status_created (status, created_at)
+  KEY idx_chats_status_created (status, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
 `DATETIME(3)` keeps milliseconds, which plain `DATETIME` truncates away.
 
-Timestamps set by the domain are truncated to `task.StoredPrecision`, which is
+Timestamps set by the domain are truncated to `chat.StoredPrecision`, which is
 one millisecond, before they are stored. Go clocks to the nanosecond and MySQL
-rounds a `DATETIME(3)` to the millisecond, so without this a task in memory
+rounds a `DATETIME(3)` to the millisecond, so without this a chat in memory
 stops matching the row just written from it, and every later comparison between
 the two is quietly wrong. Truncating rather than rounding means the value the
-domain holds is exactly the value that will be stored. The cost is that a task
+domain holds is exactly the value that will be stored. The cost is that a chat
 beginning and finishing within the same millisecond reports no duration, which
-no real task does. The
+no real chat does. The
 identifier is stored with its prefix and readable, rather than as a `BINARY(16)`
 ULID, so the table can be read directly during development. A ULID primary key
 already orders by creation time, so listing needs no sort. The secondary index
@@ -338,7 +1193,7 @@ serves the runner's query, oldest pending first.
 Deliberately absent until something needs them: `user_id`, the model used,
 token counts, retry counts.
 
-### Users, clients, sessions, tasks
+### Users, clients, sessions, chats
 
 ```
 user                    the person FRIDAY belongs to
@@ -349,7 +1204,7 @@ user                    the person FRIDAY belongs to
   |
   +-- sessions          owned by the person, reachable from any client
         |
-        +-- tasks       a prompt is a task
+        +-- chats       a prompt is a chat
               |
               +-- messages
 ```
@@ -424,59 +1279,176 @@ runs on.
 
 ### Sessions
 
-A task belongs to a session, and the provider is given what was said
+A chat belongs to a session, and the provider is given what was said
 earlier in it. Without that, a second prompt arrives with nothing before it:
 "no, make it four" reached the model with nothing to make four, and it said so.
 
-`POST /v1/tasks` creates a session when the caller names none, and returns
+`POST /v1/chats` creates a session when the caller names none, and returns
 its identifier so a follow-up can continue it.
 
 **A new prompt supersedes whatever is still running in that session.**
 Someone who speaks over an answer wants the new thing rather than both, and two
-answers cannot be listened to at once. The superseded task is cancelled, not
+answers cannot be listened to at once. The superseded chat is cancelled, not
 deleted: everything it said is still stored, it is simply never spoken.
 
-**A cancelled task still contributes its prompt to history.** This is what makes
+**A cancelled chat still contributes its prompt to history.** This is what makes
 a correction work at all. The question being corrected was cancelled the instant
-the correction arrived, so a history of only completed tasks would omit the very
+the correction arrived, so a history of only completed chats would omit the very
 thing the correction refers to.
 
-Consecutive turns by the same speaker are joined into one. A cancelled task
+Consecutive turns by the same speaker are joined into one. A cancelled chat
 contributes a prompt with no answer, so two questions can end up adjacent, and
 models that require alternating roles reject that. Joining also reads correctly:
 a question followed by its correction becomes a single request.
 
-History is limited to the most recent turns, defaulting to twenty, so a long
-exchange does not send everything on every request.
+### A chat, not a task
 
-### Running a task
+The owner's words: *"i mena tere shoudn ot be any task word..if i ask its a
+chat..for a chat i get response"*. Migration `00009` renames `tasks` to
+`chats`, `internal/task` is `internal/chat`, `/v1/tasks` is `/v1/chats`, and
+identifiers begin `chat_` instead of `task_` — the same length, so no column
+changed width.
+
+`task_messages` became **`chat_updates`**, not `chat_messages`. `messages` is
+now the conversation itself, and two tables a letter apart holding entirely
+different things is a trap worth spending a better name on.
+
+One caveat was raised before the rename and overruled, and it is recorded
+because it will come due. A chat is one prompt through to one answer, which
+today is exactly one call to the provider — but Ulaa's `runLLMSession` makes
+*several* `/chat` calls when tools are involved, looping until the model
+answers with text instead of a tool call. When FRIDAY grows tools, one chat
+will contain several chat calls. The outer thing is what carries the status,
+the cancel, the supersede rule and the stream; the inner one is
+`platformai.attemptChat` and is not stored.
+
+Two constraint names still predate all this — `fk_devices_user` and
+`fk_conversations_user`, from before clients and sessions were renamed. They
+are invisible except in `information_schema` and were left alone rather than
+widening this change.
+
+### The conversation is a log, not a by-product
+
+Until now a session's history was read back out of the `chats` table: one turn
+from the `prompt` column, one from `response`. That works only while every
+exchange is exactly one question and one answer. There was nowhere to put a
+failure the user had already seen, and nowhere for the shape to grow.
+
+The owner asked for the shape used in `ulaa-ai-assistant`
+(`src/background/services/conversation`), having read it: *"see how llms
+adapters, conerstation are naintainer.,tht how i wnat my derver to be"*. Three
+things were taken from it and one was left behind.
+
+**Taken: messages are the stored unit.** `internal/session` holds a `Message`
+with a `Role` and a `Kind`, and the `messages` table is a log per session with
+a position assigned on insert. Chats remain the unit of work; they are no
+longer the unit of record.
+
+**Taken: one store, two views.** `ForModel` is what a provider is given,
+`ForPerson` is what a person is shown. They differ today only in that failures
+are withheld from the model, but they are separate functions because they
+answer separate questions, and only one may change when a provider demands
+something.
+
+**Taken: a failure is a message.** FRIDAY could not answer, the person watched
+it happen, and their next sentence refers to it — so it is in the log and on
+the screen. It is never sent to a model: read back as conversation it becomes
+the model explaining an outage it had no part in, and inventing detail to fill
+the gap.
+
+**Left behind: tool calls.** The owner's instruction was *"don think about
+tool cals now"*, so there is no `tool` role and no `tool_calls` column. Adding
+them later is a migration, which is the right price for not guessing their
+shape now.
+
+**Left behind: the vocabulary of chats.** Also the owner's: *"actually no need
+for the term chat"*. The log is `internal/session`, keyed by session, with no
+`chat_id` column — a message does not record which request produced it. The
+existing `chats` table, `/v1/chats` and the runner keep their names; whether
+those are renamed too is still open.
+
+**How a question stays out of its own history.** The runner appends the
+question, gets its position back, and reads everything *before* that position.
+There is no identifier to exclude and no ordering to get right — the question
+cannot reach the model twice by construction.
+`TestTheQuestionIsNotAlsoInItsOwnHistory` fails without it; checked by
+breaking it.
+
+**Positions are assigned by reading the maximum and retrying.** Two appends to
+one session can choose the same position; the loser is refused by the primary
+key and takes the one the winner just claimed.
+`TestConcurrentAppendsGetDistinctPositions` runs five at once against real
+MySQL.
+
+Migration `00008` carries existing history across, so upgrading a running
+FRIDAY loses nothing: each finished chat contributes its question, then the
+answer or the failure it ended in, ordered by identifier — a ULID, so by time.
+On the development database that turned 511 chats into 688 messages.
+
+**The whole session is sent.** The owner's words: *"i dont think the full
+conversation is sent to platform ai..it shoudl include all messages ..mine
+fridya's"*. A person expects an assistant to remember what they said this
+morning.
+
+What replaced the old twenty-turn cap is a byte budget,
+`session.DefaultBudget`, sixty thousand bytes — roughly fifteen
+thousand tokens, a long day of talking. A budget rather than a turn count
+because what costs money and eventually exceeds the model's context is the
+text, not the number of times the speaker changed. The oldest turns are dropped
+first; a single turn longer than the whole budget is cut rather than dropped,
+since dropping it would leave the model answering about a subject it never saw.
+
+**No time is sent with a message, and this was tried.** The same request asked
+for the date and time of every message, so each one went out as
+`[Mon 22 Sep 2026, 2:32 pm IST] what was said`, with a paragraph appended to
+the system prompt explaining that the brackets were context and were never to
+be read back.
+
+The model read them back. An answer about Iron Man arrived beginning
+`[Tue 22 Sep 2026, 4:17 pm IST] Iron Man is one of the most iconic
+superheroes...` — the convention was demonstrated on every single message, and
+demonstration beats instruction. The owner's ruling: *"time shou niot be sent
+to ai"*.
+
+So nothing decorates a message on its way out: `provider.Turn` is a role and
+text, and the system prompt is exactly what was configured.
+`TestMessagesReachTheModelUnadorned` and the `[`-prefix check in
+`TestHistoryCarriesBothSpeakers` are what keep it that way.
+
+Times are still recorded — `messages.created_at`, in UTC — because they are
+worth having and cost nothing. They just do not reach a model. Anything that
+wants to answer a question about *when* will have to put the time somewhere a
+model cannot mistake for a pattern to copy, which is a different design and
+not this one.
+
+### Running a chat
 
 `internal/runner` owns execution. Two details of it are load-bearing.
 
-A task's lifetime is **not** derived from the request that submitted it. An
+A chat's lifetime is **not** derived from the request that submitted it. An
 HTTP request's context ends when its response is sent, which would cancel the
-task at the moment the caller was told it had started. The runner holds its own
+chat at the moment the caller was told it had started. The runner holds its own
 context instead.
 
 The final write uses a context that **outlives the run**, via
-`context.WithoutCancel`. Recording that a task was cancelled is itself a
+`context.WithoutCancel`. Recording that a chat was cancelled is itself a
 database write, and a cancelled context cannot make one, so a naive
-implementation leaves cancelled tasks stuck reading `running` forever.
+implementation leaves cancelled chats stuck reading `running` forever.
 
-Concurrency is capped. A task waits for a slot before it starts, so a queued
-task stays `pending` rather than appearing to run while it waits.
+Concurrency is capped. A chat waits for a slot before it starts, so a queued
+chat stays `pending` rather than appearing to run while it waits.
 
 A transient message that cannot be stored is logged and the run continues. The
 answer is what matters; losing a line of progress is not worth discarding it.
 
-### Consequences of tasks being long-running
+### Consequences of chats being long-running
 
-- **Startup recovers orphans.** A process that dies mid-task leaves a row
+- **Startup recovers orphans.** A process that dies mid-chat leaves a row
   reading `running` that nothing will ever move. At startup every `running`
-  task is failed with an explanation, which is exact while FRIDAY is a single
+  chat is failed with an explanation, which is exact while FRIDAY is a single
   process. More than one process would instead need a `heartbeat_at` column
   and a reaper for stale rows.
-- **A task has a deadline.** Past a maximum duration the runner cancels it and
+- **A chat has a deadline.** Past a maximum duration the runner cancels it and
   records the failure, so a wedged call cannot occupy a slot indefinitely.
 
 ### Consequences of responses being large
@@ -490,8 +1462,8 @@ answer is what matters; losing a line of progress is not worth discarding it.
 
 ### Providers
 
-A task is carried out by a provider: Claude, GPT, or another. Which one runs a
-given task is a routing decision; the task does not care.
+A chat is carried out by a provider: Claude, GPT, or another. Which one runs a
+given chat is a routing decision; the chat does not care.
 
 A provider run is a stream. It yields zero or more transient messages, then
 exactly one final message or one error, then ends.
@@ -527,8 +1499,8 @@ type Provider interface {
 
 The contract is part of the interface: the provider owns the channel and
 closes it, a stream ends after exactly one `final` or one `error`, and
-cancelling the context ends the run. A final message completes the task; an
-error fails it. Cancellation is what will serve both `POST /tasks/{id}/cancel`
+cancelling the context ends the run. A final message completes the chat; an
+error fails it. Cancellation is what will serve both `POST /chats/{id}/cancel`
 and interrupting FRIDAY mid-sentence by voice.
 
 A channel was chosen over an iterator because it is what a Go reader expects
@@ -537,52 +1509,52 @@ drain the stream or cancel the context, or the provider's goroutine leaks;
 that obligation belongs in the doc comment on Run.
 
 The provider's own running and ended states are the lifetime of the stream and
-are not stored. The task's `running` and terminal statuses already record it.
+are not stored. The chat's `running` and terminal statuses already record it.
 
 ### Transient messages are stored
 
-They are not merely streamed. A client that reconnects mid-task can catch up,
-a finished task can be asked what it said while working, and a poor answer can
+They are not merely streamed. A client that reconnects mid-chat can catch up,
+a finished chat can be asked what it said while working, and a poor answer can
 be examined step by step. Streamed and forgotten, they are gone whenever
 nobody happens to be listening, which with a voice client is most of the time.
 
 ```sql
-CREATE TABLE task_messages (
-  task_id    CHAR(31)    NOT NULL,
+CREATE TABLE chat_messages (
+  chat_id    CHAR(31)    NOT NULL,
   seq        INT         NOT NULL,
   kind       VARCHAR(16) NOT NULL,
   text       MEDIUMTEXT  NOT NULL,
   created_at DATETIME(3) NOT NULL,
-  PRIMARY KEY (task_id, seq),
-  CONSTRAINT fk_task_messages_task
-    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+  PRIMARY KEY (chat_id, seq),
+  CONSTRAINT fk_chat_messages_chat
+    FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
-The primary key orders a task's messages and stores them together. The final
-message is **not** duplicated here: it lives in `tasks.response`, and an error
-in `tasks.error`, so a large answer is stored once. Replaying a run means
-reading the messages and then the task's own result.
+The primary key orders a chat's messages and stores them together. The final
+message is **not** duplicated here: it lives in `chats.response`, and an error
+in `chats.error`, so a large answer is stored once. Replaying a run means
+reading the messages and then the chat's own result.
 
 `kind` is kept even though only updates are written today, because tool calls
 and their results will be recorded the same way.
 
 ### Streaming to a client
 
-`GET /v1/tasks/{id}/stream` sends server-sent events. Every message a client
+`GET /v1/chats/{id}/stream` sends server-sent events. Every message a client
 receives is one whole sentence, ready to be spoken.
 
-The handler subscribes to the bus **before** reading the task. Reading first
-leaves a gap in which a task can finish unheard, and the client then waits for
+The handler subscribes to the bus **before** reading the chat. Reading first
+leaves a gap in which a chat can finish unheard, and the client then waits for
 a message that was already sent. Having subscribed, it replays the messages
-already stored, sends the outcome and closes if the task has finished, and
+already stored, sends the outcome and closes if the chat has finished, and
 otherwise follows the live stream, skipping anything it already replayed.
 
 A client reconnecting sends `Last-Event-ID` and resumes from there, so a phone
 on mobile data does not hear the same sentence twice.
 
 Publishing never blocks. A client that has stopped reading loses events rather
-than delaying the task producing them; the database holds the durable record
+than delaying the chat producing them; the database holds the durable record
 either way. Comments are sent on an idle stream, because proxies and mobile
 networks close a silent connection and a real agent will think for minutes
 without speaking.
@@ -635,12 +1607,34 @@ on, since the public endpoints present ordinary certificates.
 Credentials live in `config.ini`, which is git-ignored, or in
 `FRIDAY_PLATFORMAI_CLIENT_SECRET` and `FRIDAY_PLATFORMAI_REFRESH_TOKEN`.
 
+### A refused token renews itself
+
+An access token can be refused before it was believed to have expired.
+Zoho invalidates one when another is issued for the same client, so
+authorising from anywhere else — or a second copy of FRIDAY running —
+revokes ours silently, long before the expiry that was calculated from
+`expires_in`.
+
+A 401 therefore drops the cached token, mints a fresh one and repeats the
+call. **Once only**: a refresh token that has itself been revoked would
+answer every attempt the same way, and retrying for ever would hang the
+chat rather than fail it.
+
+**A machine code is never read aloud.** The service's own wording is
+passed on because it was written to be read, but `INVALID_OAUTHTOKEN` was
+not — it is for whoever runs the server, and means nothing spoken to
+somebody waiting for an answer. A message shaped like a code
+(SHOUTING_SNAKE_CASE, no spaces) is replaced by one that says what is
+actually wrong; a message shaped like a sentence is passed through
+unchanged, since it is usually more informative than anything substituted
+for it.
+
 ### The first provider is a stub
 
 Implemented in `internal/provider`.
 
 It emits a couple of fixed updates and a final message. That makes the whole
-pipeline visible end to end with no API key and no network, so the task
+pipeline visible end to end with no API key and no network, so the chat
 lifecycle, cancellation and streaming can be debugged on their own. A real
 provider then replaces it behind the same interface without anything else
 changing.
@@ -731,15 +1725,15 @@ Everything below the API layer is built and tested. `✅` is done, `⬜` is not.
   +----------------------------------------------------------------------+
   |  Android phone     STT --> text              text --> TTS            | ⬜
   +--------+-------------------------------------------------^-----------+
-           | POST /v1/tasks                  GET .../stream  | SSE
+           | POST /v1/chats                  GET .../stream  | SSE
   =========+=================================================+=============
            v                                                 |
   +----------------------+                     +-------------------------+
   |  internal/api     ✅ |                     |  SSE endpoint        ✅ |
   |  /health  /ready     |                     |  pushes each message    |
-  |  /v1/tasks ...    ✅ |                     +-------------^-----------+
+  |  /v1/chats ...    ✅ |                     +-------------^-----------+
   +----------+-----------+                                   |
-             | Submit(task)                                  |
+             | Submit(chat)                                  |
              v                                               |
   +----------------------------------------------+           |
   |  internal/runner                           ✅ |           |
@@ -756,15 +1750,15 @@ Everything below the API layer is built and tested. `✅` is done, `⬜` is not.
            |                         |
            v                         v
   +---------------------+   +----------------------+
-  | internal/provider ✅ |   | internal/task     ✅ |
-  |  Provider interface |   |  Task + Status       |
+  | internal/provider ✅ |   | internal/chat     ✅ |
+  |  Provider interface |   |  Chat + Status       |
   |  Message / Kind     |   |  state machine       |
   |  Stub            ✅ |   |  Repository interface|
   |  Platform AI     ✅ |   +----------+-----------+
   +---------------------+              |
                                        v
                             +-----------------------+
-                            | internal/task/mysql ✅ |
+                            | internal/chat/mysql ✅ |
                             |  rows <-> domain      |
                             |  two read paths       |
                             +----------+------------+
@@ -777,8 +1771,8 @@ Everything below the API layer is built and tested. `✅` is done, `⬜` is not.
                                        v
                                +---------------+
                                |    MySQL   ✅ |
-                               |  tasks        |
-                               |  task_messages|
+                               |  chats        |
+                               |  chat_messages|
                                +---------------+
 ```
 
@@ -786,7 +1780,7 @@ What `cmd/server` wires today:
 
 ```
 config.LoadFromEnv()  ✅  ->  logging.New()      ✅  ->  storage.Open()  ✅
-  ->  storage.Migrate()  ✅  ->  taskmysql.NewRepository()  ✅
+  ->  storage.Migrate()  ✅  ->  chatmysql.NewRepository()  ✅
   ->  runner.New()       ✅  ->  runner.Recover()           ✅
   ->  api.New()          ✅  ->  serve()                    ✅
 ```
@@ -807,32 +1801,40 @@ needs is complete, end to end.
   wired into the server
 - `internal/storage` — MySQL connection through GORM, pool configuration,
   GORM logging routed into `internal/logging`, opened at startup
-- `internal/api` — the HTTP interface: routing, middleware and handlers
-- `internal/task` — the Task type and its status state machine. Pure Go; it
+- `internal/api` — the HTTP interface, one package per resource under it;
+  `api.go` assembles them and is the only place routes are registered
+- `internal/chat` — the Chat type and its status state machine. Pure Go; it
   touches neither the database nor HTTP
+- `internal/chat/memory` — an in-memory `chat.Repository`, so the runner and
+  the API can be tested without MySQL. Real code rather than a test fixture,
+  because two packages need it and a copy in each drifts apart
 - `internal/provider` — the Provider interface, its message types, and the
   stub implementation. Pure Go; no network
-- Migrations for `tasks` and `task_messages`, applied at startup
-- `internal/task/mysql` — the task repository. The `Repository` interface is
-  declared in `internal/task`, which stays free of GORM; every mapping between
+- Migrations for `chats` and `chat_messages`, applied at startup
+- `internal/chat/mysql` — the chat repository. The `Repository` interface is
+  declared in `internal/chat`, which stays free of GORM; every mapping between
   a domain type and a row happens in the implementation beside it
-- `internal/runner` — executes tasks: reads a provider's stream, stores each
+- `internal/runner` — executes chats: reads a provider's stream, stores each
   transient message, records the result, and handles cancellation, deadlines
-  and recovery of tasks interrupted by a restart
-- The task API: create, fetch, list, read messages, cancel. `cmd/server` wires
+  and recovery of chats interrupted by a restart
+- The chat API: create, fetch, list, read messages, cancel. `cmd/server` wires
   the repository and runner together, so a prompt submitted over HTTP is
   answered by the stub provider and stored
-- `internal/events` — an in-process bus carrying a task's messages from the
+- `internal/events` — an in-process bus carrying a chat's messages from the
   runner to whoever is listening
 - `internal/provider/platformai` — answers using Zoho Platform AI, selected by
   `[provider] name`
 - `internal/auth` — token issuing and hashing, bcrypt password hashing, and
   the constant-time comparisons around both
+- `client/` — the Flutter client. `lib/friday/` is the layer that talks to
+  FRIDAY: login, chats, sessions, clients, and the event stream, with every
+  failure turned into a type from `errors.dart`. No Flutter imports, so a
+  plain Dart test exercises it
 - Users, their clients, and their sessions. A client authenticates with
-  a bearer token and holds its own active session; tasks land there,
+  a bearer token and holds its own active session; chats land there,
   history reaches the provider, and a new prompt supersedes whatever is still
   running in that same session
-- `GET /v1/tasks/{id}/stream` — server-sent events, delivering each message as
+- `GET /v1/chats/{id}/stream` — server-sent events, delivering each message as
   it is produced. This is the voice path
 - `GET /health` (liveness, no dependencies) and `GET /ready` (checks the
   database, 503 when it is unreachable)
@@ -840,7 +1842,7 @@ needs is complete, end to end.
 **Not built**
 - Authentication. Every endpoint is open
 - The Android client, tools, memory and the agent loop
-- The task API and the runner that executes tasks
+- The chat API and the runner that executes chats
 - Agent loop, tools, permissions, events
 - Authentication
 - Any client
@@ -850,14 +1852,14 @@ needs is complete, end to end.
 - `?wait` still polls the database. It is a convenience for using the API by
   hand; the stream is what a client should use, and could serve `?wait` too.
 - The event bus is in-process. A second process would not see another's
-  events, and clients would hear nothing from tasks it was running.
+  events, and clients would hear nothing from chats it was running.
 - Nothing terminates TLS in development. FRIDAY binds the loopback and
   refuses a public interface in production, and `deployments/` puts Caddy in
   front, but locally it is plain HTTP and must stay on this machine.
 - Tokens do not expire. Revocation is the only way to end one, which is the
   agreed trade for a handful of the owner's own clients.
 - Platform AI's reassurance interval is fifteen seconds, and answers commonly
-  arrive in three to nine, so most tasks send only the opening
+  arrive in three to nine, so most chats send only the opening
   acknowledgement. That is fine now, but if answers get slower the interval is
   worth shortening: silence is what to avoid when listening.
 - FRIDAY refuses to start when the database is unreachable. That is deliberate
@@ -893,7 +1895,7 @@ DuckDNS gives free subdomains that do not expire.
 
 **The database is on the same machine**, not a managed free tier. Those cap at
 around a gigabyte, and every prompt and answer is stored; a local database
-also spares a network round trip on the history read that precedes every task.
+also spares a network round trip on the history read that precedes every chat.
 The cost is that backups are ours, which `deployments/backup.sh` and its timer
 cover: nightly, fourteen days, written under a temporary name so a half-written
 dump is never mistaken for a good one, and checked afterwards for the tables it

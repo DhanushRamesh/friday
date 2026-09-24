@@ -83,13 +83,12 @@ func newFakeService(t *testing.T) (*fakeService, platformai.Config) {
 	t.Cleanup(f.server.Close)
 
 	return f, platformai.Config{
-		ClientID:        "client",
-		ClientSecret:    logging.Secret("secret"),
-		RefreshToken:    logging.Secret("refresh"),
-		PortalID:        "TestPortal",
-		TokenURL:        f.server.URL + "/token",
-		ChatURL:         f.server.URL + "/chat",
-		WorkingInterval: time.Hour, // out of the way unless a test wants it
+		ClientID:     "client",
+		ClientSecret: logging.Secret("secret"),
+		RefreshToken: logging.Secret("refresh"),
+		PortalID:     "TestPortal",
+		TokenURL:     f.server.URL + "/token",
+		ChatURL:      f.server.URL + "/chat",
 	}
 }
 
@@ -123,20 +122,20 @@ func newProvider(t *testing.T, cfg platformai.Config) *platformai.Provider {
 	return p
 }
 
-// A run acknowledges at once, then answers. The acknowledgement is what a
-// listener hears while the call is outstanding.
-func TestRunAcknowledgesThenAnswers(t *testing.T) {
+// The stream is the reply and nothing else. This package invents no
+// progress of its own: a phrase it made up before every answer is filler,
+// and read aloud on every question it grates.
+func TestRunAnswersWithoutInventingProgress(t *testing.T) {
 	_, cfg := newFakeService(t)
 	got := run(t, newProvider(t, cfg), "check my merge requests")
 
-	if len(got) < 2 {
-		t.Fatalf("got %d messages, want an acknowledgement and an answer: %+v", len(got), got)
+	for _, m := range got {
+		if m.Kind == provider.KindUpdate {
+			t.Errorf("the provider made up progress of its own: %q", m.Text)
+		}
 	}
-	if got[0].Kind != provider.KindUpdate {
-		t.Errorf("first message kind = %q, want update", got[0].Kind)
-	}
-	if got[0].Text == "" {
-		t.Error("the acknowledgement has no text to speak")
+	if len(got) != 1 {
+		t.Fatalf("got %d messages, want just the answer: %+v", len(got), got)
 	}
 
 	last := got[len(got)-1]
@@ -193,6 +192,58 @@ func TestRequestIsShapedForTheService(t *testing.T) {
 	}
 	if portal, _ := f.lastPortal.Load().(string); portal != "TestPortal" {
 		t.Errorf("portal_id = %q", portal)
+	}
+}
+
+// Nothing is added to a message on its way to the model.
+//
+// Timestamps were prefixed here for a while, with the system prompt telling
+// the model they were context and not to read them back. It read them back:
+// an answer about Iron Man arrived beginning "[Tue 22 Sep 2026, 4:17 pm IST]".
+// The owner's ruling was "time shou niot be sent to ai".
+func TestMessagesReachTheModelUnadorned(t *testing.T) {
+	f, cfg := newFakeService(t)
+	cfg.SystemPrompt = "answer in spoken sentences"
+	p := newProvider(t, cfg)
+
+	req := provider.Request{
+		Prompt: "and the one before that",
+		History: []provider.Turn{
+			{Role: provider.RoleUser, Text: "what is the time"},
+			{Role: provider.RoleAssistant, Text: "half past two"},
+		},
+	}
+	ch, err := p.Run(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	collect(t, ch)
+
+	body, _ := f.lastChatBody.Load().(string)
+	var sent struct {
+		Context  string `json:"context"`
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal([]byte(body), &sent); err != nil {
+		t.Fatalf("unmarshal request %q: %v", body, err)
+	}
+
+	want := []string{"what is the time", "half past two", "and the one before that"}
+	if len(sent.Messages) != len(want) {
+		t.Fatalf("messages = %+v, want %d", sent.Messages, len(want))
+	}
+	for i, content := range want {
+		if sent.Messages[i].Content != content {
+			t.Errorf("message %d = %q, want exactly %q", i, sent.Messages[i].Content, content)
+		}
+	}
+
+	// The system prompt is what was configured and nothing else.
+	if sent.Context != "answer in spoken sentences" {
+		t.Errorf("context = %q, want only the configured prompt", sent.Context)
 	}
 }
 
@@ -301,10 +352,11 @@ func TestEmptyReplyIsAFailure(t *testing.T) {
 	}
 }
 
-// A long call must keep the listener company rather than leaving silence.
-func TestReassuranceWhileWaiting(t *testing.T) {
+// A call that takes a while still produces only the answer. Silence is
+// better than a phrase repeated every fifteen seconds, and the client shows
+// that FRIDAY is working without being told.
+func TestASlowCallStillOnlyAnswers(t *testing.T) {
 	f, cfg := newFakeService(t)
-	cfg.WorkingInterval = 30 * time.Millisecond
 	f.chatHandler = func(w http.ResponseWriter, _ []byte) {
 		time.Sleep(120 * time.Millisecond)
 		w.Write([]byte(`{"data":{"messages":[{"content":"done"}]}}`))
@@ -312,17 +364,8 @@ func TestReassuranceWhileWaiting(t *testing.T) {
 
 	got := run(t, newProvider(t, cfg), "slow question")
 
-	updates := 0
-	for _, m := range got {
-		if m.Kind == provider.KindUpdate {
-			updates++
-		}
-	}
-	if updates < 2 {
-		t.Errorf("got %d updates, want the acknowledgement plus reassurance: %+v", updates, got)
-	}
-	if last := got[len(got)-1]; last.Kind != provider.KindFinal {
-		t.Errorf("last kind = %q, want final", last.Kind)
+	if len(got) != 1 || got[0].Kind != provider.KindFinal {
+		t.Errorf("got %+v, want just the answer", got)
 	}
 }
 
@@ -341,7 +384,6 @@ func TestCancellationEndsTheRun(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	<-ch // the acknowledgement
 	cancel()
 
 	for msg := range ch {
@@ -430,14 +472,13 @@ func TestTransportFailureDoesNotLeakCredentials(t *testing.T) {
 
 	// A port with nothing on it, so the call fails at the transport.
 	cfg := platformai.Config{
-		ClientID:        "client",
-		ClientSecret:    logging.Secret(secret),
-		RefreshToken:    logging.Secret(refresh),
-		PortalID:        "portal",
-		TokenURL:        "http://127.0.0.1:1/token",
-		ChatURL:         "http://127.0.0.1:1/chat",
-		Timeout:         2 * time.Second,
-		WorkingInterval: time.Hour,
+		ClientID:     "client",
+		ClientSecret: logging.Secret(secret),
+		RefreshToken: logging.Secret(refresh),
+		PortalID:     "portal",
+		TokenURL:     "http://127.0.0.1:1/token",
+		ChatURL:      "http://127.0.0.1:1/chat",
+		Timeout:      2 * time.Second,
 	}
 
 	p, err := platformai.New(cfg, logger)
@@ -464,5 +505,85 @@ func TestTransportFailureDoesNotLeakCredentials(t *testing.T) {
 	// The failure must still be diagnosable.
 	if !strings.Contains(logs.String(), "127.0.0.1:1") {
 		t.Errorf("the log does not say what could not be reached:\n%s", logs.String())
+	}
+}
+
+// An access token can be refused before it was thought to have expired:
+// Zoho invalidates one when another is issued for the same client, so
+// authorising from anywhere else, or a second copy of FRIDAY, revokes it
+// silently. Failing the chat for that would mean the user has to ask
+// again for no reason they can see.
+func TestARefusedTokenIsRenewedAndTheCallRetried(t *testing.T) {
+	f, cfg := newFakeService(t)
+
+	var chatCalls atomic.Int32
+	f.chatHandler = func(w http.ResponseWriter, _ []byte) {
+		if chatCalls.Add(1) == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"error":{"message":"INVALID_OAUTHTOKEN"}}`))
+			return
+		}
+		w.Write([]byte(`{"data":{"messages":[{"content":"the answer"}]}}`))
+	}
+
+	got := run(t, newProvider(t, cfg), "ask me")
+
+	last := got[len(got)-1]
+	if last.Kind != provider.KindFinal {
+		t.Fatalf("last kind = %q (%s), want the retry to have answered",
+			last.Kind, last.Text)
+	}
+	if last.Text != "the answer" {
+		t.Errorf("answer = %q, want the reply from the second attempt", last.Text)
+	}
+	if chatCalls.Load() != 2 {
+		t.Errorf("chat called %d times, want a retry", chatCalls.Load())
+	}
+	// The cached token must have been thrown away, not presented again.
+	if f.tokenCalls.Load() < 2 {
+		t.Errorf("token minted %d times, want a fresh one for the retry",
+			f.tokenCalls.Load())
+	}
+}
+
+// Once only. A refresh token that has itself been revoked would answer
+// every attempt the same way, and retrying for ever would hang the chat.
+func TestARefusedTokenIsNotRetriedForEver(t *testing.T) {
+	f, cfg := newFakeService(t)
+
+	var chatCalls atomic.Int32
+	f.chatHandler = func(w http.ResponseWriter, _ []byte) {
+		chatCalls.Add(1)
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":{"message":"INVALID_OAUTHTOKEN"}}`))
+	}
+
+	got := run(t, newProvider(t, cfg), "ask me")
+
+	if last := got[len(got)-1]; last.Kind != provider.KindError {
+		t.Fatalf("last kind = %q, want error", last.Kind)
+	}
+	if chatCalls.Load() != 2 {
+		t.Errorf("chat called %d times, want exactly one retry", chatCalls.Load())
+	}
+}
+
+// INVALID_OAUTHTOKEN is for whoever runs the server. Spoken aloud to
+// somebody waiting for an answer it means nothing.
+func TestACodeIsNotReadAloud(t *testing.T) {
+	f, cfg := newFakeService(t)
+	f.chatHandler = func(w http.ResponseWriter, _ []byte) {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":{"message":"INVALID_OAUTHTOKEN"}}`))
+	}
+
+	got := run(t, newProvider(t, cfg), "ask me")
+
+	last := got[len(got)-1]
+	if strings.Contains(last.Text, "INVALID_OAUTHTOKEN") {
+		t.Errorf("a machine code reached the user: %q", last.Text)
+	}
+	if !strings.Contains(strings.ToLower(last.Text), "credential") {
+		t.Errorf("text = %q, want it to say what is actually wrong", last.Text)
 	}
 }

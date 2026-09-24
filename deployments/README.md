@@ -261,7 +261,7 @@ ssh user@host 'sudo systemctl stop friday \
   && sudo systemctl start friday'
 ```
 
-Stopping gives FRIDAY time to drain requests and let running tasks record
+Stopping gives FRIDAY time to drain requests and let running chats record
 where they reached; any it cannot finish are failed on the next start rather
 than left reading `running` for ever.
 

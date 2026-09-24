@@ -111,7 +111,7 @@ func TestStubRejectsEmptyPrompt(t *testing.T) {
 }
 
 // Cancelling ends the run and closes the stream, which is what will stop a
-// task mid-flight.
+// chat mid-flight.
 func TestStubStopsWhenCancelled(t *testing.T) {
 	s := &provider.Stub{
 		Updates: []string{"one", "two", "three", "four"},

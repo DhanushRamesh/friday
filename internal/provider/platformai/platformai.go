@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -28,11 +29,6 @@ const (
 
 	// DefaultTimeout : How long a single call may take.
 	DefaultTimeout = 120 * time.Second
-
-	// DefaultWorkingInterval : How often the user is reassured while waiting.
-	// Silence longer than this is uncomfortable when listening rather than
-	// watching a screen.
-	DefaultWorkingInterval = 15 * time.Second
 
 	// DefaultSystemPrompt : How FRIDAY is told to answer.
 	//
@@ -57,12 +53,6 @@ const (
 	DefaultScope       = "PlatformAI.organizations.all"
 	DefaultVendor      = "anthropic"
 	DefaultModel       = "claude-sonnet-4-6"
-)
-
-// Progress messages sent while waiting, written to be spoken.
-const (
-	defaultAckMessage     = "Let me look into that."
-	defaultWorkingMessage = "Still working on it."
 )
 
 // Config : What the provider needs in order to reach the service.
@@ -98,9 +88,6 @@ type Config struct {
 
 	// Timeout : How long one call may take. Zero selects DefaultTimeout.
 	Timeout time.Duration
-	// WorkingInterval : How often the user is reassured while waiting. Zero
-	// selects DefaultWorkingInterval.
-	WorkingInterval time.Duration
 	// InsecureSkipVerify : Skips certificate verification. The public
 	// endpoints present ordinary certificates, so this should stay false; it
 	// exists only for the internal endpoints, whose certificates come from an
@@ -181,9 +168,6 @@ func applyDefaults(cfg *Config) {
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = DefaultTimeout
 	}
-	if cfg.WorkingInterval <= 0 {
-		cfg.WorkingInterval = DefaultWorkingInterval
-	}
 }
 
 // Name : Returns the provider's name.
@@ -192,9 +176,16 @@ func (p *Provider) Name() string { return "platformai" }
 // Run : Sends the prompt and streams the reply. See provider.Provider for the
 // contract it follows.
 //
-// Because the service answers in one piece, the stream is an immediate
-// acknowledgement, a reassurance every so often while the call is outstanding,
-// and then the reply. The user hears something at once instead of silence.
+// The service answers in one piece, so the stream is the reply and nothing
+// else. It deliberately sends no progress of its own: an update should be
+// something that actually happened, and a phrase this package made up —
+// "Let me look into that" before every answer — is filler. Read aloud on
+// every question it grates, and it is worse than silence because it sounds
+// like an answer beginning.
+//
+// The client shows that FRIDAY is working without needing to be told. When a
+// provider has real progress to report, such as an agent loop naming the
+// tool it is using, that is what an update is for.
 func (p *Provider) Run(ctx context.Context, req provider.Request) (<-chan provider.Message, error) {
 	if strings.TrimSpace(req.Prompt) == "" {
 		return nil, provider.ErrEmptyPrompt
@@ -204,54 +195,37 @@ func (p *Provider) Run(ctx context.Context, req provider.Request) (<-chan provid
 	go func() {
 		defer close(ch)
 
-		if !send(ctx, ch, provider.Update(defaultAckMessage)) {
+		started := time.Now()
+		text, err := p.chat(ctx, req)
+		if err != nil {
+			// A cancelled chat is the user's doing, not a failure worth
+			// reporting to them.
+			if ctx.Err() != nil {
+				return
+			}
+			p.logger.ErrorContext(ctx, "platform ai call failed",
+				slog.Duration("after", time.Since(started)),
+				slog.Any("error", err))
+			send(ctx, ch, provider.Failure(userFacing(err)))
 			return
 		}
 
-		// The call runs alongside, so progress can be sent while it is
-		// outstanding.
-		type result struct {
-			text string
-			err  error
-		}
-		done := make(chan result, 1)
-		go func() {
-			text, err := p.chat(ctx, req.Prompt, req.History)
-			done <- result{text: text, err: err}
-		}()
-
-		working := time.NewTicker(p.cfg.WorkingInterval)
-		defer working.Stop()
-
-		started := time.Now()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-
-			case <-working.C:
-				if !send(ctx, ch, provider.Update(defaultWorkingMessage)) {
-					return
-				}
-
-			case r := <-done:
-				if r.err != nil {
-					p.logger.ErrorContext(ctx, "platform ai call failed",
-						slog.Duration("after", time.Since(started)),
-						slog.Any("error", r.err))
-					send(ctx, ch, provider.Failure(userFacing(r.err)))
-					return
-				}
-				p.logger.InfoContext(ctx, "platform ai answered",
-					slog.Duration("after", time.Since(started)),
-					slog.Int("reply_bytes", len(r.text)))
-				send(ctx, ch, provider.Final(r.text))
-				return
-			}
-		}
+		p.logger.InfoContext(ctx, "platform ai answered",
+			slog.Duration("after", time.Since(started)),
+			slog.Int("reply_bytes", len(text)))
+		send(ctx, ch, provider.Final(text))
 	}()
 
 	return ch, nil
+}
+
+// codeLike : A machine code rather than a sentence — SHOUTING_SNAKE_CASE
+// with no spaces, as an API returns.
+var codeLike = regexp.MustCompile(`^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$`)
+
+// isCode : Reports whether a message is a code rather than words.
+func isCode(message string) bool {
+	return codeLike.MatchString(strings.TrimSpace(message))
 }
 
 // userFacing : Turns a failure into something that can be read aloud.
@@ -262,7 +236,22 @@ func (p *Provider) Run(ctx context.Context, req provider.Request) (<-chan provid
 func userFacing(err error) string {
 	var apiErr *APIError
 	if errors.As(err, &apiErr) && apiErr.Message != "" {
-		return apiErr.Message
+		// A sentence the service wrote is passed on, because it was
+		// written to be read. A code was not: INVALID_OAUTHTOKEN is for
+		// whoever runs the server and means nothing said aloud to
+		// somebody waiting for an answer.
+		if !isCode(apiErr.Message) {
+			return apiErr.Message
+		}
+		switch apiErr.Status {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return "I am not allowed to reach the model. " +
+				"Its credentials need renewing."
+		case http.StatusTooManyRequests:
+			return "The model is busy. Ask me again in a moment."
+		default:
+			return "The model refused that."
+		}
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return "The service did not answer in time."

@@ -1,4 +1,4 @@
-package task
+package chat
 
 import (
 	"errors"
@@ -21,7 +21,7 @@ const (
 )
 
 // ErrClientNameTooLong : The name exceeded MaxClientNameRunes.
-var ErrClientNameTooLong = errors.New("task: client name is too long")
+var ErrClientNameTooLong = errors.New("chat: client name is too long")
 
 // Client : One thing a user talks to FRIDAY through, such as a phone, a
 // laptop or a speaker.
@@ -58,7 +58,7 @@ type Client struct {
 // given token hash. The name is optional and is trimmed.
 func NewClient(userID, name, tokenHash string) (*Client, error) {
 	if userID == "" {
-		return nil, errors.New("task: a client must belong to a user")
+		return nil, errors.New("chat: a client must belong to a user")
 	}
 	name = strings.TrimSpace(name)
 	if utf8.RuneCountInString(name) > MaxClientNameRunes {

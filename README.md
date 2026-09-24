@@ -17,7 +17,7 @@ This is early. What exists today:
 | Structured logging, redaction, request tracing | working |
 | Configuration from `config.ini` + environment | working, drives the server |
 | MySQL connection (GORM) | working, opened at startup |
-| Task API, agent, tools | not started |
+| Chat API, agent, tools | not started |
 
 The server serves `GET /health` and `GET /ready`. It is configured entirely
 through `config.ini` and the environment variables below, and refuses to start
@@ -42,7 +42,7 @@ if the configuration is invalid or the database is unreachable.
    │              FRIDAY                         │
    │                                             │
    │   api      routing, login, handlers, SSE    │
-   │   runner   executes tasks in the background │
+   │   runner   executes chats in the background │
    │   provider asks the model                   │
    │   events   pushes messages to listeners     │
    └─────┬───────────────────────────┬───────────┘
@@ -53,7 +53,7 @@ if the configuration is invalid or the database is unreachable.
    │  users    │            │   (Claude)       │
    │  clients  │            └──────────────────┘
    │  sessions │
-   │  tasks    │
+   │  chats    │
    │  messages │
    └───────────┘
 ```
@@ -61,8 +61,8 @@ if the configuration is invalid or the database is unreachable.
 | Piece | What it does | Where it runs |
 |---|---|---|
 | **Caddy** | Terminates TLS, proxies to FRIDAY | production only |
-| **FRIDAY** | The whole assistant: API, task execution, streaming | both |
-| **MySQL** | Users, clients, sessions, tasks, messages | both |
+| **FRIDAY** | The whole assistant: API, chat execution, streaming | both |
+| **MySQL** | Users, clients, sessions, chats, messages | both |
 | **Platform AI** | Answers the prompts | neither — it is remote |
 
 Caddy is the only piece that differs. Locally there is no TLS because nothing

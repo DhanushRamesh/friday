@@ -1,4 +1,4 @@
-package task
+package chat
 
 import (
 	"context"
@@ -8,27 +8,27 @@ import (
 
 var (
 	// ErrNotFound : Nothing exists with the given identifier.
-	ErrNotFound = errors.New("task: not found")
+	ErrNotFound = errors.New("chat: not found")
 	// ErrRevoked : The client exists but may no longer authenticate.
-	ErrRevoked = errors.New("task: client is revoked")
+	ErrRevoked = errors.New("chat: client is revoked")
 	// ErrNotOwned : It exists but belongs to a different user.
 	//
 	// Distinguished from ErrNotFound inside FRIDAY so that a mistake is
 	// diagnosable; at the edge both are answered the same way, because
 	// telling one user that another's session exists reveals more than
 	// it should.
-	ErrNotOwned = errors.New("task: belongs to another user")
+	ErrNotOwned = errors.New("chat: belongs to another user")
 )
 
-// Message : One thing recorded during a task's run.
+// Message : One thing recorded during a chat's run.
 //
-// Only transient messages are stored here. A task's result lives in its
+// Only transient messages are stored here. A chat's result lives in its
 // Response and a failure in its Error, so a large answer is held once rather
 // than twice.
 type Message struct {
-	// TaskID : The task the message belongs to.
-	TaskID string
-	// Seq : Position within the task's stream, starting at 1.
+	// ChatID : The chat the message belongs to.
+	ChatID string
+	// Seq : Position within the chat's stream, starting at 1.
 	Seq int
 	// Kind : What sort of message this is, holding a provider.Kind value.
 	Kind string
@@ -38,15 +38,15 @@ type Message struct {
 	CreatedAt time.Time
 }
 
-// SessionSummary : A session with the tasks belonging to it.
+// SessionSummary : A session with the chats belonging to it.
 type SessionSummary struct {
 	Session Session
-	Tasks   []Summary
+	Chats   []Summary
 }
 
-// Summary : A task without its response body.
+// Summary : A chat without its response body.
 //
-// Listing tasks and checking on one both read far more often than they need
+// Listing chats and checking on one both read far more often than they need
 // the answer itself, and a response can run to megabytes.
 type Summary struct {
 	ID         string
@@ -60,22 +60,22 @@ type Summary struct {
 	FinishedAt *time.Time
 }
 
-// Filter : Narrows a listing of tasks.
+// Filter : Narrows a listing of chats.
 type Filter struct {
 	// Status : Restricts the listing to one status. Empty means any.
 	Status Status
 	// SessionID : Restricts the listing to one session. Empty means
 	// any.
 	SessionID string
-	// UserID : Restricts the listing to one user's tasks. Empty means any.
+	// UserID : Restricts the listing to one user's chats. Empty means any.
 	UserID string
-	// Limit : The greatest number of tasks to return. Zero selects
+	// Limit : The greatest number of chats to return. Zero selects
 	// DefaultListLimit.
 	Limit int
 }
 
 const (
-	// DefaultListLimit : How many tasks a listing returns when no limit is
+	// DefaultListLimit : How many chats a listing returns when no limit is
 	// given.
 	DefaultListLimit = 50
 	// MaxListLimit : The largest listing that will be returned, whatever is
@@ -83,34 +83,34 @@ const (
 	MaxListLimit = 200
 )
 
-// Repository : Stores and retrieves tasks and the messages produced while
+// Repository : Stores and retrieves chats and the messages produced while
 // running them.
 //
 // Implementations are safe for concurrent use.
 type Repository interface {
-	// Create : Stores a new task. It reports an error if one already exists
+	// Create : Stores a new chat. It reports an error if one already exists
 	// with the same identifier.
-	Create(ctx context.Context, t *Task) error
+	Create(ctx context.Context, t *Chat) error
 
-	// Get : Returns the task with the given identifier, including its
+	// Get : Returns the chat with the given identifier, including its
 	// response. It reports ErrNotFound if there is none.
-	Get(ctx context.Context, id string) (*Task, error)
+	Get(ctx context.Context, id string) (*Chat, error)
 
-	// Update : Writes a task's current state over the stored one. It reports
-	// ErrNotFound if the task has since been removed.
-	Update(ctx context.Context, t *Task) error
+	// Update : Writes a chat's current state over the stored one. It reports
+	// ErrNotFound if the chat has since been removed.
+	Update(ctx context.Context, t *Chat) error
 
-	// List : Returns tasks in reverse order of creation, newest first,
+	// List : Returns chats in reverse order of creation, newest first,
 	// without their responses.
 	List(ctx context.Context, f Filter) ([]Summary, error)
 
-	// AppendMessage : Records a message against a task, assigning it the next
-	// position in that task's stream. It reports ErrNotFound if the task does
+	// AppendMessage : Records a message against a chat, assigning it the next
+	// position in that chat's stream. It reports ErrNotFound if the chat does
 	// not exist.
-	AppendMessage(ctx context.Context, taskID, kind, text string) (Message, error)
+	AppendMessage(ctx context.Context, chatID, kind, text string) (Message, error)
 
-	// Messages : Returns a task's messages in the order they were produced.
-	Messages(ctx context.Context, taskID string) ([]Message, error)
+	// Messages : Returns a chat's messages in the order they were produced.
+	Messages(ctx context.Context, chatID string) ([]Message, error)
 
 	// CreateUser : Stores a new user. It reports ErrUsernameTaken if the
 	// username is already in use.
@@ -158,19 +158,14 @@ type Repository interface {
 	// all of them.
 	ListSessions(ctx context.Context, userID string, limit int) ([]Session, error)
 
-	// History : Returns a session's turns, oldest first, limited to the
-	// most recent turns. A task that was cancelled or failed contributes its
-	// prompt but no answer, which is what lets a correction be understood.
-	History(ctx context.Context, sessionID string, turns int) ([]Turn, error)
-
-	// Unfinished : Returns the identifiers of a session's tasks that
+	// Unfinished : Returns the identifiers of a session's chats that
 	// have not reached a terminal status, oldest first.
 	Unfinished(ctx context.Context, sessionID string) ([]string, error)
 
-	// FailRunning : Marks every task still recorded as running as failed,
+	// FailRunning : Marks every chat still recorded as running as failed,
 	// with the given explanation, and reports how many were changed.
 	//
-	// It is called at startup. A process that stopped mid-task leaves rows
+	// It is called at startup. A process that stopped mid-chat leaves rows
 	// reading running that nothing will ever move, because whatever was
 	// working on them is gone.
 	FailRunning(ctx context.Context, reason string) (int64, error)

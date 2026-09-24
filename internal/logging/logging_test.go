@@ -150,7 +150,7 @@ func TestContextAttrsAppearOnEveryRecord(t *testing.T) {
 	logger, buf := newTestLogger(t, logging.Config{})
 
 	ctx := logging.WithAttrs(context.Background(), slog.String("request_id", "req-1"))
-	ctx = logging.WithAttrs(ctx, slog.String("task_id", "task-1"))
+	ctx = logging.WithAttrs(ctx, slog.String("chat_id", "chat-1"))
 
 	logger.InfoContext(ctx, "tool started")
 
@@ -158,17 +158,17 @@ func TestContextAttrsAppearOnEveryRecord(t *testing.T) {
 	if got := rec["request_id"]; got != "req-1" {
 		t.Errorf("request_id = %v, want req-1", got)
 	}
-	if got := rec["task_id"]; got != "task-1" {
-		t.Errorf("task_id = %v, want task-1", got)
+	if got := rec["chat_id"]; got != "chat-1" {
+		t.Errorf("chat_id = %v, want chat-1", got)
 	}
 }
 
 // Two contexts derived from the same parent must not see each other's
-// attributes, which is what concurrent tasks sharing a request context do.
+// attributes, which is what concurrent chats sharing a request context do.
 func TestContextAttrsDoNotBleedBetweenBranches(t *testing.T) {
 	parent := logging.WithAttrs(context.Background(), slog.String("request_id", "req-1"))
-	a := logging.WithAttrs(parent, slog.String("task_id", "task-a"))
-	b := logging.WithAttrs(parent, slog.String("task_id", "task-b"))
+	a := logging.WithAttrs(parent, slog.String("chat_id", "chat-a"))
+	b := logging.WithAttrs(parent, slog.String("chat_id", "chat-b"))
 
 	logger, buf := newTestLogger(t, logging.Config{})
 	logger.InfoContext(a, "a")
@@ -178,11 +178,11 @@ func TestContextAttrsDoNotBleedBetweenBranches(t *testing.T) {
 	logger.InfoContext(b, "b")
 	recB := decode(t, buf)
 
-	if recA["task_id"] != "task-a" {
-		t.Errorf("branch a task_id = %v, want task-a", recA["task_id"])
+	if recA["chat_id"] != "chat-a" {
+		t.Errorf("branch a chat_id = %v, want chat-a", recA["chat_id"])
 	}
-	if recB["task_id"] != "task-b" {
-		t.Errorf("branch b task_id = %v, want task-b", recB["task_id"])
+	if recB["chat_id"] != "chat-b" {
+		t.Errorf("branch b chat_id = %v, want chat-b", recB["chat_id"])
 	}
 	if len(logging.AttrsFrom(parent)) != 1 {
 		t.Errorf("parent context was mutated: %v", logging.AttrsFrom(parent))
@@ -223,15 +223,15 @@ func TestServiceAttrsOnEveryRecord(t *testing.T) {
 func TestServiceAttrsCoexistWithContextAttrs(t *testing.T) {
 	logger, buf := newTestLogger(t, logging.Config{Service: "friday"})
 
-	ctx := logging.WithAttrs(context.Background(), slog.String("task_id", "task-1"))
+	ctx := logging.WithAttrs(context.Background(), slog.String("chat_id", "chat-1"))
 	logger.InfoContext(ctx, "agent step")
 
 	rec := decode(t, buf)
 	if rec["service"] != "friday" {
 		t.Errorf("service = %v, want friday", rec["service"])
 	}
-	if rec["task_id"] != "task-1" {
-		t.Errorf("task_id = %v, want task-1", rec["task_id"])
+	if rec["chat_id"] != "chat-1" {
+		t.Errorf("chat_id = %v, want chat-1", rec["chat_id"])
 	}
 }
 

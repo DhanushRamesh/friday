@@ -1,4 +1,4 @@
-package api
+package chats
 
 import (
 	"context"
@@ -11,26 +11,27 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/DhanushRamesh/friday/internal/api/httpx"
+	"github.com/DhanushRamesh/friday/internal/chat"
 	"github.com/DhanushRamesh/friday/internal/events"
-	"github.com/DhanushRamesh/friday/internal/task"
 )
 
 // heartbeatInterval : How often a comment is sent on an idle stream.
 //
 // Proxies and mobile networks close a connection that has been silent, and a
-// task can think for a long time without saying anything.
+// chat can think for a long time without saying anything.
 const heartbeatInterval = 15 * time.Second
 
-// streamEvent : One event as it appears on the wire.
-type streamEvent struct {
+// Event : One event as it appears on the wire.
+type Event struct {
 	Kind string    `json:"kind"`
 	Seq  int       `json:"seq,omitempty"`
 	Text string    `json:"text,omitempty"`
 	At   time.Time `json:"at"`
 }
 
-// handleStreamTask : Sends a task's messages as they happen, as server-sent
-// events, and closes the stream once the task has finished.
+// Stream : Sends a chat's messages as they happen, as server-sent events, and
+// closes the stream once the chat has finished.
 //
 // This is the path a voice client uses: every message it receives is spoken,
 // so messages must arrive as they are produced rather than all at once at the
@@ -39,34 +40,33 @@ type streamEvent struct {
 // A client joining late is not left behind. Messages already recorded are
 // replayed first, then live ones follow, and a client reconnecting after a
 // dropped connection resumes from the Last-Event-ID header it was given.
-func (s *Server) handleStreamTask(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Stream(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		s.logger.ErrorContext(ctx, "response writer cannot flush; streaming is impossible")
-		writeError(ctx, w, http.StatusInternalServerError, "Streaming is not available.")
+		h.Logger.ErrorContext(ctx, "response writer cannot flush; streaming is impossible")
+		httpx.WriteError(ctx, w, http.StatusInternalServerError, "Streaming is not available.")
 		return
 	}
 
-	if !task.ValidID(id) {
-		writeError(ctx, w, http.StatusNotFound, "No such task.")
+	if !chat.ValidID(id) {
+		httpx.WriteError(ctx, w, http.StatusNotFound, "No such chat.")
 		return
 	}
 
-	// Subscribed before the task is read, so that a task finishing between
+	// Subscribed before the chat is read, so that a chat finishing between
 	// the two is still heard rather than falling into the gap.
-	live, unsubscribe := s.events.Subscribe(id)
+	live, unsubscribe := h.events.Subscribe(id)
 	defer unsubscribe()
 
-	t, err := s.tasks.Get(ctx, id)
-	if err != nil {
-		if err == task.ErrNotFound {
-			writeError(ctx, w, http.StatusNotFound, "No such task.")
-			return
-		}
-		s.fail(ctx, w, "reading task", err)
+	// Read through loadChat, as every other chat endpoint does, so that the
+	// ownership check is one code path rather than one this could drift from.
+	// Without it any authenticated caller could listen to another user's
+	// conversation as it happened.
+	t, _ := h.loadChat(ctx, w, id)
+	if t == nil {
 		return
 	}
 
@@ -80,33 +80,33 @@ func (s *Server) handleStreamTask(w http.ResponseWriter, r *http.Request) {
 
 	sent := lastEventID(r)
 
-	// Everything the task has already said.
-	stored, err := s.tasks.Messages(ctx, id)
+	// Everything the chat has already said.
+	stored, err := h.repo.Messages(ctx, id)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "cannot replay task messages", slog.Any("error", err))
+		h.Logger.ErrorContext(ctx, "cannot replay chat messages", slog.Any("error", err))
 	}
 	for _, m := range stored {
 		if m.Seq <= sent {
 			continue
 		}
-		writeEvent(w, streamEvent{Kind: m.Kind, Seq: m.Seq, Text: m.Text, At: m.CreatedAt})
+		writeEvent(w, Event{Kind: m.Kind, Seq: m.Seq, Text: m.Text, At: m.CreatedAt})
 		sent = m.Seq
 	}
 	flusher.Flush()
 
-	// A task that has already finished has nothing more to say.
+	// A chat that has already finished has nothing more to say.
 	if t.Status.IsTerminal() {
 		writeEvent(w, outcomeOf(t))
 		flusher.Flush()
 		return
 	}
 
-	s.logger.InfoContext(ctx, "streaming task", slog.String("task_id", id))
-	s.followTask(ctx, w, flusher, live, sent)
+	h.Logger.InfoContext(ctx, "streaming chat", slog.String("chat_id", id))
+	h.follow(ctx, w, flusher, live, sent)
 }
 
-// followTask : Writes live events until the task ends or the client leaves.
-func (s *Server) followTask(
+// follow : Writes live events until the chat ends or the client leaves.
+func (h *Handler) follow(
 	ctx context.Context,
 	w http.ResponseWriter,
 	flusher http.Flusher,
@@ -120,7 +120,7 @@ func (s *Server) followTask(
 		select {
 		case <-ctx.Done():
 			// The client hung up, which for a voice client means the user
-			// stopped listening. The task itself keeps running; stopping it
+			// stopped listening. The chat itself keeps running; stopping it
 			// is a separate request.
 			return
 
@@ -140,7 +140,7 @@ func (s *Server) followTask(
 			if ev.Seq > sent {
 				sent = ev.Seq
 			}
-			writeEvent(w, streamEvent{
+			writeEvent(w, Event{
 				Kind: string(ev.Kind),
 				Seq:  ev.Seq,
 				Text: ev.Text,
@@ -155,13 +155,13 @@ func (s *Server) followTask(
 	}
 }
 
-// outcomeOf : Renders how a finished task ended.
-func outcomeOf(t *task.Task) streamEvent {
-	ev := streamEvent{At: t.UpdatedAt}
+// outcomeOf : Renders how a finished chat ended.
+func outcomeOf(t *chat.Chat) Event {
+	ev := Event{At: t.UpdatedAt}
 	switch t.Status {
-	case task.StatusCompleted:
+	case chat.StatusCompleted:
 		ev.Kind, ev.Text = string(events.KindFinal), t.Response
-	case task.StatusFailed:
+	case chat.StatusFailed:
 		ev.Kind, ev.Text = string(events.KindError), t.Error
 	default:
 		ev.Kind = string(events.KindCancelled)
@@ -173,7 +173,7 @@ func outcomeOf(t *task.Task) streamEvent {
 //
 // The identifier lets a client resume from where it left off after a dropped
 // connection, which a phone on mobile data does often.
-func writeEvent(w http.ResponseWriter, ev streamEvent) {
+func writeEvent(w http.ResponseWriter, ev Event) {
 	body, err := json.Marshal(ev)
 	if err != nil {
 		return

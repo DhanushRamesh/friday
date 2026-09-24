@@ -6,17 +6,18 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/DhanushRamesh/friday/internal/chat"
 	"github.com/DhanushRamesh/friday/internal/events"
 	"github.com/DhanushRamesh/friday/internal/provider"
-	"github.com/DhanushRamesh/friday/internal/task"
+	"github.com/DhanushRamesh/friday/internal/session"
 )
 
-// execute : Runs one task from start to a terminal status.
+// execute : Runs one chat from start to a terminal status.
 //
-// ctx carries the task's logging attributes and outlives the run, so that a
-// stopped task can still record why. lifeCtx is cancelled to stop the task and
+// ctx carries the chat's logging attributes and outlives the run, so that a
+// stopped chat can still record why. lifeCtx is cancelled to stop the chat and
 // covers the wait for a slot as well as the run itself.
-func (r *Runner) execute(ctx, lifeCtx context.Context, t *task.Task) {
+func (r *Runner) execute(ctx, lifeCtx context.Context, t *chat.Chat) {
 	select {
 	case r.slots <- struct{}{}:
 		defer func() { <-r.slots }()
@@ -28,17 +29,17 @@ func (r *Runner) execute(ctx, lifeCtx context.Context, t *task.Task) {
 	}
 
 	// The deadline covers the run itself, not the wait for a slot.
-	runCtx, stopRun := context.WithTimeout(lifeCtx, r.taskTimeout)
+	runCtx, stopRun := context.WithTimeout(lifeCtx, r.chatTimeout)
 	defer stopRun()
 
 	if err := t.Start(); err != nil {
-		r.logger.ErrorContext(ctx, "cannot start task", slog.Any("error", err))
+		r.logger.ErrorContext(ctx, "cannot start chat", slog.Any("error", err))
 		return
 	}
 	if err := r.save(ctx, t); err != nil {
 		return
 	}
-	r.logger.InfoContext(ctx, "task started")
+	r.logger.InfoContext(ctx, "chat started")
 
 	r.consume(runCtx, ctx, t)
 }
@@ -47,19 +48,11 @@ func (r *Runner) execute(ctx, lifeCtx context.Context, t *task.Task) {
 //
 // runCtx bounds the provider's work and is cancelled to stop it. ctx outlives
 // it and is used for the final write, because a cancelled context cannot be
-// used to record that the task was cancelled.
-func (r *Runner) consume(runCtx, ctx context.Context, t *task.Task) {
-	// What was said earlier in this session, so a follow-up or a
-	// correction can be understood. A failure to read it is not worth
-	// abandoning the task for; the prompt alone still often makes sense.
-	history, err := r.repo.History(ctx, t.SessionID, r.historyTurns)
-	if err != nil {
-		r.logger.ErrorContext(ctx, "cannot read session history", slog.Any("error", err))
-	}
-
+// used to record that the chat was cancelled.
+func (r *Runner) consume(runCtx, ctx context.Context, t *chat.Chat) {
 	stream, err := r.provider.Run(runCtx, provider.Request{
 		Prompt:  t.Prompt,
-		History: toProviderTurns(history),
+		History: r.history(ctx, t),
 	})
 	if err != nil {
 		r.logger.ErrorContext(ctx, "provider would not start", slog.Any("error", err))
@@ -97,21 +90,83 @@ func (r *Runner) consume(runCtx, ctx context.Context, t *task.Task) {
 	}
 }
 
-// toProviderTurns : Converts a session's turns into the form a provider
+// history : Records the question and returns what was said before it.
+//
+// The question is written first and the history read up to it, which is what
+// keeps it from reaching the model twice — once as the last thing said and
+// again as the prompt. Neither failure is worth abandoning the chat for: an
+// unrecorded question costs the next turn its context, and an unread history
+// leaves the prompt to make sense on its own, which it usually does.
+func (r *Runner) history(ctx context.Context, t *chat.Chat) []provider.Turn {
+	if t.SessionID == "" {
+		return nil
+	}
+
+	asked, err := r.messages.Append(ctx, session.Said(t.SessionID, t.Prompt, t.CreatedAt))
+	if err != nil {
+		r.logger.ErrorContext(ctx, "cannot record the question", slog.Any("error", err))
+	}
+
+	said, err := r.messages.Before(ctx, t.SessionID, asked.Seq)
+	if err != nil {
+		r.logger.ErrorContext(ctx, "cannot read session history", slog.Any("error", err))
+		return nil
+	}
+
+	return toProviderTurns(session.Within(session.ForModel(said), r.historyBudget))
+}
+
+// toProviderTurns : Converts a session's messages into the form a provider
 // takes.
-func toProviderTurns(turns []task.Turn) []provider.Turn {
-	out := make([]provider.Turn, len(turns))
-	for i, turn := range turns {
-		out[i] = provider.Turn{Role: provider.Role(turn.Role), Text: turn.Text}
+func toProviderTurns(messages []session.Message) []provider.Turn {
+	out := make([]provider.Turn, len(messages))
+	for i, m := range messages {
+		out[i] = provider.Turn{
+			Role: provider.Role(m.Role),
+			Text: m.Content,
+		}
 	}
 	return out
 }
 
-// complete : Records a task's result, failing it instead if the result cannot
+// record : Stores what the chat ended up saying, so the next turn in the
+// session can refer to it.
+//
+// A failure is recorded too, and shown to the person, but is never given back
+// to a model: see session.Failure.
+func (r *Runner) recordOutcome(ctx context.Context, t *chat.Chat) {
+	if t.SessionID == "" {
+		return
+	}
+
+	said := t.FinishedAt
+	if said == nil {
+		now := time.Now().UTC()
+		said = &now
+	}
+
+	var m session.Message
+	switch {
+	case t.Response != "":
+		m = session.Answered(t.SessionID, t.Response, *said)
+	case t.Error != "":
+		m = session.Failed(t.SessionID, t.Error, *said)
+	default:
+		// Cancelled before it said anything. The question stays in the log,
+		// which is what lets the correction that replaced it be understood.
+		return
+	}
+
+	if _, err := r.messages.Append(ctx, m); err != nil {
+		r.logger.ErrorContext(ctx, "cannot record the answer", slog.Any("error", err))
+	}
+}
+
+// complete : Records a chat's result, failing it instead if the result cannot
 // be stored.
-func (r *Runner) complete(ctx context.Context, t *task.Task, text string) {
+func (r *Runner) complete(ctx context.Context, t *chat.Chat, text string) {
 	err := t.Complete(text)
-	if errors.Is(err, task.ErrResponseTooLarge) {
+	if errors.Is(err, chat.ErrResponseTooLarge) {
 		r.logger.ErrorContext(ctx, "response too large to store",
 			slog.Int("bytes", len(text)))
 		r.finishWith(ctx, t, func() error {
@@ -120,62 +175,64 @@ func (r *Runner) complete(ctx context.Context, t *task.Task, text string) {
 		return
 	}
 	if err != nil {
-		r.logger.ErrorContext(ctx, "cannot complete task", slog.Any("error", err))
+		r.logger.ErrorContext(ctx, "cannot complete chat", slog.Any("error", err))
 		return
 	}
 	if err := r.save(ctx, t); err != nil {
 		return
 	}
+	r.recordOutcome(ctx, t)
 	r.announceOutcome(t)
-	r.logger.InfoContext(ctx, "task completed",
+	r.logger.InfoContext(ctx, "chat completed",
 		slog.Duration("took", t.Duration()),
 		slog.Int("response_bytes", len(t.Response)))
 }
 
-// finishStopped : Records a task whose stream ended without a result, which
+// finishStopped : Records a chat whose stream ended without a result, which
 // happens when it was cancelled or outlived its deadline.
-func (r *Runner) finishStopped(ctx context.Context, t *task.Task, runErr error) {
+func (r *Runner) finishStopped(ctx context.Context, t *chat.Chat, runErr error) {
 	if errors.Is(runErr, context.DeadlineExceeded) {
-		r.logger.WarnContext(ctx, "task exceeded its deadline",
-			slog.Duration("timeout", r.taskTimeout))
+		r.logger.WarnContext(ctx, "chat exceeded its deadline",
+			slog.Duration("timeout", r.chatTimeout))
 		r.finishWith(ctx, t, func() error { return t.Fail(timeoutReason) })
 		return
 	}
 
 	// A reason set before cancelling distinguishes a shutdown from a user
-	// stopping the task themselves.
+	// stopping the chat themselves.
 	if reason, ok := r.cancelReason(t.ID); ok && reason != "" {
-		r.logger.InfoContext(ctx, "task stopped", slog.String("reason", reason))
+		r.logger.InfoContext(ctx, "chat stopped", slog.String("reason", reason))
 		r.finishWith(ctx, t, func() error { return t.Fail(reason) })
 		return
 	}
 
-	r.logger.InfoContext(ctx, "task cancelled")
+	r.logger.InfoContext(ctx, "chat cancelled")
 	r.finishWith(ctx, t, func() error { return t.Cancel() })
 }
 
 // finishWith : Applies a terminal transition and stores the result.
-func (r *Runner) finishWith(ctx context.Context, t *task.Task, transition func() error) {
+func (r *Runner) finishWith(ctx context.Context, t *chat.Chat, transition func() error) {
 	if err := transition(); err != nil {
-		r.logger.ErrorContext(ctx, "cannot finish task", slog.Any("error", err))
+		r.logger.ErrorContext(ctx, "cannot finish chat", slog.Any("error", err))
 		return
 	}
 	_ = r.save(ctx, t)
+	r.recordOutcome(ctx, t)
 	r.announceOutcome(t)
 }
 
 // record : Stores one transient message and announces it.
 //
-// A message that cannot be stored does not fail the task: the answer still
+// A message that cannot be stored does not fail the chat: the answer still
 // matters, and losing a line of progress is not worth discarding it for. It is
 // still announced, so a listener hears it even when the record of it was lost.
-func (r *Runner) record(ctx context.Context, taskID string, msg provider.Message) {
-	stored, err := r.repo.AppendMessage(ctx, taskID, string(msg.Kind), msg.Text)
+func (r *Runner) record(ctx context.Context, chatID string, msg provider.Message) {
+	stored, err := r.repo.AppendMessage(ctx, chatID, string(msg.Kind), msg.Text)
 	if err != nil {
 		r.logger.ErrorContext(ctx, "cannot store message", slog.Any("error", err))
 	}
 	r.publish(events.Event{
-		TaskID: taskID,
+		ChatID: chatID,
 		Kind:   events.KindUpdate,
 		Seq:    stored.Seq,
 		Text:   msg.Text,
@@ -194,16 +251,16 @@ func (r *Runner) publish(ev events.Event) {
 	r.publisher.Publish(ev)
 }
 
-// announceOutcome : Tells listeners how a task ended, so a stream can close
+// announceOutcome : Tells listeners how a chat ended, so a stream can close
 // rather than waiting for a message that will never come.
-func (r *Runner) announceOutcome(t *task.Task) {
-	ev := events.Event{TaskID: t.ID, At: t.UpdatedAt}
+func (r *Runner) announceOutcome(t *chat.Chat) {
+	ev := events.Event{ChatID: t.ID, At: t.UpdatedAt}
 	switch t.Status {
-	case task.StatusCompleted:
+	case chat.StatusCompleted:
 		ev.Kind, ev.Text = events.KindFinal, t.Response
-	case task.StatusFailed:
+	case chat.StatusFailed:
 		ev.Kind, ev.Text = events.KindError, t.Error
-	case task.StatusCancelled:
+	case chat.StatusCancelled:
 		ev.Kind, ev.Text = events.KindCancelled, ""
 	default:
 		return
@@ -211,14 +268,14 @@ func (r *Runner) announceOutcome(t *task.Task) {
 	r.publish(ev)
 }
 
-// save : Writes a task's current state, using a context that outlives the
-// run so that a cancelled task can still record having been cancelled.
-func (r *Runner) save(ctx context.Context, t *task.Task) error {
+// save : Writes a chat's current state, using a context that outlives the
+// run so that a cancelled chat can still record having been cancelled.
+func (r *Runner) save(ctx context.Context, t *chat.Chat) error {
 	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 
 	if err := r.repo.Update(writeCtx, t); err != nil {
-		r.logger.ErrorContext(ctx, "cannot store task",
+		r.logger.ErrorContext(ctx, "cannot store chat",
 			slog.String("status", string(t.Status)),
 			slog.Any("error", err))
 		return err
