@@ -15,9 +15,12 @@ import (
 )
 
 const (
-	// TokenPrefix : Marks a string as a FRIDAY client token, so one is
-	// recognisable if it turns up somewhere it should not be.
-	TokenPrefix = "fri_"
+	// TokenPrefix : Marks a string as a client token, so one is recognisable
+	// if it turns up somewhere it should not be.
+	//
+	// Changing it invalidates every token already issued: Require refuses
+	// anything without it before the hash is ever looked up.
+	TokenPrefix = "pa_"
 
 	// tokenBytes : How much randomness a token carries. Two hundred and
 	// fifty-six bits is far beyond guessing, which is what lets the stored

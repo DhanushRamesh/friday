@@ -67,12 +67,12 @@ func TestLooksLikeTokenRejectsRubbish(t *testing.T) {
 	valid, _, _ := auth.NewToken()
 
 	cases := map[string]bool{
-		valid:                             true,
-		"":                                false,
-		"fri_":                            false,
-		"fri_short":                       false,
-		strings.TrimPrefix(valid, "fri_"): false,
-		"xxx_" + strings.TrimPrefix(valid, "fri_"): false,
+		valid:                            true,
+		"":                               false,
+		"pa_":                            false,
+		"pa_short":                       false,
+		strings.TrimPrefix(valid, "pa_"): false,
+		"xxx_" + strings.TrimPrefix(valid, "pa_"): false,
 		valid + "extra": false,
 	}
 	for s, want := range cases {
@@ -84,14 +84,14 @@ func TestLooksLikeTokenRejectsRubbish(t *testing.T) {
 
 func TestBearerToken(t *testing.T) {
 	cases := map[string]string{
-		"Bearer fri_abc":  "fri_abc",
-		"bearer fri_abc":  "fri_abc", // the scheme is case-insensitive
-		"BEARER fri_abc":  "fri_abc",
-		"Bearer  fri_abc": "fri_abc",
-		"":                "",
-		"fri_abc":         "", // no scheme
-		"Basic fri_abc":   "",
-		"Bearer":          "",
+		"Bearer pa_abc":  "pa_abc",
+		"bearer pa_abc":  "pa_abc", // the scheme is case-insensitive
+		"BEARER pa_abc":  "pa_abc",
+		"Bearer  pa_abc": "pa_abc",
+		"":               "",
+		"pa_abc":         "", // no scheme
+		"Basic pa_abc":   "",
+		"Bearer":         "",
 	}
 	for header, want := range cases {
 		if got := auth.BearerToken(header); got != want {
