@@ -42,7 +42,7 @@ func TestAnswerIsStreamedAndEndsWithDone(t *testing.T) {
 	e := apitest.New(t)
 
 	rec := e.Do(t, http.MethodPost, "/api/chat", `{
-		"model": "friday",
+		"model": "assistant",
 		"messages": [{"role": "user", "content": "say something"}],
 		"stream": true
 	}`)
@@ -91,7 +91,7 @@ func TestTheQuestionIsTheLastThingTheUserSaid(t *testing.T) {
 	e := apitest.NewWith(t, apitest.Options{Provider: recorder})
 
 	rec := e.Do(t, http.MethodPost, "/api/chat", `{
-		"model": "friday",
+		"model": "assistant",
 		"messages": [
 			{"role": "system", "content": "You control a house."},
 			{"role": "user", "content": "what time is it"},
@@ -116,7 +116,7 @@ func TestFieldsMeantForARealModelAreIgnored(t *testing.T) {
 	e := apitest.New(t)
 
 	rec := e.Do(t, http.MethodPost, "/api/chat", `{
-		"model": "friday",
+		"model": "assistant",
 		"messages": [{"role": "user", "content": "say something"}],
 		"stream": true,
 		"keep_alive": "300s",
@@ -133,9 +133,9 @@ func TestAQuestionIsRequired(t *testing.T) {
 	e := apitest.New(t)
 
 	for name, body := range map[string]string{
-		"no messages":     `{"model":"friday","messages":[]}`,
-		"nothing spoken":  `{"model":"friday","messages":[{"role":"user","content":"   "}]}`,
-		"no user turn":    `{"model":"friday","messages":[{"role":"system","content":"You control a house."}]}`,
+		"no messages":     `{"model":"assistant","messages":[]}`,
+		"nothing spoken":  `{"model":"assistant","messages":[{"role":"user","content":"   "}]}`,
+		"no user turn":    `{"model":"assistant","messages":[{"role":"system","content":"You control a house."}]}`,
 		"not json at all": `{`,
 	} {
 		t.Run(name, func(t *testing.T) {

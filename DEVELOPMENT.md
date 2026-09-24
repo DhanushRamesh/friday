@@ -817,7 +817,7 @@ So the assistant answers in Ollama's shape, and `internal/api/assist` is that
 translation:
 
 ```
-GET  /api/tags   -> the one model, named "friday"
+GET  /api/tags   -> the one model, named "assistant"
 POST /api/chat   -> a chat, answered as newline-delimited JSON
 ```
 

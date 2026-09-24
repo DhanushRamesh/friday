@@ -36,7 +36,11 @@ const (
 	// ModelName : The one model the server offers. Home Assistant asks for a
 	// model by name and will not finish setting up an integration that
 	// offers none, so the server presents itself as one.
-	ModelName = "friday"
+	//
+	// Not the assistant's name, which is configuration and changes. This is
+	// the identifier Home Assistant stores against its conversation agent,
+	// so changing it stops voice working until that agent is reconfigured.
+	ModelName = "assistant"
 
 	// roleUser : The author of the question in a Home Assistant request.
 	roleUser = "user"
