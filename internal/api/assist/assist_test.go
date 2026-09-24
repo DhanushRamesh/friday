@@ -111,7 +111,7 @@ func TestTheQuestionIsTheLastThingTheUserSaid(t *testing.T) {
 // Home Assistant sends fields that describe running a model locally — the
 // tools it can offer, a context size, how long to keep the model loaded. None
 // of them mean anything here, and refusing a body for carrying them would
-// stop FRIDAY answering at all.
+// stop the assistant answering at all.
 func TestFieldsMeantForARealModelAreIgnored(t *testing.T) {
 	e := apitest.New(t)
 

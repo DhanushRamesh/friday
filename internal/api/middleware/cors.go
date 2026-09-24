@@ -26,7 +26,7 @@ const corsMethods = "GET, POST, DELETE, OPTIONS"
 // checks, or a pass-through when enabled is false.
 //
 // It exists only for development. In production the web UI is served by
-// FRIDAY itself, so the browser never makes a cross-origin request and this
+// The server itself, so the browser never makes a cross-origin request and this
 // is switched off; during development `flutter run` serves the UI from its
 // own port so that hot reload works, and without this the browser refuses
 // every call.

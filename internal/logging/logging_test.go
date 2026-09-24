@@ -206,12 +206,12 @@ func TestSetLevelTakesEffectImmediately(t *testing.T) {
 }
 
 func TestServiceAttrsOnEveryRecord(t *testing.T) {
-	logger, buf := newTestLogger(t, logging.Config{Service: "friday", Version: "v0.1.0", Env: "dev"})
+	logger, buf := newTestLogger(t, logging.Config{Service: "assistant", Version: "v0.1.0", Env: "dev"})
 
 	logger.InfoContext(context.Background(), "boot")
 
 	rec := decode(t, buf)
-	for key, want := range map[string]string{"service": "friday", "version": "v0.1.0", "env": "dev"} {
+	for key, want := range map[string]string{"service": "assistant", "version": "v0.1.0", "env": "dev"} {
 		if got := rec[key]; got != want {
 			t.Errorf("%s = %v, want %v", key, got, want)
 		}
@@ -221,14 +221,14 @@ func TestServiceAttrsOnEveryRecord(t *testing.T) {
 // Service attrs and context attrs must survive together: New applies the
 // former through WithAttrs, which must not discard the context handler.
 func TestServiceAttrsCoexistWithContextAttrs(t *testing.T) {
-	logger, buf := newTestLogger(t, logging.Config{Service: "friday"})
+	logger, buf := newTestLogger(t, logging.Config{Service: "assistant"})
 
 	ctx := logging.WithAttrs(context.Background(), slog.String("chat_id", "chat-1"))
 	logger.InfoContext(ctx, "agent step")
 
 	rec := decode(t, buf)
-	if rec["service"] != "friday" {
-		t.Errorf("service = %v, want friday", rec["service"])
+	if rec["service"] != "assistant" {
+		t.Errorf("service = %v, want assistant", rec["service"])
 	}
 	if rec["chat_id"] != "chat-1" {
 		t.Errorf("chat_id = %v, want chat-1", rec["chat_id"])

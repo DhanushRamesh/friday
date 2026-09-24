@@ -1,4 +1,4 @@
-# FRIDAY
+# Personal assistant
 #
 # Two places this runs, and they are not the same thing:
 #

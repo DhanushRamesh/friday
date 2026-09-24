@@ -38,7 +38,7 @@ The primary interface is voice, through earbuds or a smart speaker. Everything
 else follows from that.
 
 ```
-  spoken                "Friday, check my merge requests"
+  spoken                "Jarvis, check my merge requests"
      ↓
   earbuds → phone       speech recognised as text
      ↓  POST /v1/chats
@@ -490,7 +490,7 @@ Every refusal reads alike and answers 401. A token never issued and one since
 revoked are logged apart, so a problem stays diagnosable, but answered
 identically, so neither is discoverable.
 
-**The first user is created from the terminal**, with `friday createuser
+**The first user is created from the terminal**, with `personal-assistant createuser
 <username>`. There is no endpoint. One that creates the first user must either
 be open, which lets a stranger claim the assistant, or be guarded by a shared
 secret, which is the same problem one level up. A command run by whoever

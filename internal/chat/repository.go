@@ -13,7 +13,7 @@ var (
 	ErrRevoked = errors.New("chat: client is revoked")
 	// ErrNotOwned : It exists but belongs to a different user.
 	//
-	// Distinguished from ErrNotFound inside FRIDAY so that a mistake is
+	// Distinguished from ErrNotFound inside the server so that a mistake is
 	// diagnosable; at the edge both are answered the same way, because
 	// telling one user that another's session exists reveals more than
 	// it should.

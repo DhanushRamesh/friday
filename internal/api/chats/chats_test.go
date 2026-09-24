@@ -249,7 +249,7 @@ func TestMessagesAreReadableAfterARun(t *testing.T) {
 	}
 }
 
-// Cancelling is how "stop" reaches FRIDAY while it is still speaking.
+// Cancelling is how "stop" reaches the server while it is still speaking.
 func TestCancelStopsARunningChat(t *testing.T) {
 	e := apitest.NewWith(t, apitest.Options{
 		Provider: &provider.Stub{Updates: []string{"a", "b", "c", "d"}, Delay: 40 * time.Millisecond},

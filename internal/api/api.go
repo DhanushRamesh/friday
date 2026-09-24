@@ -1,4 +1,4 @@
-// Package api : Assembles FRIDAY's HTTP interface from its modules.
+// Package api : Assembles the server's HTTP interface from its modules.
 //
 // Nothing is served from here. Each group of endpoints lives in its own
 // package below this one — authn, clients, sessions, chats, assist, health —
@@ -67,12 +67,12 @@ type Options struct {
 	// from another origin.
 	//
 	// For development only, where `flutter run` serves the UI from its own
-	// port so that hot reload works. In production FRIDAY serves the UI
+	// port so that hot reload works. In production the server serves the UI
 	// itself, so every call is same-origin and this stays false.
 	AllowCrossOrigin bool
 }
 
-// Server : FRIDAY's HTTP interface. It implements http.Handler.
+// Server : the server's HTTP interface. It implements http.Handler.
 type Server struct {
 	logger           *slog.Logger
 	requestTimeout   time.Duration

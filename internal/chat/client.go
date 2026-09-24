@@ -23,7 +23,7 @@ const (
 // ErrClientNameTooLong : The name exceeded MaxClientNameRunes.
 var ErrClientNameTooLong = errors.New("chat: client name is too long")
 
-// Client : One thing a user talks to FRIDAY through, such as a phone, a
+// Client : One thing a user talks to the server through, such as a phone, a
 // laptop or a speaker.
 //
 // A client is a credential and nothing more: it owns no sessions and is

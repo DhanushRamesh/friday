@@ -1,4 +1,4 @@
-// Package storage : owns FRIDAY's database connection.
+// Package storage : owns the server's database connection.
 //
 // It opens the connection, configures the pool, routes GORM's logging through
 // internal/logging and exposes a reachability check. It contains no queries;

@@ -406,7 +406,7 @@ func TestFailRunningRecoversInterruptedChats(t *testing.T) {
 
 	untouched := storedChat(t, r, "still queued")
 
-	const reason = "FRIDAY restarted while this was running."
+	const reason = "The server restarted while this was running."
 	changed, err := r.FailRunning(ctx, reason)
 	if err != nil {
 		t.Fatalf("FailRunning: %v", err)

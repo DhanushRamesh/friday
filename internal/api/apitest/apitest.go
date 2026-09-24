@@ -1,4 +1,4 @@
-// Package apitest : Builds a running FRIDAY API for the handler tests of the
+// Package apitest : Builds a running the server API for the handler tests of the
 // modules beneath internal/api.
 //
 // It assembles the real server rather than mounting one module on a bare
@@ -7,7 +7,7 @@
 // module cannot then pass its own tests while being mounted wrongly.
 //
 // Every module's tests share this one fixture, so that adding a dependency to
-// the server is a change in one place rather than in each of them. The tests
+// The server is a change in one place rather than in each of them. The tests
 // themselves live beside the code they cover and are external test packages
 // (package chats_test and so on), which is what lets this package import the
 // API without a cycle.
@@ -60,7 +60,7 @@ var (
 // ErrStorage : A storage failure used to check that internal errors are
 // logged but never returned to a caller. Its text looks like a credential on
 // purpose.
-var ErrStorage = errors.New("storage exploded: dsn=user:password@tcp(db)/friday")
+var ErrStorage = errors.New("storage exploded: dsn=user:password@tcp(db)/assistant")
 
 // fixtureHash : The test account's password hash, computed once at bcrypt's
 // cheapest cost.

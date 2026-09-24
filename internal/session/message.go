@@ -35,7 +35,7 @@ const (
 	// is given.
 	Chat Kind = "chat"
 
-	// Failure : FRIDAY reporting that it could not answer.
+	// Failure : The assistant reporting that it could not answer.
 	//
 	// It is shown to the user, because they watched it happen and a
 	// correction refers to it. It is never sent to a model: read back as
@@ -50,7 +50,7 @@ type Role string
 const (
 	// User : The person asking.
 	User Role = "user"
-	// Assistant : FRIDAY answering.
+	// Assistant : The assistant answering.
 	Assistant Role = "assistant"
 )
 
@@ -82,7 +82,7 @@ func Said(sessionID, content string, at time.Time) Message {
 	}
 }
 
-// Answered : A message from FRIDAY.
+// Answered : A message from the server.
 func Answered(sessionID, content string, at time.Time) Message {
 	return Message{
 		SessionID: sessionID,
@@ -93,7 +93,7 @@ func Answered(sessionID, content string, at time.Time) Message {
 	}
 }
 
-// Failed : FRIDAY reporting that it could not answer.
+// Failed : The assistant reporting that it could not answer.
 func Failed(sessionID, content string, at time.Time) Message {
 	return Message{
 		SessionID: sessionID,

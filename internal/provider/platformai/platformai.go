@@ -1,7 +1,7 @@
 // Package platformai : Answers prompts using Zoho Platform AI.
 //
 // The service is request and response: one call returns one complete answer,
-// with nothing in between. FRIDAY's Provider interface streams, because a user
+// with nothing in between. The server's Provider interface streams, because a user
 // listening through earbuds needs to hear something long before the answer
 // arrives. This provider therefore produces its own progress messages while it
 // waits, and the service's reply becomes the final one.
@@ -56,7 +56,7 @@ const (
 //
 // These are the public addresses. The corresponding internal ones
 // (accounts.csez.zohocorpin.com and platformai.csez.zohocorpin.com) serve the
-// same paths but are reachable only from the corporate network, which FRIDAY
+// same paths but are reachable only from the corporate network, which the server
 // cannot rely on once it is hosted anywhere else.
 const (
 	DefaultTokenURL    = "https://accounts.zoho.com/oauth/v2/token"
@@ -209,7 +209,7 @@ func (p *Provider) Name() string { return "platformai" }
 // every question it grates, and it is worse than silence because it sounds
 // like an answer beginning.
 //
-// The client shows that FRIDAY is working without needing to be told. When a
+// The client shows that the server is working without needing to be told. When a
 // provider has real progress to report, such as an agent loop naming the
 // tool it is using, that is what an update is for.
 func (p *Provider) Run(ctx context.Context, req provider.Request) (<-chan provider.Message, error) {

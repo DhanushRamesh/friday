@@ -1,4 +1,4 @@
-// Command server runs FRIDAY.
+// Command server runs the server.
 package main
 
 import (
@@ -38,7 +38,7 @@ func main() {
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "createuser" {
-		fmt.Fprintln(os.Stderr, "usage: friday createuser <username>")
+		fmt.Fprintln(os.Stderr, "usage: personal-assistant createuser <username>")
 		os.Exit(1)
 	}
 
@@ -163,7 +163,7 @@ func run() error {
 		Events:         bus,
 		RequestTimeout: cfg.Server.RequestTimeout,
 		// Development only: `flutter run` serves the UI from its own port so
-		// that hot reload works. In production FRIDAY serves it, so every
+		// that hot reload works. In production the server serves it, so every
 		// call is same-origin.
 		AllowCrossOrigin: !cfg.Env.IsProduction(),
 	})
@@ -214,7 +214,7 @@ func serve(srv *http.Server, chatRunner *runner.Runner, logger *logging.Logger, 
 
 	errCh := make(chan error, 1)
 	go func() {
-		logger.InfoContext(ctx, "friday listening",
+		logger.InfoContext(ctx, "server listening",
 			slog.String("addr", srv.Addr),
 			slog.String("log_level", logger.Level().String()),
 		)

@@ -1,5 +1,5 @@
 -- +goose Up
--- Tasks are FRIDAY's unit of work. One row per request.
+-- Tasks are the server's unit of work. One row per request.
 CREATE TABLE tasks (
     -- 'task_' followed by a 26 character ULID. Stored readable rather than as
     -- a BINARY(16) so the table can be inspected directly. The ULID orders by

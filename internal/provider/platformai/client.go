@@ -90,7 +90,7 @@ func (p *Provider) accessToken(ctx context.Context) (string, error) {
 // Called when the service refuses one that had not expired as far as we
 // knew. That happens: Zoho invalidates an access token when another is
 // issued for the same client, so authorising from anywhere else — or a
-// second copy of FRIDAY running — silently revokes ours long before the
+// second copy of the server running — silently revokes ours long before the
 // expiry we calculated.
 func (p *Provider) forgetToken() {
 	p.tokenMu.Lock()

@@ -74,7 +74,7 @@ type Role string
 const (
 	// RoleUser : The person asking.
 	RoleUser Role = "user"
-	// RoleAssistant : FRIDAY answering.
+	// RoleAssistant : The assistant answering.
 	RoleAssistant Role = "assistant"
 )
 

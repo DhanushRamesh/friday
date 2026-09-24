@@ -99,7 +99,7 @@ func TestFailLogsTheCauseButDoesNotReturnIt(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	responder.Fail(t.Context(), rec, "reading chat",
-		errTest{"dsn=user:password@tcp(db)/friday"})
+		errTest{"dsn=user:password@tcp(db)/assistant"})
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want 500", rec.Code)

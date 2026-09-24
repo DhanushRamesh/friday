@@ -12,7 +12,7 @@ import (
 var ErrEmptyPrompt = errors.New("provider: request has no prompt")
 
 // defaultStubUpdates : The progress messages a Stub sends when none are
-// configured. They are phrased as FRIDAY would speak them, so that what a
+// configured. They are phrased as the assistant would speak them, so that what a
 // client renders during development resembles what it will render later.
 var defaultStubUpdates = []string{
 	"Let me take a look at that.",

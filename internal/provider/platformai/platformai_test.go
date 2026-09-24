@@ -354,7 +354,7 @@ func TestEmptyReplyIsAFailure(t *testing.T) {
 
 // A call that takes a while still produces only the answer. Silence is
 // better than a phrase repeated every fifteen seconds, and the client shows
-// that FRIDAY is working without being told.
+// that the server is working without being told.
 func TestASlowCallStillOnlyAnswers(t *testing.T) {
 	f, cfg := newFakeService(t)
 	f.chatHandler = func(w http.ResponseWriter, _ []byte) {
@@ -510,7 +510,7 @@ func TestTransportFailureDoesNotLeakCredentials(t *testing.T) {
 
 // An access token can be refused before it was thought to have expired:
 // Zoho invalidates one when another is issued for the same client, so
-// authorising from anywhere else, or a second copy of FRIDAY, revokes it
+// authorising from anywhere else, or a second copy of the server, revokes it
 // silently. Failing the chat for that would mean the user has to ask
 // again for no reason they can see.
 func TestARefusedTokenIsRenewedAndTheCallRetried(t *testing.T) {

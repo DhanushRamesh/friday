@@ -13,14 +13,14 @@ import (
 
 // gormLogger : Adapts gorm.io/gorm/logger.Interface onto log/slog, so that
 // GORM's output carries the same structure, context attributes and redaction
-// as the rest of FRIDAY's logging.
+// as the rest of the server's logging.
 type gormLogger struct {
 	logger *slog.Logger
 	// slowThreshold : Marks a query as worth noticing. Anything slower is
 	// logged at warn even when it succeeds.
 	slowThreshold time.Duration
 	// logStatements : Includes the SQL text in each record. Statements carry
-	// interpolated parameter values, which for FRIDAY means user messages and
+	// interpolated parameter values, which for the server means user messages and
 	// tool output, so this stays off outside development.
 	logStatements bool
 }

@@ -1,4 +1,4 @@
-// Package chat : Defines FRIDAY's unit of work.
+// Package chat : Defines the server's unit of work.
 //
 // A chat is created when a request arrives, runs in the background, and ends
 // in exactly one terminal state. Callers observe a chat only through its
@@ -54,7 +54,7 @@ var (
 	ErrResponseTooLarge = errors.New("chat: response is too large to store")
 )
 
-// Chat : One unit of work submitted to FRIDAY.
+// Chat : One unit of work submitted to the server.
 type Chat struct {
 	// ID : The identifier, an IDPrefix followed by a ULID.
 	ID string

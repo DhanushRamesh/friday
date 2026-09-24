@@ -95,7 +95,7 @@ func TestRecordNotFoundIsNotAnError(t *testing.T) {
 	}
 }
 
-// Statements carry interpolated parameters, which for FRIDAY means user
+// Statements carry interpolated parameters, which for the server means user
 // messages and tool output. They must not appear unless explicitly enabled.
 func TestStatementsOmittedUnlessEnabled(t *testing.T) {
 	const statement = `INSERT INTO chats (input) VALUES ('private user message')`

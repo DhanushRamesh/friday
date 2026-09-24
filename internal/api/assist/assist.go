@@ -1,15 +1,15 @@
-// Package assist : Lets Home Assistant use FRIDAY as its conversation agent.
+// Package assist : Lets Home Assistant use the server as its conversation agent.
 //
 // Home Assistant reaches a language model through one of its integrations,
 // and of those built into it only Ollama's asks for the address of the server
-// to call. FRIDAY therefore answers in Ollama's shape — a model listing at
+// to call. The server therefore answers in Ollama's shape — a model listing at
 // /api/tags and a conversation at /api/chat — because that is the vocabulary
 // Home Assistant already speaks. Nothing here runs a model.
 //
-//	satellite -> Home Assistant -> POST /api/chat   -> a FRIDAY chat
+//	satellite -> Home Assistant -> POST /api/chat   -> a the server chat
 //	                            <- newline-delimited JSON, as the answer forms
 //
-// The answer is streamed for the same reason FRIDAY's own clients are given a
+// The answer is streamed for the same reason the server's own clients are given a
 // stream: Home Assistant holds the connection open while a chat runs, so a
 // chat that takes two minutes survives as long as it keeps saying something,
 // and each thing it says can be spoken as it arrives rather than after.
@@ -33,14 +33,14 @@ import (
 )
 
 const (
-	// ModelName : The one model FRIDAY offers. Home Assistant asks for a
+	// ModelName : The one model the server offers. Home Assistant asks for a
 	// model by name and will not finish setting up an integration that
-	// offers none, so FRIDAY presents itself as one.
+	// offers none, so the server presents itself as one.
 	ModelName = "friday"
 
 	// roleUser : The author of the question in a Home Assistant request.
 	roleUser = "user"
-	// roleAssistant : The author of every chunk FRIDAY sends back.
+	// roleAssistant : The author of every chunk the server sends back.
 	roleAssistant = "assistant"
 
 	// keepAliveInterval : How often an empty chunk is sent while a chat is
@@ -87,7 +87,7 @@ type Message struct {
 // size, how long to keep a model loaded — and all of it describes running a
 // model locally, which is not what happens here. Unknown fields are therefore
 // accepted and ignored rather than refused, so that a future version of Home
-// Assistant sending one more of them does not stop FRIDAY answering.
+// Assistant sending one more of them does not stop it answering.
 type ChatRequest struct {
 	// Model : Which model to answer as. Only ModelName exists.
 	Model string `json:"model"`
@@ -122,7 +122,7 @@ type Model struct {
 	Details    ModelDetails `json:"details"`
 }
 
-// ModelDetails : What a caller is told about a model's construction. FRIDAY
+// ModelDetails : What a caller is told about a model's construction. The server
 // has no weights to describe, and answers only so that a listing parses.
 type ModelDetails struct {
 	Family            string   `json:"family"`
@@ -186,7 +186,7 @@ func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
 // Chat : Answers a question from Home Assistant, streaming the answer as it
 // forms.
 //
-// The conversation Home Assistant sends is not stored. FRIDAY keeps its own
+// The conversation Home Assistant sends is not stored. The server keeps its own
 // log of a session and builds a model's history from that, so only the
 // question is taken from the request; taking the rest would give the chat two
 // disagreeing accounts of what was said.
@@ -351,7 +351,7 @@ func writeChunk(w http.ResponseWriter, flusher http.Flusher, c ChatChunk) {
 // a question mark means "keep the microphone open for a reply", and there is
 // no setting to turn that off. So an answer that happens to end in a question
 // leaves the satellite listening, and the wake word stops being needed —
-// which is the opposite of how FRIDAY is meant to be spoken to. Spoken aloud
+// which is the opposite of how the server is meant to be spoken to. Spoken aloud
 // the substitution changes only the intonation of the last few words.
 func settled(text string) string {
 	runes := []rune(text)

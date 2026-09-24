@@ -39,7 +39,7 @@ func New(logger *slog.Logger, db Pinger) *Handler {
 
 // Mount : Registers the endpoints on r. They sit at the root rather than
 // under a version prefix, because what probes them is infrastructure that
-// should not have to track FRIDAY's API version.
+// should not have to track the server's API version.
 func (h *Handler) Mount(r chi.Router) {
 	r.Get("/health", h.Live)
 	r.Get("/ready", h.Ready)
@@ -53,7 +53,7 @@ func (h *Handler) Live(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(r.Context(), w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// Ready : Reports whether FRIDAY's dependencies are usable, answering 503
+// Ready : Reports whether the server's dependencies are usable, answering 503
 // when any check fails.
 func (h *Handler) Ready(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), readinessTimeout)

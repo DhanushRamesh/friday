@@ -35,7 +35,7 @@ var (
 	ErrUsernameTaken = errors.New("chat: username is taken")
 )
 
-// User : The person FRIDAY belongs to.
+// User : The person the assistant belongs to.
 //
 // Sessions belong to a user rather than to any one client, so an
 // exchange begun on a phone can be continued at a desk.

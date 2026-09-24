@@ -1,6 +1,6 @@
 // Package clients : Serves the credentials a user has issued to themselves.
 //
-// A client is one place a person talks to FRIDAY from — a phone, a speaker, a
+// A client is one place a person talks to the server from — a phone, a speaker, a
 // browser tab — and holds one token. This module is how they see what they
 // have issued and take one back.
 package clients

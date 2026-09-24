@@ -88,7 +88,7 @@ func PasswordMatches(hash, password string) bool {
 // check and the real one take visibly different times, which is the very
 // thing it exists to prevent.
 var dummyHash = sync.OnceValue(func() []byte {
-	hash, err := bcrypt.GenerateFromPassword([]byte("friday placeholder"), PasswordCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte("bcrypt placeholder"), PasswordCost)
 	if err != nil {
 		// Only reachable with an invalid cost, which is a programming error.
 		panic("auth: cannot build the placeholder hash: " + err.Error())

@@ -1,7 +1,7 @@
 // Package chats : Serves the prompts a user asks and the answers they get
 // back.
 //
-// This is the module the rest of FRIDAY exists for. A prompt arrives, becomes
+// This is the module the rest of the server exists for. A prompt arrives, becomes
 // a stored chat, and is handed to the runner; everything else here is about
 // finding out what happened to it — by asking, by waiting, or by listening to
 // the stream in stream.go.

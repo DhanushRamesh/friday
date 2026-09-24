@@ -44,7 +44,7 @@ var migrateMu sync.Mutex
 // Migrate : Applies every migration the database has not already run.
 //
 // It is safe to call on every start: goose records what it has applied and
-// skips it. Applying migrations from a running process is correct while FRIDAY
+// skips it. Applying migrations from a running process is correct while the server
 // is a single process; more than one starting at once would need a lock so
 // that they do not attempt the same migration together.
 func Migrate(ctx context.Context, db *DB, logger *slog.Logger) error {
@@ -133,7 +133,7 @@ func SchemaVersion(ctx context.Context, db *DB) (int64, error) {
 }
 
 // gooseLogger : Adapts goose's logging onto log/slog, so that migration
-// output carries the same structure as the rest of FRIDAY's logging rather
+// output carries the same structure as the rest of the server's logging rather
 // than being printed to stdout in its own format.
 type gooseLogger struct {
 	logger *slog.Logger

@@ -106,7 +106,7 @@ make run          # foreground instead, ctrl-c to stop
 Every production target acts over SSH and is prefixed `prod-`:
 
 ```bash
-make prod-status      # friday, mysql, caddy, memory, and a live health check
+make prod-status      # the service, mysql, caddy, memory, and a live health check
 make prod-start
 make prod-stop        # drains in-flight requests first
 make prod-restart

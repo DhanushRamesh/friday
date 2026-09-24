@@ -37,7 +37,7 @@ const (
 	// timeoutReason : Recorded when a chat outlives its deadline.
 	timeoutReason = "This took too long, so I stopped it."
 
-	// shutdownReason : Recorded when a chat is stopped because FRIDAY is
+	// shutdownReason : Recorded when a chat is stopped because the server is
 	// shutting down.
 	shutdownReason = "The server shut down before this finished."
 )

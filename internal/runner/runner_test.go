@@ -173,7 +173,7 @@ func TestProviderThatWillNotStartFailsTheChat(t *testing.T) {
 }
 
 // Cancelling mid-run must stop the chat and record it, which is what saying
-// "stop" while FRIDAY is speaking will do.
+// "stop" while the assistant is speaking will do.
 func TestCancelStopsARunningChat(t *testing.T) {
 	h := newHarness(t, &provider.Stub{
 		Updates: []string{"one", "two", "three", "four", "five"},
@@ -275,7 +275,7 @@ func TestShutdownStopsAndRecordsRunningChats(t *testing.T) {
 		t.Errorf("Status = %q, want a terminal status after shutdown", got.Status)
 	}
 	if !strings.Contains(strings.ToLower(got.Error), "shut down") {
-		t.Errorf("Error = %q, want it to say FRIDAY shut down", got.Error)
+		t.Errorf("Error = %q, want it to say the server shut down", got.Error)
 	}
 
 	// Nothing may be submitted afterwards.

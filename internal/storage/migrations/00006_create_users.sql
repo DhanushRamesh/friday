@@ -1,5 +1,5 @@
 -- +goose Up
--- A user is the person FRIDAY belongs to. Devices are the things they talk
+-- A user is the person the server belongs to. Devices are the things they talk
 -- through, and conversations belong to the person rather than to any one of
 -- them, so an exchange begun on a phone can be continued at a desk.
 CREATE TABLE users (

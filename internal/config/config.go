@@ -1,4 +1,4 @@
-// Package config : loads and validates FRIDAY's runtime configuration.
+// Package config : loads and validates the server's runtime configuration.
 //
 // Values resolve from three layers, each overriding the one before it:
 //
@@ -76,7 +76,7 @@ type Server struct {
 	RequestTimeout    time.Duration
 
 	// AllowPublicBind : Permits listening on a public interface in
-	// production. Off by default, because FRIDAY speaks plain HTTP and its
+	// production. Off by default, because the server speaks plain HTTP and its
 	// tokens are bearer credentials: anything in front of it must terminate
 	// TLS, and the way to guarantee that is to be unreachable except through
 	// it.

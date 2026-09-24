@@ -196,7 +196,7 @@ func (r *Repository) FailRunning(ctx context.Context, reason string) (int64, err
 	return result.RowsAffected, nil
 }
 
-// Repository implements the interface the rest of FRIDAY depends on.
+// Repository implements the interface the rest of the server depends on.
 var _ chat.Repository = (*Repository)(nil)
 
 // CreateUser : Stores a new user.

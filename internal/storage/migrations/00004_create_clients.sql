@@ -1,5 +1,5 @@
 -- +goose Up
--- A client is one thing that talks to FRIDAY: a phone, a laptop, a speaker.
+-- A client is one thing that talks to the server: a phone, a laptop, a speaker.
 -- Conversations belong to a client, and one of them is the active one, which
 -- is where a prompt lands when the caller does not name a conversation.
 CREATE TABLE clients (

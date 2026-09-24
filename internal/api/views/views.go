@@ -2,7 +2,7 @@
 //
 // Every type here is a wire format, deliberately separate from the domain so
 // that the two can change independently and so that a field added for
-// FRIDAY's own use is never published by accident. The rendering lives in one
+// The server's own use is never published by accident. The rendering lives in one
 // package rather than beside each handler because a session detail carries
 // chats, a login carries a user and a client, and those shapes must agree
 // wherever they appear.

@@ -14,7 +14,7 @@ CREATE TABLE messages (
     -- order is the order things were said and needs no timestamp comparison.
     seq        INT         NOT NULL,
     -- 'chat' or 'error'. An error is shown to the user but never sent to a
-    -- model: it is FRIDAY reporting that it could not answer, which read back
+    -- model: it is the server reporting that it could not answer, which read back
     -- as conversation would have the model explaining its own outage.
     kind       VARCHAR(16) NOT NULL,
     -- 'user' or 'assistant'.
@@ -30,7 +30,7 @@ CREATE TABLE messages (
   COLLATE = utf8mb4_0900_ai_ci;
 
 -- Carry across what has already been said, so upgrading does not lose the
--- history of a running FRIDAY.
+-- history of a running the server.
 --
 -- Each finished piece of work contributes the question, then the answer or
 -- the failure it ended in. Ordering is by identifier, which is a ULID and so
