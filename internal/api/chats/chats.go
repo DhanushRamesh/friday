@@ -282,18 +282,7 @@ func (h *Handler) Cancel(w http.ResponseWriter, r *http.Request) {
 // what the client is in.
 func (h *Handler) sessionFor(ctx context.Context, c *authn.Caller, requested string) (string, error) {
 	if requested == "" {
-		if c.Client.ActiveSessionID != "" {
-			return c.Client.ActiveSessionID, nil
-		}
-		// Only reachable if the session was removed underneath it.
-		id, err := chat.EnsureSession(ctx, h.repo, c.User.ID)
-		if err != nil {
-			return "", err
-		}
-		if err := h.repo.SetActiveSession(ctx, c.User.ID, c.Client.ID, id); err != nil {
-			return "", err
-		}
-		return id, nil
+		return chat.ActiveSession(ctx, h.repo, c.User.ID, c.Client.ID, c.Client.ActiveSessionID)
 	}
 
 	if !chat.ValidSessionID(requested) {

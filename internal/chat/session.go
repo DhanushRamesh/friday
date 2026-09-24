@@ -85,3 +85,24 @@ func EnsureSession(ctx context.Context, repo Repository, userID string) (string,
 	}
 	return session.ID, nil
 }
+
+// ActiveSession : Returns the session a client should talk in.
+//
+// active is the session that client last used, which may be empty because it
+// has just logged in, or may name a session that has since been removed. In
+// either case the user's most recent session is taken up and remembered, so
+// that a client never finds itself without somewhere to talk.
+func ActiveSession(ctx context.Context, repo Repository, userID, clientID, active string) (string, error) {
+	if active != "" {
+		return active, nil
+	}
+
+	id, err := EnsureSession(ctx, repo, userID)
+	if err != nil {
+		return "", err
+	}
+	if err := repo.SetActiveSession(ctx, userID, clientID, id); err != nil {
+		return "", err
+	}
+	return id, nil
+}

@@ -32,6 +32,8 @@ func TestEveryEndpointButLoginRequiresAToken(t *testing.T) {
 		{http.MethodGet, "/v1/clients"},
 		{http.MethodDelete, "/v1/clients/" + apitest.SomeClientID},
 		{http.MethodGet, "/v1/me"},
+		{http.MethodGet, "/api/tags"},
+		{http.MethodPost, "/api/chat"},
 	} {
 		rec := e.Anonymous(t, p.method, p.path, "")
 		if rec.Code != http.StatusUnauthorized {

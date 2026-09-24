@@ -35,7 +35,7 @@ func TestNewAppliesDefaultRequestTimeout(t *testing.T) {
 	}
 }
 
-// The route table is the API's whole contract, and it is assembled from nine
+// The route table is the API's whole contract, and it is assembled from ten
 // packages. Asserting it here means a module can neither lose an endpoint nor
 // quietly add one while being moved about, which a refactor is otherwise free
 // to do unnoticed.
@@ -57,6 +57,10 @@ func TestRouteTableIsComplete(t *testing.T) {
 		"GET /v1/chats/{id}/messages":     true,
 		"GET /v1/chats/{id}/stream":       true,
 		"POST /v1/chats/{id}/cancel":      true,
+		// Fixed by the caller: Home Assistant appends these to the address it
+		// was given, so they cannot live under /v1 with the rest.
+		"GET /api/tags":  true,
+		"POST /api/chat": true,
 	}
 
 	err := chi.Walk(newServer().router,

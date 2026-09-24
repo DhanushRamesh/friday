@@ -242,6 +242,7 @@ dependencies it needs, and exposes them through a `Mount(chi.Router)` method:
     internal/api/clients/  /v1/clients, /v1/me
     internal/api/sessions/ /v1/sessions
     internal/api/chats/    /v1/chats, including the SSE stream
+    internal/api/assist/   /api/tags and /api/chat, for Home Assistant
     internal/api/apitest/  the shared fixture the modules' tests are built on
 
 Dependencies point one way: every module may use `httpx`, `views` and
@@ -1558,6 +1559,110 @@ than delaying the chat producing them; the database holds the durable record
 either way. Comments are sent on an idle stream, because proxies and mobile
 networks close a silent connection and a real agent will think for minutes
 without speaking.
+
+### The satellite is linux-voice-assistant, not wyoming-satellite
+
+The microphone in front of Home Assistant is OHF-Voice's
+`linux-voice-assistant`, configured in `~/linux-voice-assistant`. It is the
+ESPHome satellite implementation running on Linux -- the same code path the
+Home Assistant Voice PE hardware uses -- and it reaches Home Assistant over
+the ESPHome API rather than Wyoming.
+
+It replaced `wyoming-satellite`, which is kept at `~/wyoming-satellite` and
+can be switched back to, but is no longer used. Wyoming needed two patches
+inside its virtualenv and four shell scripts to do things this has as
+settings: a pre-roll buffer so a wake word and a question can be one
+sentence, a detector reset so it does not wake itself after every reply,
+chimes, and microphone level management. Its wake word also had to be tuned
+by hand, where MicroWakeWord reports 0.996 against a 0.900 threshold on the
+same voice and microphone.
+
+None of this improves recognition. Home Assistant's setup offers American and
+British English and no Indian English, so speech-to-text remains the
+unsolved part.
+
+### Home Assistant talks to FRIDAY in Ollama's shape
+
+Home Assistant reaches a language model through one of its integrations. Of
+those built into it — `openai_conversation`, `anthropic`,
+`google_generative_ai_conversation`, `ollama` — **only Ollama's asks for the
+address of the server to call.** The others hardcode their vendor's endpoint.
+Pointing the OpenAI one at FRIDAY would need `extended_openai_conversation`
+from HACS, which is a community add-on and one more thing to keep working.
+
+So FRIDAY answers in Ollama's shape, and `internal/api/assist` is that
+translation:
+
+```
+GET  /api/tags   -> the one model, named "friday"
+POST /api/chat   -> a chat, answered as newline-delimited JSON
+```
+
+Both paths are fixed by the caller. The Ollama client appends them to the
+address it was configured with, so they cannot be moved under `/v1` with the
+rest of the API. `routes_test.go` records them for that reason.
+
+Four things follow from the protocol being someone else's:
+
+**Unknown fields are ignored, not refused.** Home Assistant sends `tools`,
+`keep_alive`, `options`, `think` and `format`, all of which describe running a
+model on the machine being called. `httpx.DecodeJSON` rejects fields a request
+does not define, which is right for FRIDAY's own API and wrong here: a new
+version of Home Assistant sending one more field would stop FRIDAY answering
+at all. `assist` decodes with a plain decoder and says why.
+
+**Authentication is the bearer token that already exists.** The Ollama
+integration has an optional API key and sends it as `Authorization: Bearer`,
+which is what `authn.Require` already reads. A `fri_` token pasted into that
+box is the whole of the setup, and a wrong one gets a 401 that Home Assistant
+reports as an authentication failure rather than a broken server.
+
+**Home Assistant's copy of the conversation is discarded.** It sends the whole
+exchange on every turn, including its own system prompt. FRIDAY keeps its own
+log and builds a model's history from that, so only the last user turn is
+taken. Using both would give one chat two disagreeing accounts of what was
+said.
+
+**The answer is streamed, and that is what makes long work possible.** The
+connection is held open while the chat runs, so a chat taking two minutes
+survives as long as it keeps saying something, and each transient message is
+spoken as it arrives. An empty chunk every fifteen seconds keeps a silent chat
+from having its connection closed underneath it. This is the same reason
+FRIDAY's own clients are given a stream, and it is why `/api/chat` does not
+reuse the 202-and-poll shape of `POST /v1/chats`.
+
+One thing setup depends on: `GET /api/tags` must answer within five seconds,
+because that is the timeout Home Assistant applies while validating the
+configuration. Nothing slow belongs in it.
+
+**An answer must not end in a question mark.** Home Assistant decides whether
+to reopen the microphone from the last character of the reply, in
+`conversation/chat_log.py`:
+
+```python
+last_msg.content.strip().endswith(("?", ";", "？"))
+```
+
+There is no setting for it. A closing "is there anything else?" therefore
+leaves the satellite listening and makes the wake word unnecessary, which is
+the opposite of how the owner wants to speak to it: the name is said every
+time.
+
+**A caller that hangs up has its chat cancelled.** This is the opposite of
+the SSE stream, where a dropped connection is a phone on bad mobile data and
+the answer has to still be there when it reconnects. Home Assistant never
+reconnects: when it drops the request the turn is over, and leaving the chat
+running would spend a provider call on an answer nobody can hear. It is also
+what makes saying "stop" mid-question worth anything — the satellite abandons
+the pipeline, Home Assistant drops the connection, and FRIDAY stops the work.
+
+Two things guard against it. The system prompt asks for no closing question,
+which also shortens replies that are being read aloud. That is a request, not
+a guarantee — the model still offers help after a greeting — so
+`assist.settled` turns a trailing question mark into a full stop before the
+answer is sent. It belongs in `assist` rather than in the provider because it
+is a property of Home Assistant's protocol, not of FRIDAY's answers, and no
+other client cares.
 
 ### Platform AI
 

@@ -34,10 +34,19 @@ const (
 	//
 	// It asks for speech rather than prose because replies are read aloud:
 	// headings, bullet lists and code fences are noise when heard.
+	//
+	// The last sentence is not only about tone. Home Assistant decides whether
+	// to reopen the microphone by looking at the final character of the reply,
+	// and treats a question mark as an invitation to keep listening. A closing
+	// "is there anything else?" therefore leaves the microphone open and the
+	// wake word unnecessary, which is the opposite of how this is meant to be
+	// spoken to.
 	DefaultSystemPrompt = "You are FRIDAY, a personal assistant. " +
 		"Your replies are read aloud, so answer in plain spoken sentences. " +
 		"Do not use markdown, headings, bullet points or code blocks. " +
-		"Be brief and direct: say the answer first, then only the detail that matters."
+		"Be brief and direct: say the answer first, then only the detail that matters. " +
+		"Do not end with a question or an offer of further help; " +
+		"stop once the answer is given."
 )
 
 // Default endpoints.

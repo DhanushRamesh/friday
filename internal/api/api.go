@@ -1,8 +1,8 @@
 // Package api : Assembles FRIDAY's HTTP interface from its modules.
 //
 // Nothing is served from here. Each group of endpoints lives in its own
-// package below this one — authn, clients, sessions, chats, health — holding
-// its own handlers and wire types, and this package's only job is to build
+// package below this one — authn, clients, sessions, chats, assist, health —
+// holding its own handlers and wire types, and this package's only job is to build
 // them from one set of dependencies, decide the middleware they sit behind,
 // and mount them on one router.
 //
@@ -19,6 +19,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
+	"github.com/DhanushRamesh/friday/internal/api/assist"
 	"github.com/DhanushRamesh/friday/internal/api/authn"
 	"github.com/DhanushRamesh/friday/internal/api/chats"
 	"github.com/DhanushRamesh/friday/internal/api/clients"
@@ -83,6 +84,7 @@ type Server struct {
 	clients  *clients.Handler
 	sessions *sessions.Handler
 	chats    *chats.Handler
+	assist   *assist.Handler
 }
 
 // New : Builds a Server from opts and registers its routes.
@@ -102,6 +104,7 @@ func New(opts Options) *Server {
 		clients:  clients.New(opts.Logger, opts.Chats),
 		sessions: sessions.New(opts.Logger, opts.Chats),
 		chats:    chats.New(opts.Logger, opts.Chats, opts.Runner, opts.Events),
+		assist:   assist.New(opts.Logger, opts.Chats, opts.Runner, opts.Events),
 	}
 	s.routes()
 	return s
@@ -141,5 +144,6 @@ func (s *Server) routes() {
 		s.clients.Mount(r)
 		s.sessions.Mount(r)
 		s.chats.Mount(r)
+		s.assist.Mount(r)
 	})
 }
