@@ -1,6 +1,6 @@
 # DEVELOPMENT
 
-Instructions for anyone working on FRIDAY, human or AI coding agent.
+Instructions for anyone working on this server, human or AI coding agent.
 
 **Read this before making changes.** It records decisions the owner has made
 and how they want work carried out. These are not suggestions. Where this file
@@ -12,23 +12,27 @@ Last updated: 2026-09-21
 
 ## 1. What this project is
 
-FRIDAY is a personal AI assistant server owned by one person.
+This is a personal AI assistant server owned by one person.
 
 Work arrives over an API. An agent reasons about the request and uses tools to
 carry it out. Progress and results are reported back. Requests are
 long-running, so the API accepts a request, returns a chat identifier
 immediately, and the work continues in the background.
 
-FRIDAY is a platform, not a chatbot. The AI provider, the tools, the clients
+It is a platform, not a chatbot. The AI provider, the tools, the clients
 and the voice layer are all meant to be replaceable. The stable core is the
 agent, its memory, and its chats.
 
-The assistant is called **FRIDAY**. Never JARVIS. An early planning document
-used that name; it was discarded.
+**The assistant's name is configuration, not a constant.** It lives in
+`[assistant] name` and is currently **Jarvis**. It was FRIDAY for most of this
+project's life, and before that an early planning document called it JARVIS;
+the point of the setting is that none of that has to matter to the code.
+Nothing in the server may hardcode a name, and a test in
+`internal/provider/platformai` fails if one reappears in spoken text.
 
 ---
 
-## 2. What FRIDAY is for
+## 2. What this is for
 
 The primary interface is voice, through earbuds or a smart speaker. Everything
 else follows from that.
@@ -38,7 +42,7 @@ else follows from that.
      ↓
   earbuds → phone       speech recognised as text
      ↓  POST /v1/chats
-  FRIDAY                runs the chat
+  the assistant                runs the chat
      ↓  pushed as they happen
   "Let me take a look."         → spoken
   "Found four, reading them."   → spoken
@@ -48,7 +52,7 @@ else follows from that.
 Four requirements follow, and they are not negotiable:
 
 **Messages are pushed, not polled.** A client that has to ask repeatedly
-stands in silence while FRIDAY works and then hears everything at once.
+stands in silence while the assistant works and then hears everything at once.
 Pushing is what lets a message reach the user the moment it exists.
 
 **A transient message must be something that happened.** The channel exists
@@ -57,7 +61,7 @@ reporting where it has got to. It is not for filler. The Platform AI
 provider used to invent `"Let me look into that."` before every answer and
 repeat `"Still working on it."` while waiting; both are gone. Read aloud on
 every single question, a made-up phrase grates, and it is worse than silence
-because it sounds like an answer beginning. The client shows that FRIDAY is
+because it sounds like an answer beginning. The client shows that the assistant is
 working without being told. Do not add canned progress back.
 
 **Messages are whole utterances, not tokens.** Token-by-token streaming is
@@ -70,7 +74,7 @@ client's rule is simply that each message it receives is spoken. This is why
 but `Let me check your merge requests`. Anything a user hears, including the
 text of a failure, is phrased as speech.
 
-Interruption follows too: saying "stop" while FRIDAY is speaking must cancel
+Interruption follows too: saying "stop" while the assistant is speaking must cancel
 the chat, so cancellation has to work mid-run rather than only between steps.
 
 Server-sent events carry this, with the cancel endpoint as the return path.
@@ -124,16 +128,16 @@ reader can tell a decision from an accident.
 | **No Docker** for now | Owner's decision. Use the MySQL already installed on the machine. Do not add `docker-compose.yml` or containerise anything unless asked. |
 | **`config.ini`** for configuration | With environment variables overriding it. See section 5. |
 | **`log/slog`** for logging | Standard library. No zap, no zerolog, no logrus. |
-| Events use an **in-process bus** in V1 | MySQL has no `LISTEN`/`NOTIFY`. Single process makes this a non-problem. Revisit only if FRIDAY ever runs more than one process. Do not add Redis before then. |
+| Events use an **in-process bus** in V1 | MySQL has no `LISTEN`/`NOTIFY`. Single process makes this a non-problem. Revisit only if the assistant ever runs more than one process. Do not add Redis before then. |
 | **GORM** for persistence | Owner's decision, made after the tradeoffs were laid out. The known costs: `AutoMigrate` is not a migration system, generated SQL is opaque, and the ORM's natural idiom (`db.Save`) bypasses domain invariants. Accepted. Do not re-argue this. |
 | Domain types stay **free of GORM** | The mitigation for the above. Persistence uses its own row structs with GORM tags, mapped to and from domain types at the repository boundary. A domain struct must never embed `gorm.Model` or carry a `gorm:` tag. |
 | GORM logs through **`internal/logging`** | GORM's default logger writes its own format to stdout, bypassing structured logging and credential redaction entirely. |
 | Providers **invent no progress** | Owner's decision, after hearing it. A transient message is for something that actually happened; a phrase the code made up before every answer is filler, and spoken aloud each time it grates. The Platform AI provider now streams the reply and nothing else. The stub keeps canned updates, because its job is to exercise the transient path without a network. |
-| **No signup endpoint** | Owner's decision. FRIDAY is on a public URL with the owner's Platform AI credentials behind it, so anyone who found the address and registered could spend the quota. Accounts are created with `make prod-createuser` over SSH instead. The web UI has a login page and no signup page. Do not add one. |
-| **The server serves the web UI** | The Flutter web bundle is served at `/` by FRIDAY itself, with the API staying under `/v1`. One origin, so no CORS in production, one artefact to deploy, and Caddy already terminates TLS in front of it. Cross-origin requests are permitted outside production only, so that `flutter run -d chrome` can reach a local server with hot reload. |
+| **No signup endpoint** | Owner's decision. The assistant is on a public URL with the owner's Platform AI credentials behind it, so anyone who found the address and registered could spend the quota. Accounts are created with `make prod-createuser` over SSH instead. The web UI has a login page and no signup page. Do not add one. |
+| **The server serves the web UI** | The Flutter web bundle is served at `/` by the assistant itself, with the API staying under `/v1`. One origin, so no CORS in production, one artefact to deploy, and Caddy already terminates TLS in front of it. Cross-origin requests are permitted outside production only, so that `flutter run -d chrome` can reach a local server with hot reload. |
 | **Flutter** for the client | Owner's decision, made after the tradeoffs were laid out. One codebase for the Android app and the web UI. The known costs: STT and TTS come from community packages rather than the framework, server-sent events need a different path per platform, and Flutter Web renders text to a canvas so selecting and copying an answer is awkward. Accepted. Do not re-argue this. |
-| Hands-free uses a **wake word**, not speaker recognition | Owner's decision. The requirement is that FRIDAY ignores surrounding noise and other people's conversation — which is the question "is this addressed to FRIDAY?", not "who is speaking?". A phrase answers it cheaply and reliably. Recognising a particular person is voice biometrics: it needs raw audio and an enrolled voiceprint, and it refuses to recognise you when you have a cold. Assistants use a phrase for these reasons. |
-| The wake word is **the name at the front of the sentence**, with no model | Owner's decision, after Picovoice turned out to require a business email. Recognition runs continuously and only an utterance beginning with "FRIDAY" is acted on. It needs no account, no key and no model file, and it is said in one breath with the question — which a separate detector, having to hand the microphone over first, cannot do. The costs, accepted: audio streams continuously to the browser's recogniser rather than staying on the device, it is heavier on battery, and it will occasionally wake on the name said in conversation. An on-device detector can replace `NameFirst` without touching anything above it. |
+| Hands-free uses a **wake word**, not speaker recognition | Owner's decision. The requirement is that the assistant ignores surrounding noise and other people's conversation — which is the question "is this addressed to the assistant?", not "who is speaking?". A phrase answers it cheaply and reliably. Recognising a particular person is voice biometrics: it needs raw audio and an enrolled voiceprint, and it refuses to recognise you when you have a cold. Assistants use a phrase for these reasons. |
+| The wake word is **the name at the front of the sentence**, with no model | Owner's decision, after Picovoice turned out to require a business email. Recognition runs continuously and only an utterance beginning with "the assistant" is acted on. It needs no account, no key and no model file, and it is said in one breath with the question — which a separate detector, having to hand the microphone over first, cannot do. The costs, accepted: audio streams continuously to the browser's recogniser rather than staying on the device, it is heavier on battery, and it will occasionally wake on the name said in conversation. An on-device detector can replace `NameFirst` without touching anything above it. |
 | The voice layer is built and tested **on the web first** | Owner's decision. `flutter_tts` and `speech_to_text` both wrap the Web Speech API in Chrome, so speaking and listening can be exercised without a phone, and the same code serves Android. Only what is genuinely phone-only — audio routed to a Bluetooth headset, the earbud button, staying alive in the background — waits for a device, and the owner verifies those. |
 | The earbud button is **Android platform code** | It is why Flutter was chosen over a PWA, and it is the one thing Flutter does not smooth over: media-button capture and background listening are reached through a plugin or a platform channel, not shared Dart. Budget for it as Android work. |
 | Semantic memory approach is **undecided** | MySQL Community has a `VECTOR` type but no distance function; similarity search is HeatWave-only. Decide when memory is actually built. |
@@ -142,7 +146,7 @@ reader can tell a decision from an accident.
 
 Running on a **Google Cloud e2-micro** always-free VM, reached at
 `https://friday-server.duckdns.org`. The requirement that decided it was **no
-cold starts**: the assistant is voice-driven, so a sleeping server is
+cold starts**: The assistant is voice-driven, so a sleeping server is
 unusable, which ruled out the Render, Koyeb and Fly.io free tiers. Oracle
 Cloud Always Free was the first candidate and was abandoned when its signup
 declined the card. Section 11 has the shape of the deployment.
@@ -203,7 +207,7 @@ rather than failing at the first. Configuration does this; validation of user
 input should too.
 
 Error messages name the thing the reader can actually change. Configuration
-errors give both spellings: `[database] port (env FRIDAY_DATABASE_PORT)`.
+errors give both spellings: `[database] port (env ASSISTANT_DATABASE_PORT)`.
 
 Errors shown to the user are written in plain language. Internal detail stays
 in the logs.
@@ -232,7 +236,7 @@ own handlers and its own wire types on a `Handler` built from just the
 dependencies it needs, and exposes them through a `Mount(chi.Router)` method:
 
     internal/api/          api.go — builds every module and mounts it; no handlers
-    internal/api/httpx/    reading and writing bodies; knows nothing of FRIDAY
+    internal/api/httpx/    reading and writing bodies; knows nothing of the assistant
     internal/api/views/    the wire shapes of domain values, in one place because
                            a session detail carries chats and a login carries both
                            a user and a client
@@ -264,7 +268,7 @@ stack and the routing as well as the handlers.
 
 ### There is no client in this repository
 
-FRIDAY was spoken to through a Flutter client, on a phone and in a browser.
+The assistant was spoken to through a Flutter client, on a phone and in a browser.
 Voice now arrives through a Home Assistant voice satellite instead, so the
 client was removed and this file no longer describes it.
 
@@ -416,7 +420,7 @@ token counts, retry counts.
 ### Users, clients, sessions, chats
 
 ```
-user                    the person FRIDAY belongs to
+user                    the person the assistant belongs to
   |
   +-- clients           chrome, postman, a command line, a phone, a speaker
   |                     a token and nothing else: owns nothing,
@@ -494,7 +498,7 @@ already has the machine avoids both and is needed exactly once.
 
 **A bearer token is only as private as the connection carrying it.** Over
 plain HTTP anyone on the network reads it and becomes that client. TLS must
-sit in front of FRIDAY before it is reachable from anywhere but the machine it
+sit in front of the assistant before it is reachable from anywhere but the machine it
 runs on.
 
 ### Sessions
@@ -537,7 +541,7 @@ One caveat was raised before the rename and overruled, and it is recorded
 because it will come due. A chat is one prompt through to one answer, which
 today is exactly one call to the provider — but Ulaa's `runLLMSession` makes
 *several* `/chat` calls when tools are involved, looping until the model
-answers with text instead of a tool call. When FRIDAY grows tools, one chat
+answers with text instead of a tool call. When the assistant grows tools, one chat
 will contain several chat calls. The outer thing is what carries the status,
 the cancel, the supersede rule and the stream; the inner one is
 `platformai.attemptChat` and is not stored.
@@ -570,7 +574,7 @@ are withheld from the model, but they are separate functions because they
 answer separate questions, and only one may change when a provider demands
 something.
 
-**Taken: a failure is a message.** FRIDAY could not answer, the person watched
+**Taken: a failure is a message.** the assistant could not answer, the person watched
 it happen, and their next sentence refers to it — so it is in the log and on
 the screen. It is never sent to a model: read back as conversation it becomes
 the model explaining an outage it had no part in, and inventing detail to fill
@@ -601,7 +605,7 @@ key and takes the one the winner just claimed.
 MySQL.
 
 Migration `00008` carries existing history across, so upgrading a running
-FRIDAY loses nothing: each finished chat contributes its question, then the
+The assistant loses nothing: each finished chat contributes its question, then the
 answer or the failure it ended in, ordered by identifier — a ULID, so by time.
 On the development database that turned 511 chats into 688 messages.
 
@@ -665,7 +669,7 @@ answer is what matters; losing a line of progress is not worth discarding it.
 
 - **Startup recovers orphans.** A process that dies mid-chat leaves a row
   reading `running` that nothing will ever move. At startup every `running`
-  chat is failed with an explanation, which is exact while FRIDAY is a single
+  chat is failed with an explanation, which is exact while the assistant is a single
   process. More than one process would instead need a `heartbeat_at` column
   and a reaper for stale rows.
 - **A chat has a deadline.** Past a maximum duration the runner cancels it and
@@ -721,7 +725,7 @@ The contract is part of the interface: the provider owns the channel and
 closes it, a stream ends after exactly one `final` or one `error`, and
 cancelling the context ends the run. A final message completes the chat; an
 error fails it. Cancellation is what will serve both `POST /chats/{id}/cancel`
-and interrupting FRIDAY mid-sentence by voice.
+and interrupting the assistant mid-sentence by voice.
 
 A channel was chosen over an iterator because it is what a Go reader expects
 and selects naturally against cancellation. The cost is that a caller must
@@ -800,16 +804,16 @@ None of this improves recognition. Home Assistant's setup offers American and
 British English and no Indian English, so speech-to-text remains the
 unsolved part.
 
-### Home Assistant talks to FRIDAY in Ollama's shape
+### Home Assistant talks to the assistant in Ollama's shape
 
 Home Assistant reaches a language model through one of its integrations. Of
 those built into it — `openai_conversation`, `anthropic`,
 `google_generative_ai_conversation`, `ollama` — **only Ollama's asks for the
 address of the server to call.** The others hardcode their vendor's endpoint.
-Pointing the OpenAI one at FRIDAY would need `extended_openai_conversation`
+Pointing the OpenAI one at the assistant would need `extended_openai_conversation`
 from HACS, which is a community add-on and one more thing to keep working.
 
-So FRIDAY answers in Ollama's shape, and `internal/api/assist` is that
+So the assistant answers in Ollama's shape, and `internal/api/assist` is that
 translation:
 
 ```
@@ -826,8 +830,8 @@ Four things follow from the protocol being someone else's:
 **Unknown fields are ignored, not refused.** Home Assistant sends `tools`,
 `keep_alive`, `options`, `think` and `format`, all of which describe running a
 model on the machine being called. `httpx.DecodeJSON` rejects fields a request
-does not define, which is right for FRIDAY's own API and wrong here: a new
-version of Home Assistant sending one more field would stop FRIDAY answering
+does not define, which is right for the assistant's own API and wrong here: a new
+version of Home Assistant sending one more field would stop the assistant answering
 at all. `assist` decodes with a plain decoder and says why.
 
 **Authentication is the bearer token that already exists.** The Ollama
@@ -837,7 +841,7 @@ box is the whole of the setup, and a wrong one gets a 401 that Home Assistant
 reports as an authentication failure rather than a broken server.
 
 **Home Assistant's copy of the conversation is discarded.** It sends the whole
-exchange on every turn, including its own system prompt. FRIDAY keeps its own
+exchange on every turn, including its own system prompt. The assistant keeps its own
 log and builds a model's history from that, so only the last user turn is
 taken. Using both would give one chat two disagreeing accounts of what was
 said.
@@ -847,7 +851,7 @@ connection is held open while the chat runs, so a chat taking two minutes
 survives as long as it keeps saying something, and each transient message is
 spoken as it arrives. An empty chunk every fifteen seconds keeps a silent chat
 from having its connection closed underneath it. This is the same reason
-FRIDAY's own clients are given a stream, and it is why `/api/chat` does not
+The assistant's own clients are given a stream, and it is why `/api/chat` does not
 reuse the 202-and-poll shape of `POST /v1/chats`.
 
 One thing setup depends on: `GET /api/tags` must answer within five seconds,
@@ -873,14 +877,14 @@ the answer has to still be there when it reconnects. Home Assistant never
 reconnects: when it drops the request the turn is over, and leaving the chat
 running would spend a provider call on an answer nobody can hear. It is also
 what makes saying "stop" mid-question worth anything — the satellite abandons
-the pipeline, Home Assistant drops the connection, and FRIDAY stops the work.
+the pipeline, Home Assistant drops the connection, and the assistant stops the work.
 
 Two things guard against it. The system prompt asks for no closing question,
 which also shortens replies that are being read aloud. That is a request, not
 a guarantee — the model still offers help after a greeting — so
 `assist.settled` turns a trailing question mark into a full stop before the
 answer is sent. It belongs in `assist` rather than in the provider because it
-is a property of Home Assistant's protocol, not of FRIDAY's answers, and no
+is a property of Home Assistant's protocol, not of the assistant's answers, and no
 other client cares.
 
 ### Platform AI
@@ -890,7 +894,7 @@ other client cares.
 `~/workspace/ulaa_defter/product_package/go_src/project_assistant`.
 
 The service is request and response: one call returns one complete answer, with
-nothing in between. FRIDAY's interface streams because a user listening through
+nothing in between. The assistant's interface streams because a user listening through
 earbuds needs to hear something long before the answer arrives, so this
 provider produces its own progress: an acknowledgement at once, a reassurance
 every fifteen seconds while the call is outstanding, then the reply as the
@@ -919,7 +923,7 @@ while keeping the operation, host and cause.
 
 **Use the public endpoints**, `accounts.zoho.com` and `platformai.zoho.com`.
 They serve the same paths as the internal ones and are reachable from
-anywhere, so FRIDAY can use this provider from a cloud host. The internal
+anywhere, so the assistant can use this provider from a cloud host. The internal
 addresses are reachable only from the corporate network and are not used.
 
 Credentials are realm-specific. The ones issued on the internal accounts
@@ -929,13 +933,13 @@ Self Client on api-console.zoho.com, with scope
 on, since the public endpoints present ordinary certificates.
 
 Credentials live in `config.ini`, which is git-ignored, or in
-`FRIDAY_PLATFORMAI_CLIENT_SECRET` and `FRIDAY_PLATFORMAI_REFRESH_TOKEN`.
+`ASSISTANT_PLATFORMAI_CLIENT_SECRET` and `ASSISTANT_PLATFORMAI_REFRESH_TOKEN`.
 
 ### A refused token renews itself
 
 An access token can be refused before it was believed to have expired.
 Zoho invalidates one when another is issued for the same client, so
-authorising from anywhere else — or a second copy of FRIDAY running —
+authorising from anywhere else — or a second copy of the assistant running —
 revokes ours silently, long before the expiry that was calculated from
 `expires_in`.
 
@@ -971,7 +975,7 @@ Three layers, each overriding the one before:
 built-in defaults  <  config.ini  <  environment variables
 ```
 
-Every key has an environment equivalent named `FRIDAY_<SECTION>_<KEY>`. This is
+Every key has an environment equivalent named `ASSISTANT_<SECTION>_<KEY>`. This is
 how secrets reach a deployed machine without editing files.
 
 - `config.ini` is **git-ignored**. Never commit it.
@@ -1029,7 +1033,7 @@ Facts about the owner's machine that have already caused confusion:
   database. Leave it alone.
 - Machine timezone is IST. MySQL's `time_zone` is `SYSTEM`.
 - The `mysql` client reports `@@session.time_zone` as `SYSTEM` even when
-  FRIDAY's own connections are UTC, because the client does not set the
+  the assistant's own connections are UTC, because the client does not set the
   session variable. This is not a fault.
 
 ---
@@ -1150,10 +1154,9 @@ needs is complete, end to end.
   `[provider] name`
 - `internal/auth` — token issuing and hashing, bcrypt password hashing, and
   the constant-time comparisons around both
-- `client/` — the Flutter client. `lib/friday/` is the layer that talks to
-  FRIDAY: login, chats, sessions, clients, and the event stream, with every
-  failure turned into a type from `errors.dart`. No Flutter imports, so a
-  plain Dart test exercises it
+- `internal/api/assist` — `/api/tags` and `/api/chat`, answering Home Assistant
+  in the shape its Ollama integration expects. This is how a spoken question
+  reaches the server now that the client is gone
 - Users, their clients, and their sessions. A client authenticates with
   a bearer token and holds its own active session; chats land there,
   history reaches the provider, and a new prompt supersedes whatever is still
@@ -1177,7 +1180,7 @@ needs is complete, end to end.
   hand; the stream is what a client should use, and could serve `?wait` too.
 - The event bus is in-process. A second process would not see another's
   events, and clients would hear nothing from chats it was running.
-- Nothing terminates TLS in development. FRIDAY binds the loopback and
+- Nothing terminates TLS in development. The assistant binds the loopback and
   refuses a public interface in production, and `deployments/` puts Caddy in
   front, but locally it is plain HTTP and must stay on this machine.
 - Tokens do not expire. Revocation is the only way to end one, which is the
@@ -1186,7 +1189,7 @@ needs is complete, end to end.
   arrive in three to nine, so most chats send only the opening
   acknowledgement. That is fine now, but if answers get slower the interval is
   worth shortening: silence is what to avoid when listening.
-- FRIDAY refuses to start when the database is unreachable. That is deliberate
+- the assistant refuses to start when the database is unreachable. That is deliberate
   for now, but means a database restart takes the server down with it.
 
 ---
@@ -1194,14 +1197,14 @@ needs is complete, end to end.
 ## 11. Deploying
 
 `deployments/` holds what a deployment needs; `deployments/README.md` is the
-procedure. The shape is one machine running Caddy, FRIDAY and MySQL, with only
+procedure. The shape is one machine running Caddy, the assistant and MySQL, with only
 Caddy reachable:
 
 ```
-internet --:443--> Caddy --loopback--> FRIDAY --loopback--> MySQL
+internet --:443--> Caddy --loopback--> the assistant --loopback--> MySQL
 ```
 
-**FRIDAY binds the loopback and refuses a public interface in production.**
+**the assistant binds the loopback and refuses a public interface in production.**
 It speaks plain HTTP and its tokens are bearer credentials, so anyone who can
 read one becomes that client. The default address is `127.0.0.1:8080` rather
 than `:8080`, because the latter looks like localhost and binds everything —

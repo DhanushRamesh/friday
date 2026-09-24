@@ -1,4 +1,4 @@
-# FRIDAY
+# Personal Assistant
 
 A personal AI assistant server.
 
@@ -39,7 +39,7 @@ if the configuration is invalid or the database is unreachable.
          │  HTTP, loopback
          ▼
    ┌─────────────────────────────────────────────┐
-   │              FRIDAY                         │
+   │              the assistant                         │
    │                                             │
    │   api      routing, login, handlers, SSE    │
    │   runner   executes chats in the background │
@@ -60,8 +60,8 @@ if the configuration is invalid or the database is unreachable.
 
 | Piece | What it does | Where it runs |
 |---|---|---|
-| **Caddy** | Terminates TLS, proxies to FRIDAY | production only |
-| **FRIDAY** | The whole assistant: API, chat execution, streaming | both |
+| **Caddy** | Terminates TLS, proxies to this server | production only |
+| **This server** | The whole assistant: API, chat execution, streaming | both |
 | **MySQL** | Users, clients, sessions, chats, messages | both |
 | **Platform AI** | Answers the prompts | neither — it is remote |
 
@@ -81,12 +81,12 @@ They are the same program with different settings, not different builds.
 | TLS | none | Caddy, Let's Encrypt |
 | Started by | `make start` | systemd, on boot and on failure |
 | Config | `config.ini` in the repo | `/opt/friday/config.ini`, mode 600 |
-| Logs | `friday.log`, text with source lines | journal, JSON |
+| Logs | `personal-assistant.log`, text with source lines | journal, JSON |
 | Database | local MySQL, `friday_dev` | same machine, generated password |
 | Backups | none | nightly, 14 days kept |
 | Public bind | permitted | **refused** — it would expose tokens in clear |
 
-The last row is enforced, not advisory: with `env = production`, FRIDAY will
+The last row is enforced, not advisory: with `env = production`, the assistant will
 not start on a public interface unless `allow_public_bind` is set on purpose.
 
 ### Running it locally
@@ -94,7 +94,7 @@ not start on a public interface unless `allow_public_bind` is set on purpose.
 ```bash
 make start        # background; builds first
 make status       # running? listening? answering?
-make logs         # follow friday.log
+make logs         # follow personal-assistant.log
 make stop         # drains, then stops
 make restart
 
@@ -140,12 +140,12 @@ Settings resolve in three layers, each overriding the one before:
 built-in defaults  <  config.ini  <  environment variables
 ```
 
-Every setting has an environment equivalent named `FRIDAY_<SECTION>_<KEY>`, so
+Every setting has an environment equivalent named `ASSISTANT_<SECTION>_<KEY>`, so
 nothing in the file has to be edited to change it on a deployed machine. This
 is how secrets are supplied in production:
 
 ```bash
-FRIDAY_DATABASE_PASSWORD=... ./friday
+ASSISTANT_DATABASE_PASSWORD=... ./personal-assistant
 ```
 
 | Section | Key | Default | Meaning |
@@ -182,9 +182,9 @@ FRIDAY_DATABASE_PASSWORD=... ./friday
 | `platformai` | `timeout` | `120s` | How long one call may take |
 | `platformai` | `insecure_skip_verify` | `false` | Only needed for the internal endpoints |
 
-Point at a different file with `FRIDAY_CONFIG=/path/to/config.ini`. When that
+Point at a different file with `ASSISTANT_CONFIG=/path/to/config.ini`. When that
 variable is set the file must exist; a plain missing `config.ini` is fine and
-FRIDAY starts on defaults and environment variables alone.
+The assistant starts on defaults and environment variables alone.
 
 ## Layout
 
@@ -232,7 +232,7 @@ go get -u github.com/go-sql-driver/mysql
 ### Timestamps are off by hours
 
 A connection must run in UTC, otherwise MySQL applies the server's local
-timezone to `DATETIME` values and stored times drift. FRIDAY sets both
+timezone to `DATETIME` values and stored times drift. The assistant sets both
 `loc=UTC` and `time_zone='+00:00'` on every connection it opens, so its own
 timestamps are UTC whatever the server is set to.
 
@@ -244,8 +244,8 @@ mysql -h 127.0.0.1 -u friday -pfriday_dev -e "SELECT @@session.time_zone;"
 ```
 
 That is expected and not a fault. The client does not set the session
-variable, so it says nothing about FRIDAY's connections. What it does show is
-the server default, which is what FRIDAY is overriding:
+variable, so it says nothing about the assistant's connections. What it does show is
+the server default, which is what the assistant is overriding:
 
 ```bash
 mysql -h 127.0.0.1 -u friday -pfriday_dev \
@@ -257,8 +257,8 @@ settings, not the server's timezone.
 
 ### Timestamps come back as `[]byte` instead of `time.Time`
 
-The DSN is missing `parseTime=true`. FRIDAY's generated DSN always sets it; a
-hand-written `FRIDAY_DATABASE_*` override cannot remove it, but a hand-written
+The DSN is missing `parseTime=true`. The assistant's generated DSN always sets it; a
+hand-written `ASSISTANT_DATABASE_*` override cannot remove it, but a hand-written
 DSN passed to the driver elsewhere can.
 
 ### `invalid configuration: ... unknown setting [server] adress`
@@ -270,10 +270,10 @@ spelling against the table above.
 ### The server ignores a setting in `config.ini`
 
 An environment variable of the same name overrides the file. Check for a
-`FRIDAY_`-prefixed variable in your shell:
+`ASSISTANT_`-prefixed variable in your shell:
 
 ```bash
-env | grep ^FRIDAY_
+env | grep ^ASSISTANT_
 ```
 
 ### `bind: address already in use`
