@@ -811,15 +811,20 @@ without speaking.
 ### The satellite is linux-voice-assistant, not wyoming-satellite
 
 The microphone in front of Home Assistant is OHF-Voice's
-`linux-voice-assistant`, configured in `~/linux-voice-assistant`. It is the
-ESPHome satellite implementation running on Linux -- the same code path the
-Home Assistant Voice PE hardware uses -- and it reaches Home Assistant over
-the ESPHome API rather than Wyoming.
+`linux-voice-assistant`. It is the ESPHome satellite implementation running on
+Linux -- the same code path the Home Assistant Voice PE hardware uses -- and it
+reaches Home Assistant over the ESPHome API rather than Wyoming.
 
-It replaced `wyoming-satellite`, which is kept at `~/wyoming-satellite` and
-can be switched back to, but is no longer used. Wyoming needed two patches
-inside its virtualenv and four shell scripts to do things this has as
-settings: a pre-roll buffer so a wake word and a question can be one
+None of it lives in this repository. The satellite, the patches it and Home
+Assistant need, and the switch that turns the stack on and off are tracked
+separately in [voice-setup](https://github.com/DhanushRamesh/voice-setup),
+cloned at `~/voice-setup`. That repository records which upstream versions the
+patches were written against, because both edit upstream source by matching
+exact text.
+
+It replaced `wyoming-satellite`, which has since been removed. Wyoming needed
+two patches inside its virtualenv and four shell scripts to do things this has
+as settings: a pre-roll buffer so a wake word and a question can be one
 sentence, a detector reset so it does not wake itself after every reply,
 chimes, and microphone level management. Its wake word also had to be tuned
 by hand, where MicroWakeWord reports 0.996 against a 0.900 threshold on the
