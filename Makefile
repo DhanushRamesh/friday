@@ -115,8 +115,60 @@ createuser: ## Create a user locally (prompts for a password)
 .PHONY: createuser
 
 clean: stop ## Stop and remove build output
-	@rm -rf $(BUILD) $(BINARY) $(LOGFILE) $(PIDFILE)
+	@rm -rf $(BUILD) $(BINARY) $(LOGFILE) $(PIDFILE) $(CLIENT_OUT) $(CLIENT_PID)
 	@echo "cleaned"
+
+# ############################# Client ###################################### #
+
+# The web client.
+#
+# In production the assistant serves the bundle itself, so the page's own
+# origin is where the API is and nothing needs configuring. In development a
+# static file server holds the bundle on a port of its own, the origin is that
+# server, and the assistant's address has to be compiled in. Forgetting the
+# define builds a client that posts its login to the file server, which
+# answers 501 and looks like the assistant is broken.
+
+FLUTTER     ?= $(HOME)/Documents/flutter/bin/flutter
+CLIENT_DIR  := client
+CLIENT_OUT  := $(CLIENT_DIR)/build/web
+CLIENT_PORT ?= 8000
+CLIENT_URL  ?= http://localhost:8080
+CLIENT_PID  := .client.pid
+
+.PHONY: client-build
+client-build: ## Build the web client, pointed at CLIENT_URL
+	@cd $(CLIENT_DIR) && $(FLUTTER) build web --release \
+		--dart-define=ASSISTANT_URL=$(CLIENT_URL)
+	@echo "built $(CLIENT_OUT), talking to $(CLIENT_URL)"
+
+.PHONY: client-start
+client-start: client-build ## Build it and serve it in the background
+	@if [ -f $(CLIENT_PID) ] && kill -0 $$(cat $(CLIENT_PID)) 2>/dev/null; then \
+		kill $$(cat $(CLIENT_PID)); rm -f $(CLIENT_PID); \
+	fi
+	@# Anything else holding the port, from an older run started by hand.
+	@fuser -k $(CLIENT_PORT)/tcp 2>/dev/null >/dev/null || true
+	@nohup python3 -m http.server $(CLIENT_PORT) --bind 127.0.0.1 \
+		--directory $(CLIENT_OUT) > /dev/null 2>&1 & echo $$! > $(CLIENT_PID)
+	@sleep 1
+	@if kill -0 $$(cat $(CLIENT_PID)) 2>/dev/null; then \
+		echo "serving http://localhost:$(CLIENT_PORT) (pid $$(cat $(CLIENT_PID)))"; \
+	else \
+		rm -f $(CLIENT_PID); echo "failed to serve $(CLIENT_OUT)"; exit 1; \
+	fi
+
+.PHONY: client-stop
+client-stop: ## Stop serving the web client
+	@if [ -f $(CLIENT_PID) ] && kill -0 $$(cat $(CLIENT_PID)) 2>/dev/null; then \
+		kill $$(cat $(CLIENT_PID)); rm -f $(CLIENT_PID); echo "stopped"; \
+	else \
+		rm -f $(CLIENT_PID); echo "not running"; \
+	fi
+
+.PHONY: client-check
+client-check: ## Analyse the web client
+	@cd $(CLIENT_DIR) && $(FLUTTER) analyze
 
 # ############################# Production ################################## #
 

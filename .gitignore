@@ -8,6 +8,7 @@
 /personal-assistant
 /personal-assistant.log
 /.personal-assistant.pid
+/.client.pid
 
 
 # Picovoice: the access key and the wake-word models are tied to an

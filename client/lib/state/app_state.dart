@@ -130,9 +130,15 @@ class AppState extends ChangeNotifier {
   /// start : Restores a kept token and loads what the screens need, returning
   /// whether there was a usable session.
   ///
-  /// A token that the server no longer accepts is discarded here rather than
-  /// left to fail the first real call, so the app opens on the login screen
-  /// instead of on an empty one that errors.
+  /// A token the server refuses is discarded here rather than left to fail
+  /// the first real call, so the app opens on the login screen instead of on
+  /// an empty one that errors.
+  ///
+  /// A token it could not ask about is kept. An assistant that is restarting,
+  /// unreachable or briefly broken says nothing about whether the token is
+  /// still good, and throwing it away means a password has to be typed again
+  /// to recover from someone else\'s outage. Reloading once it answers signs
+  /// straight back in.
   Future<bool> start() async {
     _clientName = await _remembered.name();
     _clientId = await _remembered.id();
@@ -144,9 +150,13 @@ class AppState extends ChangeNotifier {
       _identity = await api.me();
       await _loadSessions();
       return true;
-    } on Object {
+    } on NotAuthenticated {
       await api.logout();
       _identity = null;
+      return false;
+    } on Object catch (e) {
+      _identity = null;
+      _error = _explain(e);
       return false;
     }
   }
