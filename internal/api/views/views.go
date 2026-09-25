@@ -19,9 +19,11 @@ type Chat struct {
 	ID        string `json:"id"`
 	SessionID string `json:"session_id,omitempty"`
 	Prompt    string `json:"prompt"`
-	Status    string `json:"status"`
-	Response  string `json:"response,omitempty"`
-	Error     string `json:"error,omitempty"`
+	// Channel : How the prompt arrived, "voice" or "direct".
+	Channel  string `json:"channel,omitempty"`
+	Status   string `json:"status"`
+	Response string `json:"response,omitempty"`
+	Error    string `json:"error,omitempty"`
 	// ErrorCode : Which kind of failure it was. A client keys off this rather
 	// than matching on the sentence, which is prose and will change.
 	ErrorCode string `json:"error_code,omitempty"`
@@ -40,6 +42,7 @@ func OfChat(t *chat.Chat) Chat {
 		ID:          t.ID,
 		SessionID:   t.SessionID,
 		Prompt:      t.Prompt,
+		Channel:     string(t.Channel),
 		Status:      string(t.Status),
 		Response:    t.Response,
 		Error:       t.Error,
@@ -57,6 +60,7 @@ type Summary struct {
 	ID         string     `json:"id"`
 	SessionID  string     `json:"session_id,omitempty"`
 	Prompt     string     `json:"prompt"`
+	Channel    string     `json:"channel,omitempty"`
 	Status     string     `json:"status"`
 	Error      string     `json:"error,omitempty"`
 	ErrorCode  string     `json:"error_code,omitempty"`
@@ -72,6 +76,7 @@ func OfSummary(s chat.Summary) Summary {
 		ID:         s.ID,
 		SessionID:  s.SessionID,
 		Prompt:     s.Prompt,
+		Channel:    string(s.Channel),
 		Status:     string(s.Status),
 		Error:      s.Error,
 		ErrorCode:  s.ErrorCode,

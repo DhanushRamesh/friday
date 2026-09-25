@@ -101,7 +101,7 @@ func storedSession(t *testing.T, r *chatmysql.Repository) string {
 // storedChat : Creates a chat, stores it, and removes it when the test ends.
 func storedChat(t *testing.T, r *chatmysql.Repository, prompt string) *chat.Chat {
 	t.Helper()
-	tk, err := chat.New(storedSession(t, r), prompt)
+	tk, err := chat.New(storedSession(t, r), chat.ChannelDirect, prompt)
 	if err != nil {
 		t.Fatalf("chat.New: %v", err)
 	}
@@ -234,7 +234,7 @@ func TestGetAndUpdateReportMissingChats(t *testing.T) {
 		t.Errorf("Get on a missing chat: error = %v, want ErrNotFound", err)
 	}
 
-	ghost, err := chat.New("", "never stored")
+	ghost, err := chat.New("", chat.ChannelDirect, "never stored")
 	if err != nil {
 		t.Fatalf("chat.New: %v", err)
 	}
@@ -486,5 +486,40 @@ func TestUnicodeSurvivesTheRoundTrip(t *testing.T) {
 	}
 	if got.Prompt != prompt {
 		t.Errorf("Prompt = %q, want %q", got.Prompt, prompt)
+	}
+}
+
+// The channel decides, later, which tools a prompt may reach, so it has to
+// survive the round trip. It did not at first: chatRow was missing the column
+// and every insert fell through to the database default, which reads as a
+// deliberate "direct" rather than as the bug it was.
+func TestChannelSurvivesStorage(t *testing.T) {
+	r := newRepository(t)
+	tk, err := chat.New(storedSession(t, r), chat.ChannelVoice, "spoken aloud")
+	if err != nil {
+		t.Fatalf("chat.New: %v", err)
+	}
+	if err := r.Create(context.Background(), tk); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	read, err := r.Get(context.Background(), tk.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if read.Channel != chat.ChannelVoice {
+		t.Errorf("channel = %q, want voice", read.Channel)
+	}
+
+	// And in a listing, which selects its columns by name and is the other
+	// place a new column is easy to forget.
+	found, err := r.List(context.Background(), chat.Filter{SessionID: tk.SessionID})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	for _, s := range found {
+		if s.ID == tk.ID && s.Channel != chat.ChannelVoice {
+			t.Errorf("listed channel = %q, want voice", s.Channel)
+		}
 	}
 }

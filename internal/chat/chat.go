@@ -49,6 +49,9 @@ var (
 	ErrEmptyPrompt = errors.New("chat: prompt must not be empty")
 	// ErrPromptTooLong : The prompt exceeded MaxPromptRunes.
 	ErrPromptTooLong = errors.New("chat: prompt is too long")
+
+	// ErrUnknownChannel : The chat was not told how its prompt arrived.
+	ErrUnknownChannel = errors.New("chat: unknown channel")
 	// ErrResponseTooLarge : The response exceeded MaxResponseBytes and would
 	// not survive being stored.
 	ErrResponseTooLarge = errors.New("chat: response is too large to store")
@@ -63,6 +66,10 @@ type Chat struct {
 	SessionID string
 	// Prompt : What the user asked for.
 	Prompt string
+
+	// Channel : How the prompt arrived, which decides what may be done
+	// about it.
+	Channel Channel
 
 	// Status : Where the chat is in its lifecycle.
 	Status Status
@@ -95,9 +102,38 @@ type Chat struct {
 	FinishedAt *time.Time
 }
 
+// Channel : How a prompt reached the server.
+//
+// It is kept because what the assistant may do about a prompt depends on
+// whether there was a way to confirm before acting, and that is a property of
+// how it arrived rather than of who sent it.
+type Channel string
+
+const (
+	// ChannelVoice : Spoken, through the voice satellite.
+	//
+	// There is no confirmation step worth the name: a "yes" to something
+	// misheard is the whole authorisation.
+	ChannelVoice Channel = "voice"
+
+	// ChannelDirect : Typed, through the API or a client using it.
+	//
+	// Anything about to happen can be shown and waited on, so this is the
+	// channel that may be trusted with more.
+	ChannelDirect Channel = "direct"
+)
+
+// Valid : Whether the channel is one the server knows.
+func (c Channel) Valid() bool { return c == ChannelVoice || c == ChannelDirect }
+
 // New : Creates a pending chat from a user's prompt, belonging to the given
-// session. Surrounding whitespace is removed.
-func New(sessionID, prompt string) (*Chat, error) {
+// session and arriving by the given channel. Surrounding whitespace is
+// removed.
+//
+// The channel is a parameter rather than a field set afterwards, so that a
+// new caller has to say how its prompts arrive instead of defaulting into
+// whichever answer grants more.
+func New(sessionID string, channel Channel, prompt string) (*Chat, error) {
 	prompt = strings.TrimSpace(prompt)
 	if prompt == "" {
 		return nil, ErrEmptyPrompt
@@ -106,10 +142,15 @@ func New(sessionID, prompt string) (*Chat, error) {
 		return nil, fmt.Errorf("%w: %d characters, limit is %d", ErrPromptTooLong, n, MaxPromptRunes)
 	}
 
+	if !channel.Valid() {
+		return nil, fmt.Errorf("%w: %q", ErrUnknownChannel, channel)
+	}
+
 	created := now()
 	return &Chat{
 		ID:        NewID(),
 		SessionID: sessionID,
+		Channel:   channel,
 		Prompt:    prompt,
 		Status:    StatusPending,
 		CreatedAt: created,

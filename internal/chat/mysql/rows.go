@@ -18,6 +18,7 @@ type chatRow struct {
 	ID          string     `gorm:"column:id;primaryKey"`
 	SessionID   *string    `gorm:"column:session_id"`
 	Prompt      string     `gorm:"column:prompt"`
+	Channel     string     `gorm:"column:channel"`
 	Status      string     `gorm:"column:status"`
 	Response    *string    `gorm:"column:response"`
 	Error       *string    `gorm:"column:error"`
@@ -38,6 +39,7 @@ type summaryRow struct {
 	ID         string     `gorm:"column:id"`
 	SessionID  *string    `gorm:"column:session_id"`
 	Prompt     string     `gorm:"column:prompt"`
+	Channel    string     `gorm:"column:channel"`
 	Status     string     `gorm:"column:status"`
 	Error      *string    `gorm:"column:error"`
 	ErrorCode  string     `gorm:"column:error_code"`
@@ -50,7 +52,7 @@ type summaryRow struct {
 // summaryColumns : The columns a listing selects. Naming them is what keeps
 // response bodies out of a query that does not need them.
 var summaryColumns = []string{
-	"id", "session_id", "prompt", "status", "error", "error_code",
+	"id", "session_id", "prompt", "channel", "status", "error", "error_code",
 	"created_at", "updated_at", "started_at", "finished_at",
 }
 
@@ -152,6 +154,7 @@ func toRow(t *chat.Chat) *chatRow {
 		ID:          t.ID,
 		SessionID:   nullable(t.SessionID),
 		Prompt:      t.Prompt,
+		Channel:     string(t.Channel),
 		Status:      string(t.Status),
 		Response:    nullable(t.Response),
 		Error:       nullable(t.Error),
@@ -170,6 +173,7 @@ func (r *chatRow) toChat() *chat.Chat {
 		ID:          r.ID,
 		SessionID:   value(r.SessionID),
 		Prompt:      r.Prompt,
+		Channel:     chat.Channel(r.Channel),
 		Status:      chat.Status(r.Status),
 		Response:    value(r.Response),
 		Error:       value(r.Error),
@@ -188,6 +192,7 @@ func (r *summaryRow) toSummary() chat.Summary {
 		ID:         r.ID,
 		SessionID:  value(r.SessionID),
 		Prompt:     r.Prompt,
+		Channel:    chat.Channel(r.Channel),
 		Status:     chat.Status(r.Status),
 		Error:      value(r.Error),
 		ErrorCode:  r.ErrorCode,

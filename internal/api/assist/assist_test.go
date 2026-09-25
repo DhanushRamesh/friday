@@ -11,6 +11,7 @@ import (
 
 	"github.com/DhanushRamesh/personal-assistant/internal/api/apitest"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/assist"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/chats"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 )
 
@@ -238,4 +239,24 @@ func TestChatIsCancelledWhenHomeAssistantHangsUp(t *testing.T) {
 	}
 	got, _ := e.Repo.Get(context.Background(), running)
 	t.Errorf("chat status = %q, want %q", got.Status, chat.StatusCancelled)
+}
+
+// The channel is what decides, later, which tools a prompt may reach. It is
+// recorded here rather than inferred downstream, because nothing after this
+// handler can tell a spoken turn from a typed one.
+func TestAVoiceTurnIsRecordedAsVoice(t *testing.T) {
+	e := apitest.New(t)
+
+	e.Do(t, http.MethodPost, "/api/chat",
+		`{"model":"assistant","messages":[{"role":"user","content":"what is the time"}]}`)
+
+	rec := e.Do(t, http.MethodGet, "/v1/chats", "")
+	var list chats.ListResponse
+	e.Decode(t, rec, &list)
+	if len(list.Chats) == 0 {
+		t.Fatal("the voice turn was not recorded at all")
+	}
+	if got := list.Chats[0].Channel; got != string(chat.ChannelVoice) {
+		t.Errorf("channel = %q, want voice", got)
+	}
 }

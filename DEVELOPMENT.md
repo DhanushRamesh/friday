@@ -353,8 +353,16 @@ show what is about to happen and wait. So anything destructive, anything that
 spends money, and anything that leaves the house belongs to the channels that
 can ask properly.
 
-This is why a chat carries which client submitted it rather than only which
-user: the channel has to reach whatever decides the tool set.
+A chat therefore records the channel it arrived by, `voice` or `direct`, set
+by the handler that accepted it. Nothing downstream could work it out
+otherwise: the runner, which is what would enforce a tool set, is handed a
+chat and nothing else, and by then the request is over.
+
+The channel rather than the client. What matters is whether there was a way to
+confirm before acting, and a client identifier answers a different question —
+wrongly, the moment one client serves both. Rows written before the column
+existed are backfilled as `direct`, which is the guess that grants less, since
+nothing has yet been decided about what voice may not do.
 
 ### A failure is said one way and recorded another
 

@@ -142,7 +142,9 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	// answers cannot be listened to at once.
 	h.supersede(ctx, sessionID)
 
-	t, err := chat.New(sessionID, req.Prompt)
+	// Typed, by the web client or anything else holding a token. Whatever
+	// it is, it can show what is about to happen before it happens.
+	t, err := chat.New(sessionID, chat.ChannelDirect, req.Prompt)
 	switch {
 	case errors.Is(err, chat.ErrEmptyPrompt):
 		httpx.WriteError(ctx, w, http.StatusBadRequest, "A prompt is required.")

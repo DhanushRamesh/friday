@@ -63,7 +63,7 @@ func newHarness(t *testing.T, p provider.Provider, opts runner.Options) *harness
 // submit : Creates and stores a chat, then starts it running.
 func (h *harness) submit(t *testing.T, prompt string) *chat.Chat {
 	t.Helper()
-	tk, err := chat.New(h.session(t), prompt)
+	tk, err := chat.New(h.session(t), chat.ChannelDirect, prompt)
 	if err != nil {
 		t.Fatalf("chat.New: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestShutdownStopsAndRecordsRunningChats(t *testing.T) {
 		t.Fatalf("runner.New: %v", err)
 	}
 
-	tk, err := chat.New("", "interrupted by shutdown")
+	tk, err := chat.New("", chat.ChannelDirect, "interrupted by shutdown")
 	if err != nil {
 		t.Fatalf("chat.New: %v", err)
 	}
@@ -288,7 +288,7 @@ func TestRecoverFailsChatsLeftRunning(t *testing.T) {
 	h := newHarness(t, &provider.Stub{}, runner.Options{})
 	ctx := context.Background()
 
-	stranded, err := chat.New("", "was running when the process died")
+	stranded, err := chat.New("", chat.ChannelDirect, "was running when the process died")
 	if err != nil {
 		t.Fatalf("chat.New: %v", err)
 	}

@@ -224,7 +224,9 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	t, err := chat.New(sessionID, prompt)
+	// Everything reaching this handler was spoken: it exists only so that
+	// Home Assistant's voice pipeline has somewhere to send a turn.
+	t, err := chat.New(sessionID, chat.ChannelVoice, prompt)
 	switch {
 	case errors.Is(err, chat.ErrEmptyPrompt):
 		httpx.WriteError(ctx, w, http.StatusBadRequest, "A question is required.")

@@ -118,7 +118,9 @@ func (m *Repository) List(_ context.Context, f chat.Filter) ([]chat.Summary, err
 			}
 		}
 		out = append(out, chat.Summary{
-			ID: t.ID, SessionID: t.SessionID, Prompt: t.Prompt, Status: t.Status,
+			ID: t.ID, SessionID: t.SessionID, Prompt: t.Prompt,
+			Channel: t.Channel, Status: t.Status, Error: t.Error,
+			ErrorCode: t.ErrorCode,
 		})
 	}
 	// Newest first, as the real repository returns them. A fake that returns

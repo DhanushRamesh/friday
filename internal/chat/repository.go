@@ -52,6 +52,7 @@ type Summary struct {
 	ID         string
 	SessionID  string
 	Prompt     string
+	Channel    Channel
 	Status     Status
 	Error      string
 	ErrorCode  string

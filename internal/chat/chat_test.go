@@ -12,7 +12,7 @@ import (
 // mustNew : Creates a chat, failing the test if the prompt is rejected.
 func mustNew(t *testing.T, prompt string) *chat.Chat {
 	t.Helper()
-	tk, err := chat.New("", prompt)
+	tk, err := chat.New("", chat.ChannelDirect, prompt)
 	if err != nil {
 		t.Fatalf("New(%q): %v", prompt, err)
 	}
@@ -47,16 +47,16 @@ func TestNewChatStartsPending(t *testing.T) {
 
 func TestNewRejectsBadPrompts(t *testing.T) {
 	for _, prompt := range []string{"", "   ", "\n\t "} {
-		if _, err := chat.New("", prompt); !errors.Is(err, chat.ErrEmptyPrompt) {
+		if _, err := chat.New("", chat.ChannelDirect, prompt); !errors.Is(err, chat.ErrEmptyPrompt) {
 			t.Errorf("New(%q) error = %v, want ErrEmptyPrompt", prompt, err)
 		}
 	}
 
-	if _, err := chat.New("", strings.Repeat("a", chat.MaxPromptRunes+1)); !errors.Is(err, chat.ErrPromptTooLong) {
+	if _, err := chat.New("", chat.ChannelDirect, strings.Repeat("a", chat.MaxPromptRunes+1)); !errors.Is(err, chat.ErrPromptTooLong) {
 		t.Errorf("oversized prompt error = %v, want ErrPromptTooLong", err)
 	}
 	// The limit counts runes, so a multi-byte prompt at the limit is accepted.
-	if _, err := chat.New("", strings.Repeat("こ", chat.MaxPromptRunes)); err != nil {
+	if _, err := chat.New("", chat.ChannelDirect, strings.Repeat("こ", chat.MaxPromptRunes)); err != nil {
 		t.Errorf("prompt of exactly MaxPromptRunes runes rejected: %v", err)
 	}
 }
@@ -354,5 +354,25 @@ func TestRenameCountsCharactersNotBytes(t *testing.T) {
 
 	if err := s.Rename(strings.Repeat("a", chat.MaxTitleLen+1)); !errors.Is(err, chat.ErrTitleTooLong) {
 		t.Errorf("err = %v, want ErrTitleTooLong", err)
+	}
+}
+
+func TestAChatMustSayHowItsPromptArrived(t *testing.T) {
+	// A parameter rather than a field set afterwards, so a new caller cannot
+	// default into whichever channel grants more by simply not thinking
+	// about it.
+	if _, err := chat.New("sess_1", "", "what is the time"); !errors.Is(err, chat.ErrUnknownChannel) {
+		t.Errorf("err = %v, want ErrUnknownChannel", err)
+	}
+	if _, err := chat.New("sess_1", chat.Channel("shouting"), "hello"); !errors.Is(err, chat.ErrUnknownChannel) {
+		t.Errorf("an invented channel was accepted: %v", err)
+	}
+
+	spoken, err := chat.New("sess_1", chat.ChannelVoice, "what is the time")
+	if err != nil {
+		t.Fatalf("voice: %v", err)
+	}
+	if spoken.Channel != chat.ChannelVoice {
+		t.Errorf("channel = %q, want voice", spoken.Channel)
 	}
 }
