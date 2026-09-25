@@ -105,6 +105,17 @@ func collect(t *testing.T, ch <-chan environment.Message) []environment.Message 
 	return got
 }
 
+// mustRun : Starts a run from a whole request, failing the test if it could
+// not be started.
+func mustRun(t *testing.T, p *platformai.Environment, req environment.Request) <-chan environment.Message {
+	t.Helper()
+	ch, err := p.Run(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	return ch
+}
+
 // run : Starts a run, failing the test if it could not be started.
 func run(t *testing.T, p *platformai.Environment, prompt string) []environment.Message {
 	t.Helper()
@@ -678,5 +689,180 @@ func TestATokenFailureKeepsWhatTheServiceSaid(t *testing.T) {
 	}
 	if !strings.Contains(final.Detail, throttled) {
 		t.Errorf("Detail = %q, want it to carry what the service said", final.Detail)
+	}
+}
+
+// The tools offered reach the wire in the shape the endpoint expects, with
+// the schema intact. A schema that arrives mangled makes the model guess at
+// arguments, which is the failure this whole shape exists to prevent.
+func TestOfferedToolsReachTheWire(t *testing.T) {
+	f, cfg := newFakeService(t)
+	p, err := platformai.New(cfg, discard())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	_ = collect(t, mustRun(t, p, environment.Request{
+		Prompt: "what have we talked about",
+		Tools: []environment.ToolSpec{{
+			Name:        "conversation_list",
+			Description: "List the conversations. Use when: you need an identifier.",
+			Parameters:  json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"How many."}},"required":[]}`),
+		}},
+	}))
+
+	var sent struct {
+		Tools []struct {
+			Type     string `json:"type"`
+			Function struct {
+				Name        string          `json:"name"`
+				Description string          `json:"description"`
+				Parameters  json.RawMessage `json:"parameters"`
+			} `json:"function"`
+		} `json:"tools"`
+	}
+	body, _ := f.lastChatBody.Load().(string)
+	if err := json.Unmarshal([]byte(body), &sent); err != nil {
+		t.Fatalf("the request body is not usable: %v", err)
+	}
+
+	if len(sent.Tools) != 1 {
+		t.Fatalf("sent %d tools, want the one offered: %s", len(sent.Tools), body)
+	}
+	if sent.Tools[0].Type != "function" {
+		t.Errorf("type = %q, want function", sent.Tools[0].Type)
+	}
+	if sent.Tools[0].Function.Name != "conversation_list" {
+		t.Errorf("name = %q", sent.Tools[0].Function.Name)
+	}
+	if !strings.Contains(sent.Tools[0].Function.Description, "Use when:") {
+		t.Errorf("description lost its use-when: %q", sent.Tools[0].Function.Description)
+	}
+	if !strings.Contains(string(sent.Tools[0].Function.Parameters), `"description":"How many."`) {
+		t.Errorf("the schema arrived without its descriptions: %s", sent.Tools[0].Function.Parameters)
+	}
+}
+
+// Offering nothing sends nothing, rather than an empty list: a model handed
+// an empty tools array has been told something, and what it has been told is
+// unclear.
+func TestNoToolsSendsNoToolsField(t *testing.T) {
+	f, cfg := newFakeService(t)
+	p, _ := platformai.New(cfg, discard())
+
+	_ = collect(t, mustRun(t, p, environment.Request{Prompt: "what time is it"}))
+
+	body, _ := f.lastChatBody.Load().(string)
+	if strings.Contains(body, `"tools"`) {
+		t.Errorf("a tools field was sent when none were offered: %s", body)
+	}
+}
+
+// A model asking for a tool ends the stream with the calls, not with words.
+func TestToolCallsComeBackAsToolCalls(t *testing.T) {
+	f, cfg := newFakeService(t)
+	f.chatHandler = func(w http.ResponseWriter, _ []byte) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":{"messages":[{"content":"","tool_calls":[
+			{"id":"call_1","type":"function","function":{"name":"conversation_list","arguments":"{\"limit\":5}"}}
+		]}]}}`))
+	}
+	p, _ := platformai.New(cfg, discard())
+
+	got := collect(t, mustRun(t, p, environment.Request{Prompt: "what have we talked about"}))
+	last := got[len(got)-1]
+
+	if last.Kind != environment.KindToolCalls {
+		t.Fatalf("kind = %q, want tool calls: %+v", last.Kind, last)
+	}
+	if len(last.ToolCalls) != 1 {
+		t.Fatalf("got %d calls", len(last.ToolCalls))
+	}
+	if last.ToolCalls[0].Name != "conversation_list" {
+		t.Errorf("name = %q", last.ToolCalls[0].Name)
+	}
+	if last.ToolCalls[0].Arguments != `{"limit":5}` {
+		t.Errorf("arguments = %q, want them exactly as the model wrote them", last.ToolCalls[0].Arguments)
+	}
+	if last.ToolCalls[0].ID != "call_1" {
+		t.Errorf("id = %q, want it kept so the answer can be matched to it", last.ToolCalls[0].ID)
+	}
+}
+
+// A sentence sent alongside tool calls is not the answer. It describes what
+// the model is about to do, so reading it out and stopping would tell the
+// person about work that never ran.
+func TestWordsBesideToolCallsDoNotBecomeTheAnswer(t *testing.T) {
+	f, cfg := newFakeService(t)
+	f.chatHandler = func(w http.ResponseWriter, _ []byte) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":{"messages":[{"content":"Let me look that up.","tool_calls":[
+			{"id":"call_1","type":"function","function":{"name":"conversation_list","arguments":"{}"}}
+		]}]}}`))
+	}
+	p, _ := platformai.New(cfg, discard())
+
+	got := collect(t, mustRun(t, p, environment.Request{Prompt: "what have we talked about"}))
+	last := got[len(got)-1]
+
+	if last.Kind != environment.KindToolCalls {
+		t.Errorf("kind = %q, want the tool calls to win over the sentence", last.Kind)
+	}
+}
+
+// A remembered tool exchange goes back on the wire as the endpoint matches
+// it: the call on an assistant message, and each result on its own message
+// carrying the identifier of the call it answers.
+func TestARememberedToolExchangeIsSentBack(t *testing.T) {
+	f, cfg := newFakeService(t)
+	p, _ := platformai.New(cfg, discard())
+
+	_ = collect(t, mustRun(t, p, environment.Request{
+		Prompt: "and the second one",
+		History: []environment.Turn{
+			{Role: environment.RoleUser, Text: "what have we talked about"},
+			{Role: environment.RoleAssistant, ToolCalls: []environment.ToolCall{
+				{ID: "call_1", Name: "conversation_list", Arguments: "{}"}}},
+			{Role: environment.RoleTool, ToolResults: []environment.ToolResult{
+				{ID: "call_1", Content: "ok: three conversations"}}},
+			{Role: environment.RoleAssistant, Text: "Three."},
+		},
+	}))
+
+	var sent struct {
+		Messages []struct {
+			Role       string `json:"role"`
+			Content    string `json:"content"`
+			ToolCallID string `json:"tool_call_id"`
+			ToolCalls  []struct {
+				ID       string `json:"id"`
+				Function struct {
+					Name string `json:"name"`
+				} `json:"function"`
+			} `json:"tool_calls"`
+		} `json:"messages"`
+	}
+	body, _ := f.lastChatBody.Load().(string)
+	if err := json.Unmarshal([]byte(body), &sent); err != nil {
+		t.Fatalf("request body not usable: %v", err)
+	}
+
+	var sawCall, sawResult bool
+	for _, m := range sent.Messages {
+		if len(m.ToolCalls) > 0 && m.ToolCalls[0].ID == "call_1" {
+			sawCall = true
+		}
+		if m.Role == "tool" && m.ToolCallID == "call_1" {
+			sawResult = true
+			if !strings.Contains(m.Content, "ok:") {
+				t.Errorf("the result reached the model as %q, without its outcome", m.Content)
+			}
+		}
+	}
+	if !sawCall {
+		t.Errorf("the tool call was not sent back: %s", body)
+	}
+	if !sawResult {
+		t.Errorf("the tool result was not sent back against its call: %s", body)
 	}
 }

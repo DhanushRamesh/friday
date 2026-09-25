@@ -228,7 +228,7 @@ func (p *Environment) Run(ctx context.Context, req environment.Request) (<-chan 
 		defer close(ch)
 
 		started := time.Now()
-		text, err := p.chat(ctx, req)
+		got, err := p.chat(ctx, req)
 		if err != nil {
 			// A cancelled chat is the user's doing, not a failure worth
 			// reporting to them.
@@ -243,10 +243,22 @@ func (p *Environment) Run(ctx context.Context, req environment.Request) (<-chan 
 			return
 		}
 
+		if len(got.ToolCalls) > 0 {
+			names := make([]string, 0, len(got.ToolCalls))
+			for _, c := range got.ToolCalls {
+				names = append(names, c.Name)
+			}
+			p.logger.InfoContext(ctx, "platform ai asked for tools",
+				slog.Duration("after", time.Since(started)),
+				slog.Any("tools", names))
+			send(ctx, ch, environment.ToolCalls(got.ToolCalls))
+			return
+		}
+
 		p.logger.InfoContext(ctx, "platform ai answered",
 			slog.Duration("after", time.Since(started)),
-			slog.Int("reply_bytes", len(text)))
-		send(ctx, ch, environment.Final(text))
+			slog.Int("reply_bytes", len(got.Text)))
+		send(ctx, ch, environment.Final(got.Text))
 	}()
 
 	return ch, nil

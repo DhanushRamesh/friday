@@ -473,6 +473,26 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### Tool calls end a stream, they do not accompany an answer
+
+An environment now answers in one of three ways: words, a failure, or a
+request to run tools. `KindToolCalls` is terminal like the other two, and the
+caller is expected to run what was asked and come back.
+
+A model asking for a tool sometimes sends a sentence alongside it. That
+sentence describes what it is about to do, not what happened, so the tool
+calls win: reading the sentence out and stopping would tell the person about
+work that never ran.
+
+Offering no tools sends no `tools` field rather than an empty array. An empty
+array tells the model something, and what it has been told is unclear.
+
+A remembered exchange goes back as this endpoint matches it: the calls on an
+assistant message, and each result as its own message carrying the identifier
+of the call it answers. The outcome travels inside the result's text, because
+the wire has nowhere else to put it and a result that reads as plain prose is
+one the model will report as having worked.
+
 ### A tool is a shape, not a paragraph
 
 Prose quality cannot be enforced and structure can, so a tool is described in

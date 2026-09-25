@@ -152,10 +152,29 @@ func (r *Runner) history(ctx context.Context, t *chat.Chat) conversation.Window 
 func toProviderTurns(messages []conversation.Message) []environment.Turn {
 	out := make([]environment.Turn, len(messages))
 	for i, m := range messages {
-		out[i] = environment.Turn{
+		turn := environment.Turn{
 			Role: environment.Role(m.Role),
 			Text: m.Content,
 		}
+		for _, c := range m.ToolCalls {
+			turn.ToolCalls = append(turn.ToolCalls, environment.ToolCall{
+				ID:        c.ID,
+				Name:      c.Name,
+				Arguments: c.Arguments,
+			})
+		}
+		for _, r := range m.ToolResults {
+			// The outcome travels with the content rather than in a field of
+			// its own, because the wire has nowhere else to put it and the
+			// model has to be able to tell a success from a failure. A
+			// result that reads as plain text is one the model will report
+			// as having worked.
+			turn.ToolResults = append(turn.ToolResults, environment.ToolResult{
+				ID:      r.ID,
+				Content: string(r.Outcome) + ": " + r.Content,
+			})
+		}
+		out[i] = turn
 	}
 	return out
 }

@@ -11,6 +11,7 @@ package environment
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 )
 
@@ -24,12 +25,16 @@ const (
 	KindFinal Kind = "final"
 	// KindError : The run failed. The stream ends after it.
 	KindError Kind = "error"
+	// KindToolCalls : The model asked for tools to be run rather than
+	// answering. The stream ends after it, and the caller is expected to run
+	// them and ask again.
+	KindToolCalls Kind = "tool_calls"
 )
 
 // Valid : Reports whether k is a known kind.
 func (k Kind) Valid() bool {
 	switch k {
-	case KindUpdate, KindFinal, KindError:
+	case KindUpdate, KindFinal, KindError, KindToolCalls:
 		return true
 	default:
 		return false
@@ -37,7 +42,9 @@ func (k Kind) Valid() bool {
 }
 
 // Terminal : Reports whether a message of this kind ends the stream.
-func (k Kind) Terminal() bool { return k == KindFinal || k == KindError }
+func (k Kind) Terminal() bool {
+	return k == KindFinal || k == KindError || k == KindToolCalls
+}
 
 // String : Returns the kind as written in the database and the API.
 func (k Kind) String() string { return string(k) }
@@ -55,8 +62,15 @@ type Message struct {
 	// Detail : For KindError, what the service actually said, kept exactly.
 	// Empty otherwise, and never the thing shown without being asked for.
 	Detail string
-	// At : When the provider produced the message.
+	// ToolCalls : For KindToolCalls, what the model asked to be run.
+	ToolCalls []ToolCall
+	// At : When the environment produced the message.
 	At time.Time
+}
+
+// ToolCalls : Returns a message carrying what the model asked to be run.
+func ToolCalls(calls []ToolCall) Message {
+	return Message{Kind: KindToolCalls, ToolCalls: calls, At: time.Now().UTC()}
 }
 
 // Update : Returns a transient progress message.
@@ -84,6 +98,38 @@ func Failure(text, code, detail string) Message {
 	}
 }
 
+// ToolSpec : A tool offered to the model.
+//
+// The description and the schema are composed elsewhere; by the time one
+// reaches here it is only something to put on the wire.
+type ToolSpec struct {
+	// Name : What the model calls it.
+	Name string
+	// Description : What it does and when to use it, in one string, since
+	// that is all a service's schema allows.
+	Description string
+	// Parameters : What it takes, as JSON Schema.
+	Parameters json.RawMessage
+}
+
+// ToolCall : The model asking for a tool to be run.
+type ToolCall struct {
+	// ID : What the answer is matched back to.
+	ID string
+	// Name : Which tool.
+	Name string
+	// Arguments : What to call it with, as the JSON the model produced.
+	Arguments string
+}
+
+// ToolResult : What a tool gave back, on its way to the model.
+type ToolResult struct {
+	// ID : The call this answers.
+	ID string
+	// Content : What the tool produced, or exactly what went wrong.
+	Content string
+}
+
 // Role : Who said something in a conversation.
 type Role string
 
@@ -94,10 +140,21 @@ const (
 	RoleAssistant Role = "assistant"
 )
 
-// Turn : One thing said earlier in the same conversation.
+// RoleTool : A tool reporting back.
+const RoleTool Role = "tool"
+
+// Turn : One thing said or done earlier in the same conversation.
+//
+// A turn carries words, or tool calls, or tool results, and never two of
+// them, which is the same rule the stored transcript follows.
 type Turn struct {
 	Role Role
 	Text string
+	// ToolCalls : What the assistant asked for, on an assistant turn that
+	// carries no words.
+	ToolCalls []ToolCall
+	// ToolResults : What came back, on a tool turn.
+	ToolResults []ToolResult
 }
 
 // Purpose : Why a request is being made.
@@ -141,6 +198,9 @@ type Request struct {
 	// sends.
 	Vendor string
 	Model  string
+	// Tools : What the model may ask to be run. Empty offers none, and a
+	// model offered none cannot call one.
+	Tools []ToolSpec
 	// Summary : The part of the conversation too old to send in full, condensed.
 	// Empty when the whole conversation fits.
 	//

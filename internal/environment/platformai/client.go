@@ -29,7 +29,35 @@ type oauthResponse struct {
 // chatMessage : One message in a conversation.
 type chatMessage struct {
 	Role    string `json:"role"`
-	Content string `json:"content"`
+	Content string `json:"content,omitempty"`
+	// ToolCalls : On an assistant message that asked for tools instead of
+	// answering. Carries no content when set.
+	ToolCalls []wireToolCall `json:"tool_calls,omitempty"`
+	// ToolCallID : On a tool message, which call it answers.
+	ToolCallID string `json:"tool_call_id,omitempty"`
+}
+
+// wireToolCall : A tool call in the shape this endpoint uses, which is
+// OpenAI's.
+type wireToolCall struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name string `json:"name"`
+		// Arguments : JSON, as a string. The service sends it that way and
+		// expects it back that way.
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+
+// wireTool : A tool offered to the model.
+type wireTool struct {
+	Type     string `json:"type"`
+	Function struct {
+		Name        string          `json:"name"`
+		Description string          `json:"description"`
+		Parameters  json.RawMessage `json:"parameters"`
+	} `json:"function"`
 }
 
 // chatRequest : The body of a chat call.
@@ -41,6 +69,7 @@ type chatRequest struct {
 	Model    string        `json:"model"`
 	Context  string        `json:"context"`
 	Messages []chatMessage `json:"messages"`
+	Tools    []wireTool    `json:"tools,omitempty"`
 }
 
 // chatResponse : The reply to a chat call. Content is either a plain string or
@@ -48,9 +77,16 @@ type chatRequest struct {
 type chatResponse struct {
 	Data struct {
 		Messages []struct {
-			Content json.RawMessage `json:"content"`
+			Content   json.RawMessage `json:"content"`
+			ToolCalls []wireToolCall  `json:"tool_calls"`
 		} `json:"messages"`
 	} `json:"data"`
+}
+
+// reply : What one call came back with: words, or a request to run tools.
+type reply struct {
+	Text      string
+	ToolCalls []environment.ToolCall
 }
 
 // APIError : A message the service itself returned, in its own error envelope.
@@ -147,10 +183,10 @@ func (p *Environment) mintToken(ctx context.Context) (string, error) {
 
 // chat : Sends a prompt, preceded by what was said earlier, and returns the
 // assistant's reply.
-func (p *Environment) chat(ctx context.Context, ask environment.Request) (string, error) {
-	text, status, err := p.attemptChat(ctx, ask)
+func (p *Environment) chat(ctx context.Context, ask environment.Request) (reply, error) {
+	got, status, err := p.attemptChat(ctx, ask)
 	if err == nil {
-		return text, nil
+		return got, nil
 	}
 
 	// A token can be refused before we believe it has expired, so a
@@ -159,10 +195,10 @@ func (p *Environment) chat(ctx context.Context, ask environment.Request) (string
 	// been revoked would otherwise loop.
 	if status == http.StatusUnauthorized {
 		p.forgetToken()
-		text, _, err = p.attemptChat(ctx, ask)
-		return text, err
+		got, _, err = p.attemptChat(ctx, ask)
+		return got, err
 	}
-	return "", err
+	return reply{}, err
 }
 
 // attemptChat : One try, returning the HTTP status alongside the failure
@@ -180,20 +216,17 @@ func withSummary(prompt, summary string) string {
 	return prompt + "\n\nEarlier in this conversation, summarised:\n" + summary
 }
 
-func (p *Environment) attemptChat(ctx context.Context, ask environment.Request) (string, int, error) {
+func (p *Environment) attemptChat(ctx context.Context, ask environment.Request) (reply, int, error) {
 	token, err := p.accessToken(ctx)
 	if err != nil {
 		// A refusal minting the token is the same problem as a refusal
 		// using one, and is reported the same way.
-		return "", statusOf(err), err
+		return reply{}, statusOf(err), err
 	}
 
 	messages := make([]chatMessage, 0, len(ask.History)+1)
 	for _, turn := range ask.History {
-		messages = append(messages, chatMessage{
-			Role:    string(turn.Role),
-			Content: turn.Text,
-		})
+		messages = append(messages, asWire(turn)...)
 	}
 	messages = append(messages, chatMessage{
 		Role:    string(environment.RoleUser),
@@ -215,14 +248,15 @@ func (p *Environment) attemptChat(ctx context.Context, ask environment.Request) 
 		Model:    model,
 		Context:  withSummary(prompt, ask.Summary),
 		Messages: messages,
+		Tools:    asWireTools(ask.Tools),
 	})
 	if err != nil {
-		return "", 0, fmt.Errorf("platformai: building chat request: %w", err)
+		return reply{}, 0, fmt.Errorf("platformai: building chat request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.cfg.ChatURL, bytes.NewReader(body))
 	if err != nil {
-		return "", 0, fmt.Errorf("platformai: building chat request: %w", err)
+		return reply{}, 0, fmt.Errorf("platformai: building chat request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Zoho-oauthtoken "+token)
@@ -231,29 +265,39 @@ func (p *Environment) attemptChat(ctx context.Context, ask environment.Request) 
 
 	resp, err := p.http.Do(req)
 	if err != nil {
-		return "", 0, fmt.Errorf("platformai: sending chat request: %w", scrubURL(err))
+		return reply{}, 0, fmt.Errorf("platformai: sending chat request: %w", scrubURL(err))
 	}
 	defer resp.Body.Close()
 
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
-		return "", resp.StatusCode, fmt.Errorf("platformai: reading chat response: %w", err)
+		return reply{}, resp.StatusCode, fmt.Errorf("platformai: reading chat response: %w", err)
 	}
 
 	var parsed chatResponse
 	if err := json.Unmarshal(raw, &parsed); err != nil || len(parsed.Data.Messages) == 0 {
 		if msg := errorMessage(raw); msg != "" {
-			return "", resp.StatusCode, &APIError{Message: msg, Status: resp.StatusCode}
+			return reply{}, resp.StatusCode, &APIError{Message: msg, Status: resp.StatusCode}
 		}
-		return "", resp.StatusCode,
+		return reply{}, resp.StatusCode,
 			fmt.Errorf("platformai: chat response was not usable (HTTP %d)", resp.StatusCode)
 	}
 
-	text := contentText(parsed.Data.Messages[0].Content)
-	if strings.TrimSpace(text) == "" {
-		return "", resp.StatusCode, fmt.Errorf("platformai: the reply was empty")
+	first := parsed.Data.Messages[0]
+
+	// Tool calls before text. A model that asks for a tool sometimes sends a
+	// sentence alongside it, and that sentence describes what it is about to
+	// do rather than what happened -- reading it out and stopping would be
+	// telling the person about work that never ran.
+	if calls := fromWireCalls(first.ToolCalls); len(calls) > 0 {
+		return reply{ToolCalls: calls}, resp.StatusCode, nil
 	}
-	return text, resp.StatusCode, nil
+
+	text := contentText(first.Content)
+	if strings.TrimSpace(text) == "" {
+		return reply{}, resp.StatusCode, fmt.Errorf("platformai: the reply was empty")
+	}
+	return reply{Text: text}, resp.StatusCode, nil
 }
 
 // statusOf : The HTTP status a failure carries, or zero if it carries
@@ -360,4 +404,64 @@ type tokenState struct {
 	tokenMu     sync.Mutex
 	token       string
 	tokenExpiry time.Time
+}
+
+// asWire : One remembered turn as the messages this endpoint expects.
+//
+// A turn carrying tool results becomes one message per result, because the
+// endpoint matches an answer to its call by the identifier on the message
+// rather than by anything inside it.
+func asWire(turn environment.Turn) []chatMessage {
+	if len(turn.ToolResults) > 0 {
+		out := make([]chatMessage, 0, len(turn.ToolResults))
+		for _, r := range turn.ToolResults {
+			out = append(out, chatMessage{
+				Role:       "tool",
+				ToolCallID: r.ID,
+				Content:    r.Content,
+			})
+		}
+		return out
+	}
+
+	msg := chatMessage{Role: string(turn.Role), Content: turn.Text}
+	for _, c := range turn.ToolCalls {
+		wire := wireToolCall{ID: c.ID, Type: "function"}
+		wire.Function.Name = c.Name
+		wire.Function.Arguments = c.Arguments
+		msg.ToolCalls = append(msg.ToolCalls, wire)
+	}
+	return []chatMessage{msg}
+}
+
+// asWireTools : The offered tools in the shape the endpoint expects.
+func asWireTools(tools []environment.ToolSpec) []wireTool {
+	if len(tools) == 0 {
+		return nil
+	}
+	out := make([]wireTool, 0, len(tools))
+	for _, t := range tools {
+		w := wireTool{Type: "function"}
+		w.Function.Name = t.Name
+		w.Function.Description = t.Description
+		w.Function.Parameters = t.Parameters
+		out = append(out, w)
+	}
+	return out
+}
+
+// fromWireCalls : The model's tool calls, in our own shape.
+func fromWireCalls(calls []wireToolCall) []environment.ToolCall {
+	if len(calls) == 0 {
+		return nil
+	}
+	out := make([]environment.ToolCall, 0, len(calls))
+	for _, c := range calls {
+		out = append(out, environment.ToolCall{
+			ID:        c.ID,
+			Name:      c.Function.Name,
+			Arguments: c.Function.Arguments,
+		})
+	}
+	return out
 }
