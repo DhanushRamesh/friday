@@ -3,6 +3,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../api/models.dart';
 import '../design/design.dart';
 import '../state/app_state.dart';
 import 'settings.dart';
@@ -403,6 +404,7 @@ class _Conversation extends StatelessWidget {
                   itemBuilder: (context, i) {
                     final turn = state.turns[i];
                     final failed = turn.error.isNotEmpty;
+                    final stopped = turn.status == ChatStatus.cancelled;
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -417,6 +419,7 @@ class _Conversation extends StatelessWidget {
                             failed: failed,
                             detail: failed ? turn.detail : null,
                             transient: turn.isRunning,
+                            stopped: stopped,
                           ),
                         const SizedBox(height: AppSpacing.lg),
                       ],

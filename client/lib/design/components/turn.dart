@@ -21,6 +21,7 @@ class AppTurn extends StatelessWidget {
     this.failed = false,
     this.detail,
     this.superseded = false,
+    this.stopped = false,
     this.timestamp,
     this.trailing,
   });
@@ -46,6 +47,13 @@ class AppTurn extends StatelessWidget {
   /// rather than removed, so the conversation still reads in order and the
   /// user can see what was dropped.
   final bool superseded;
+
+  /// stopped : Whether the person stopped the turn before it finished.
+  ///
+  /// Marked rather than left blank. Whatever was said before the stop is
+  /// still shown, because a turn that got half an answer out said something,
+  /// and a turn that got none still happened.
+  final bool stopped;
 
   final String? timestamp;
 
@@ -117,7 +125,8 @@ class AppTurn extends StatelessWidget {
                   const SizedBox(height: AppSpacing.xs + 2),
                   // Selectable, because the usual thing to do with an answer
                   // is copy part of it somewhere else.
-                  SelectableText(text, style: style),
+                  if (text.isNotEmpty) SelectableText(text, style: style),
+                  if (stopped) _StoppedNote(spaced: text.isNotEmpty),
                   if ((detail ?? '').isNotEmpty) _MoreInfo(detail: detail!),
                 ],
               ),
@@ -127,6 +136,38 @@ class AppTurn extends StatelessWidget {
       ),
     );
   }
+}
+
+/// _StoppedNote : Says that the person stopped the turn.
+class _StoppedNote extends StatelessWidget {
+  const _StoppedNote({required this.spaced});
+
+  /// spaced : Whether something was said before the stop, which the note then
+  /// has to be separated from.
+  final bool spaced;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.only(top: spaced ? AppSpacing.sm : 0),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          Icons.stop_circle_outlined,
+          size: 13,
+          color: context.colors.textMuted,
+        ),
+        const SizedBox(width: AppSpacing.xs + 2),
+        Text(
+          spaced ? 'Stopped here.' : 'Stopped before it answered.',
+          style: context.text.caption.copyWith(
+            color: context.colors.textMuted,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 /// AppThinkingTurn : The placeholder while the assistant has been asked something and

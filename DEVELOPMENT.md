@@ -473,6 +473,18 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### A stopped turn is drawn as stopped
+
+The server records an interruption as a message of its own and leaves any
+partial answer beside it. The client rendered neither: it drew the answer, and
+a cancelled chat has no answer and no error, so the turn came out as an empty
+bubble under the word Assistant.
+
+A turn whose status is cancelled now says so. Whatever was said before the
+stop is still shown, with the note under it; a turn stopped before it said
+anything shows the note alone. Nothing is hidden, because a turn that happened
+should read as having happened.
+
 ### The summary is the session's, and the transcript is untouched
 
 The condensation lives on the session as `summary` and
