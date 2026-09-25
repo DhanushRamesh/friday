@@ -473,6 +473,34 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### A manner is behaviour, not adjectives
+
+The personas are written from what the films show rather than from the words
+usually attached to the characters. A model told to be witty is insufferable;
+one told to report a disaster as a mild inconvenience is funny by itself. So
+the instruction is never "be dry" but "understatement is the whole of your
+humour", and never "be helpful" but "you do not refuse, and you do not
+lecture".
+
+The most widely copied Jarvis prompt online would break this assistant. It
+asks for bullet points, a polite greeting, anticipated follow-up questions and
+step-by-step reasoning. Read aloud, the first three are noise and the third
+ends on a question mark, which is the character Home Assistant reads to decide
+whether to keep the microphone open.
+
+So the spoken rules are appended after the manner and say they win: where a
+persona would ask permission it states its intent instead. Jarvis asked to
+deploy something untested answers "That is unwise, sir, and I would run it
+against a staging environment first. I will prepare the deployment as
+directed" — disapproving, not refusing, and not ending on a question.
+
+"Address the person as sir, at most once and often not at all" was read as
+permission never to say it, and neither character used its form of address at
+all. It is now a habit with a bound rather than a licence.
+
+Each persona is also told not to act out a role and never to name the films,
+which is what keeps a manner from becoming an impression of one.
+
 ### Package names follow the reference implementation
 
 `catalog` becomes `llm` and `provider` becomes `environment`, matching the
