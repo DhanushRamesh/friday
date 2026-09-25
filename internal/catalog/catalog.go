@@ -21,8 +21,12 @@ type Model struct {
 	// ContextTokens : How much the model can be given at once, prompt and
 	// reply together.
 	ContextTokens int
-	// Tools : Whether it can be given tools to call.
-	Tools bool
+	// SupportsTools : Whether the model can be given tools and asked to call
+	// them.
+	//
+	// A capability of the model. Which tools it is allowed to reach is not:
+	// that follows from the channel the prompt arrived on.
+	SupportsTools bool
 }
 
 // registry : Every model known here.
@@ -32,18 +36,18 @@ type Model struct {
 // alone, which is far below any of these windows.
 var registry = []Model{
 	// Anthropic. The 4 series all take two hundred thousand.
-	{ID: "claude-sonnet-4-6", Name: "Claude Sonnet 4.6", Vendor: "anthropic", ContextTokens: 200_000, Tools: true},
-	{ID: "claude-sonnet-4-5", Name: "Claude Sonnet 4.5", Vendor: "anthropic", ContextTokens: 200_000, Tools: true},
-	{ID: "claude-opus-4-5", Name: "Claude Opus 4.5", Vendor: "anthropic", ContextTokens: 200_000, Tools: true},
-	{ID: "claude-haiku-4-5", Name: "Claude Haiku 4.5", Vendor: "anthropic", ContextTokens: 200_000, Tools: true},
+	{ID: "claude-sonnet-4-6", Name: "Claude Sonnet 4.6", Vendor: "anthropic", ContextTokens: 200_000, SupportsTools: true},
+	{ID: "claude-sonnet-4-5", Name: "Claude Sonnet 4.5", Vendor: "anthropic", ContextTokens: 200_000, SupportsTools: true},
+	{ID: "claude-opus-4-5", Name: "Claude Opus 4.5", Vendor: "anthropic", ContextTokens: 200_000, SupportsTools: true},
+	{ID: "claude-haiku-4-5", Name: "Claude Haiku 4.5", Vendor: "anthropic", ContextTokens: 200_000, SupportsTools: true},
 
 	// OpenAI.
-	{ID: "gpt-4o", Name: "GPT-4o", Vendor: "openai", ContextTokens: 128_000, Tools: true},
+	{ID: "gpt-4o", Name: "GPT-4o", Vendor: "openai", ContextTokens: 128_000, SupportsTools: true},
 
 	// Ollama, on this machine. These windows are what the model ships with;
 	// a Modelfile can lower them, and num_ctx at run time decides in the end.
-	{ID: "qwen3:8b", Name: "Qwen 3 8B", Vendor: "ollama", ContextTokens: 32_768, Tools: true},
-	{ID: "llama3.2", Name: "Llama 3.2", Vendor: "ollama", ContextTokens: 131_072, Tools: true},
+	{ID: "qwen3:8b", Name: "Qwen 3 8B", Vendor: "ollama", ContextTokens: 32_768, SupportsTools: true},
+	{ID: "llama3.2", Name: "Llama 3.2", Vendor: "ollama", ContextTokens: 131_072, SupportsTools: true},
 }
 
 // Find : The model a vendor calls id, and whether it is known.
@@ -78,3 +82,23 @@ func ContextTokens(vendor, id string) int {
 
 // All : Every known model, in the order they are listed.
 func All() []Model { return append([]Model(nil), registry...) }
+
+// ByVendors : Every known model made by one of the given vendors, in the
+// order they are listed.
+//
+// A provider reaches some vendors and not others, so offering a person the
+// whole catalogue would be offering models the server cannot call. No vendors
+// at all returns nothing, which is the honest answer for a provider that
+// reaches none of these.
+func ByVendors(vendors ...string) []Model {
+	out := make([]Model, 0, len(registry))
+	for _, m := range registry {
+		for _, v := range vendors {
+			if strings.EqualFold(m.Vendor, v) {
+				out = append(out, m)
+				break
+			}
+		}
+	}
+	return out
+}

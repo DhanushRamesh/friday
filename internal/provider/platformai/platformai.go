@@ -73,6 +73,13 @@ const (
 	DefaultModel       = "claude-sonnet-4-6"
 )
 
+// Vendors : The model vendors this endpoint can reach.
+//
+// Named here rather than inferred from a catalogue, because what this service
+// will route to is its own business and does not change when a model is added
+// to a list somewhere else.
+func Vendors() []string { return []string{"anthropic", "openai", "google"} }
+
 // SystemPromptFor : Returns the instructions for an assistant called name.
 //
 // The name is configuration rather than a constant: the owner chooses what

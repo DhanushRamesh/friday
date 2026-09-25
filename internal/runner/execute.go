@@ -48,7 +48,7 @@ func (r *Runner) execute(ctx, lifeCtx context.Context, t *chat.Chat) {
 	// session's memory is never in front of the person waiting for it. The
 	// slot is still held, which keeps this from competing with the next
 	// chat for the same provider.
-	r.condense(ctx, t.SessionID)
+	r.condense(ctx, t)
 }
 
 // consume : Reads the provider's stream and records what it produces.
@@ -62,6 +62,8 @@ func (r *Runner) consume(runCtx, ctx context.Context, t *chat.Chat) {
 		Prompt:  t.Prompt,
 		History: toProviderTurns(window.Messages),
 		Summary: window.Summary,
+		Vendor:  t.Model.Vendor,
+		Model:   t.Model.ID,
 	})
 	if err != nil {
 		r.logger.ErrorContext(ctx, "provider would not start", slog.Any("error", err))
@@ -136,7 +138,7 @@ func (r *Runner) history(ctx context.Context, t *chat.Chat) session.Window {
 		r.logger.ErrorContext(ctx, "cannot read session summary", slog.Any("error", err))
 	}
 
-	return session.Plan(said, summary, r.historyLimits)
+	return session.Plan(said, summary, r.limitsFor(t.Model))
 }
 
 // toProviderTurns : Converts a session's messages into the form a provider

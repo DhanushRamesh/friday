@@ -26,6 +26,7 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/api/health"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/middleware"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/sessions"
+	"github.com/DhanushRamesh/personal-assistant/internal/catalog"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 )
 
@@ -58,6 +59,11 @@ type Options struct {
 	// Events : Carries a chat's messages to clients listening for them.
 	// Required for streaming.
 	Events Subscriber
+
+	// Models : The models the configured provider can reach, which are the
+	// ones a client may be set to answer with. Empty offers none, so a
+	// client keeps whatever the server is configured with.
+	Models []catalog.Model
 
 	// RequestTimeout : The per-request deadline. Zero selects
 	// DefaultRequestTimeout.
@@ -101,7 +107,7 @@ func New(opts Options) *Server {
 
 		health:   health.New(opts.Logger, opts.DB),
 		authn:    authn.New(opts.Logger, opts.Chats),
-		clients:  clients.New(opts.Logger, opts.Chats),
+		clients:  clients.New(opts.Logger, opts.Chats, opts.Models),
 		sessions: sessions.New(opts.Logger, opts.Chats),
 		chats:    chats.New(opts.Logger, opts.Chats, opts.Runner, opts.Events),
 		assist:   assist.New(opts.Logger, opts.Chats, opts.Runner, opts.Events),

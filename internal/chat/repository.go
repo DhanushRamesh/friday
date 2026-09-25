@@ -131,6 +131,10 @@ type Repository interface {
 	// not one of the two.
 	SetClientChannel(ctx context.Context, userID, clientID string, channel Channel) error
 
+	// SetClientModel : Chooses which model answers a client's prompts. The
+	// zero Model clears the choice, leaving the server's configured one.
+	SetClientModel(ctx context.Context, userID, clientID string, model Model) error
+
 	// RevokeClient : Stops a client authenticating. It reports ErrNotFound if
 	// there is none, and ErrNotOwned if it belongs to another user. Revoking
 	// one already revoked changes nothing.

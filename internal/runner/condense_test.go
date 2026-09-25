@@ -257,3 +257,89 @@ func TestACondensationThatFailsLeavesTheSessionAlone(t *testing.T) {
 		t.Errorf("summary = %+v, want it left unset", s)
 	}
 }
+
+// submitModel : Creates a chat that names a model, stores it, and starts it.
+//
+// The model is set before the runner is given the chat, because afterwards is
+// a race with the run itself.
+func (h *harness) submitModel(t *testing.T, prompt string, model chat.Model) *chat.Chat {
+	t.Helper()
+	tk, err := chat.New(h.session(t), chat.ChannelDirect, prompt)
+	if err != nil {
+		t.Fatalf("chat.New: %v", err)
+	}
+	tk.Model = model
+	if err := h.repo.Create(context.Background(), tk); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := h.runner.Submit(tk); err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	return tk
+}
+
+// The model a chat was accepted for is the one asked, not whatever the
+// provider is configured with.
+func TestTheChatsModelReachesTheProvider(t *testing.T) {
+	p := &recorder{notes: "notes"}
+	h := newHarness(t, p, runner.Options{})
+
+	want := chat.NewModel("anthropic", "claude-haiku-4-5")
+	tk := h.submitModel(t, "what is the time", want)
+	h.await(t, tk.ID, chatDone...)
+
+	asked := p.asking("what is the time")
+	if asked == nil {
+		t.Fatal("the question never reached the provider")
+	}
+	if asked.Model != "claude-haiku-4-5" {
+		t.Errorf("Model = %q, want claude-haiku-4-5", asked.Model)
+	}
+	if asked.Vendor != want.Vendor {
+		t.Errorf("Vendor = %q, want %q", asked.Vendor, want.Vendor)
+	}
+}
+
+// A chat that chose no model sends none, so the provider uses what it is
+// configured with rather than being handed an empty name.
+func TestAChatWithNoModelSendsNone(t *testing.T) {
+	p := &recorder{notes: "notes"}
+	h := newHarness(t, p, runner.Options{})
+
+	tk := h.submit(t, "what is the time")
+	h.await(t, tk.ID, chatDone...)
+
+	asked := p.asking("what is the time")
+	if asked == nil {
+		t.Fatal("the question never reached the provider")
+	}
+	if asked.Model != "" || asked.Vendor != "" {
+		t.Errorf("sent vendor %q model %q, want neither", asked.Vendor, asked.Model)
+	}
+}
+
+// A smaller model is sent less history, since the ceiling that binds is its
+// context window rather than the byte budget.
+func TestASmallerModelIsSentLessHistory(t *testing.T) {
+	p := &recorder{notes: "notes"}
+	h := newHarness(t, p, runner.Options{})
+
+	h.fill(t, 60)
+
+	// Qwen 3 8B holds 32,768 tokens against Claude's 200,000, so the same
+	// session reaches the provider differently depending on which answers.
+	small := h.submitModel(t, "on the small one", chat.NewModel("ollama", "qwen3:8b"))
+	h.await(t, small.ID, chatDone...)
+
+	big := h.submitModel(t, "on the big one", chat.NewModel("anthropic", "claude-sonnet-4-6"))
+	h.await(t, big.ID, chatDone...)
+
+	onSmall, onBig := p.asking("on the small one"), p.asking("on the big one")
+	if onSmall == nil || onBig == nil {
+		t.Fatal("both questions should have reached the provider")
+	}
+	if len(onSmall.History) > len(onBig.History) {
+		t.Errorf("the smaller model was sent %d messages and the larger %d",
+			len(onSmall.History), len(onBig.History))
+	}
+}

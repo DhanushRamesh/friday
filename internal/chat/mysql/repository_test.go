@@ -98,6 +98,29 @@ func storedSession(t *testing.T, r *chatmysql.Repository) string {
 	return c.ID
 }
 
+// storedClient : Creates a user and a client of theirs, and stores both.
+func storedClient(t *testing.T, r *chatmysql.Repository) *chat.Client {
+	t.Helper()
+	ctx := context.Background()
+
+	owner, err := chat.NewUser("tester"+chat.NewUserID()[4:14], "hash")
+	if err != nil {
+		t.Fatalf("chat.NewUser: %v", err)
+	}
+	if err := r.CreateUser(ctx, owner); err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+
+	client, err := chat.NewClient(owner.ID, "tester", "hash"+chat.NewClientID(), chat.ChannelDirect)
+	if err != nil {
+		t.Fatalf("chat.NewClient: %v", err)
+	}
+	if err := r.CreateClient(ctx, client); err != nil {
+		t.Fatalf("CreateClient: %v", err)
+	}
+	return client
+}
+
 // storedChat : Creates a chat, stores it, and removes it when the test ends.
 func storedChat(t *testing.T, r *chatmysql.Repository, prompt string) *chat.Chat {
 	t.Helper()
@@ -459,5 +482,105 @@ func TestChannelSurvivesStorage(t *testing.T) {
 		if s.ID == tk.ID && s.Channel != chat.ChannelVoice {
 			t.Errorf("listed channel = %q, want voice", s.Channel)
 		}
+	}
+}
+
+// A client with no choice reports none, so the server's configured model
+// answers it.
+func TestAClientStartsWithNoModel(t *testing.T) {
+	r := newRepository(t)
+	client := storedClient(t, r)
+
+	if client.Model.Chosen() {
+		t.Errorf("Model = %+v, want none chosen", client.Model)
+	}
+}
+
+// Both columns survive the round trip. A field added to a row but left out of
+// the insert is stored nowhere, and only the database says so.
+func TestAClientsModelSurvivesStorage(t *testing.T) {
+	r := newRepository(t)
+	ctx := context.Background()
+	client := storedClient(t, r)
+
+	want := chat.NewModel("anthropic", "claude-haiku-4-5")
+	if err := r.SetClientModel(ctx, client.UserID, client.ID, want); err != nil {
+		t.Fatalf("SetClientModel: %v", err)
+	}
+
+	got, err := r.ClientByTokenHash(ctx, client.TokenHash)
+	if err != nil {
+		t.Fatalf("ClientByTokenHash: %v", err)
+	}
+	if got.Model != want {
+		t.Errorf("Model = %+v, want %+v", got.Model, want)
+	}
+}
+
+// Clearing the choice is a real thing to want and puts the client back on the
+// server's model rather than failing.
+func TestAClientsModelCanBeCleared(t *testing.T) {
+	r := newRepository(t)
+	ctx := context.Background()
+	client := storedClient(t, r)
+
+	set := chat.NewModel("anthropic", "claude-haiku-4-5")
+	if err := r.SetClientModel(ctx, client.UserID, client.ID, set); err != nil {
+		t.Fatalf("SetClientModel: %v", err)
+	}
+	if err := r.SetClientModel(ctx, client.UserID, client.ID, chat.ServerDefault); err != nil {
+		t.Fatalf("clearing: %v", err)
+	}
+
+	got, err := r.ClientByTokenHash(ctx, client.TokenHash)
+	if err != nil {
+		t.Fatalf("ClientByTokenHash: %v", err)
+	}
+	if got.Model.Chosen() {
+		t.Errorf("Model = %+v, want it cleared", got.Model)
+	}
+}
+
+// Somebody else's client is not theirs to retune.
+func TestAModelCannotBeSetOnAnotherUsersClient(t *testing.T) {
+	r := newRepository(t)
+	ctx := context.Background()
+	client := storedClient(t, r)
+
+	stranger, err := chat.NewUser("stranger"+chat.NewUserID()[4:14], "hash")
+	if err != nil {
+		t.Fatalf("chat.NewUser: %v", err)
+	}
+	if err := r.CreateUser(ctx, stranger); err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+
+	err = r.SetClientModel(ctx, stranger.ID, client.ID, chat.NewModel("anthropic", "claude-haiku-4-5"))
+	if !errors.Is(err, chat.ErrNotOwned) {
+		t.Errorf("error = %v, want ErrNotOwned", err)
+	}
+}
+
+// The model a chat was accepted for is stored with it, so a chat recovered
+// after a restart goes to the same one.
+func TestAChatRemembersItsModel(t *testing.T) {
+	r := newRepository(t)
+	ctx := context.Background()
+
+	t2, err := chat.New(storedSession(t, r), chat.ChannelDirect, "what is the time")
+	if err != nil {
+		t.Fatalf("chat.New: %v", err)
+	}
+	t2.Model = chat.NewModel("anthropic", "claude-opus-4-5")
+	if err := r.Create(ctx, t2); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, err := r.Get(ctx, t2.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Model != t2.Model {
+		t.Errorf("Model = %+v, want %+v", got.Model, t2.Model)
 	}
 }

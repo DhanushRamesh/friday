@@ -51,6 +51,13 @@ type Client struct {
 	// with a microphone cannot show what is about to happen and wait; a
 	// client with a screen can, whatever wire format it speaks.
 	Channel Channel
+	// Model : Which model answers this client's prompts. The zero value
+	// leaves it to the server's configuration.
+	//
+	// Per client rather than per account, because what suits one does not
+	// suit another: a spoken answer has to arrive before the satellite gives
+	// up waiting, while a browser can wait for a slower and better one.
+	Model Model
 	// TokenHash : The stored form of the token this client authenticates
 	// with. The token itself exists only at the moment of logging in.
 	TokenHash string

@@ -108,6 +108,11 @@ type Request struct {
 	// excluding this prompt. Without it a correction such as "no, make it
 	// four" reaches the model with nothing to make four.
 	History []Turn
+	// Vendor, Model : Which model to ask. Empty leaves it to whatever the
+	// provider is configured with, which is what a caller with no preference
+	// sends.
+	Vendor string
+	Model  string
 	// Summary : The part of the session too old to send in full, condensed.
 	// Empty when the whole session fits.
 	//

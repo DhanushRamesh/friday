@@ -271,6 +271,10 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Copied from the client rather than read back when the chat runs, so a
+	// chat recovered after a restart goes to the model it was accepted for.
+	t.Model = caller.Client.Model
+
 	if err := h.repo.Create(ctx, t); err != nil {
 		h.Fail(ctx, w, "storing chat", err)
 		return

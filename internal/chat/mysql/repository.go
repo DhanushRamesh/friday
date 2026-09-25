@@ -200,6 +200,8 @@ func (r *Repository) CreateClient(ctx context.Context, d *chat.Client) error {
 		UserID:          nullable(d.UserID),
 		Name:            d.Name,
 		Channel:         string(d.Channel),
+		Vendor:          nullable(d.Model.Vendor),
+		Model:           nullable(d.Model.ID),
 		TokenHash:       nullable(d.TokenHash),
 		ActiveSessionID: nullable(d.ActiveSessionID),
 		CreatedAt:       d.CreatedAt,
@@ -326,6 +328,37 @@ func (r *Repository) SetClientChannel(ctx context.Context, userID, clientID stri
 		}).Error
 	if err != nil {
 		return fmt.Errorf("chat: setting channel on %s: %w", clientID, err)
+	}
+	return nil
+}
+
+// SetClientModel : Chooses which model answers a client's prompts.
+//
+// The zero Model clears the choice, so the client goes back to the server's
+// configured one. That is a real thing to want and is not an error.
+func (r *Repository) SetClientModel(ctx context.Context, userID, clientID string, model chat.Model) error {
+	var row clientRow
+	err := r.db.WithContext(ctx).First(&row, "id = ?", clientID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return chat.ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("chat: reading client %s: %w", clientID, err)
+	}
+	if value(row.UserID) != userID {
+		return chat.ErrNotOwned
+	}
+
+	err = r.db.WithContext(ctx).
+		Model(&clientRow{}).
+		Where("id = ?", clientID).
+		Updates(map[string]any{
+			"vendor":     nullable(model.Vendor),
+			"model":      nullable(model.ID),
+			"updated_at": time.Now().UTC().Truncate(chat.StoredPrecision),
+		}).Error
+	if err != nil {
+		return fmt.Errorf("chat: setting model on %s: %w", clientID, err)
 	}
 	return nil
 }

@@ -19,6 +19,8 @@ type chatRow struct {
 	SessionID   *string    `gorm:"column:session_id"`
 	Prompt      string     `gorm:"column:prompt"`
 	Channel     string     `gorm:"column:channel"`
+	Vendor      *string    `gorm:"column:vendor"`
+	Model       *string    `gorm:"column:model"`
 	Status      string     `gorm:"column:status"`
 	Response    *string    `gorm:"column:response"`
 	Error       *string    `gorm:"column:error"`
@@ -95,6 +97,8 @@ type clientRow struct {
 	UserID          *string    `gorm:"column:user_id"`
 	Name            string     `gorm:"column:name"`
 	Channel         string     `gorm:"column:channel"`
+	Vendor          *string    `gorm:"column:vendor"`
+	Model           *string    `gorm:"column:model"`
 	TokenHash       *string    `gorm:"column:token_hash"`
 	ActiveSessionID *string    `gorm:"column:active_session_id"`
 	RevokedAt       *time.Time `gorm:"column:revoked_at"`
@@ -112,6 +116,7 @@ func (r *clientRow) toClient() *chat.Client {
 		UserID:          value(r.UserID),
 		Name:            r.Name,
 		Channel:         chat.Channel(r.Channel),
+		Model:           chat.NewModel(value(r.Vendor), value(r.Model)),
 		TokenHash:       value(r.TokenHash),
 		ActiveSessionID: value(r.ActiveSessionID),
 		RevokedAt:       utc(r.RevokedAt),
@@ -145,6 +150,8 @@ func toRow(t *chat.Chat) *chatRow {
 		SessionID:   nullable(t.SessionID),
 		Prompt:      t.Prompt,
 		Channel:     string(t.Channel),
+		Vendor:      nullable(t.Model.Vendor),
+		Model:       nullable(t.Model.ID),
 		Status:      string(t.Status),
 		Response:    nullable(t.Response),
 		Error:       nullable(t.Error),
@@ -164,6 +171,7 @@ func (r *chatRow) toChat() *chat.Chat {
 		SessionID:   value(r.SessionID),
 		Prompt:      r.Prompt,
 		Channel:     chat.Channel(r.Channel),
+		Model:       chat.NewModel(value(r.Vendor), value(r.Model)),
 		Status:      chat.Status(r.Status),
 		Response:    value(r.Response),
 		Error:       value(r.Error),

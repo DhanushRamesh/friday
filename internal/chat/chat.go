@@ -71,6 +71,14 @@ type Chat struct {
 	// about it.
 	Channel Channel
 
+	// Model : Which model was asked, copied from the client when the chat
+	// was accepted. The zero value means the server's configured one.
+	//
+	// Kept on the chat rather than read from the client when it runs, so a
+	// chat recovered after a restart goes to the model it was accepted for
+	// and a listing says what actually answered.
+	Model Model
+
 	// Status : Where the chat is in its lifecycle.
 	Status Status
 	// Response : The final answer. Set when the chat completes.

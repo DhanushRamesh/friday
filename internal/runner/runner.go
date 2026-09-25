@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DhanushRamesh/personal-assistant/internal/catalog"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	"github.com/DhanushRamesh/personal-assistant/internal/events"
 	"github.com/DhanushRamesh/personal-assistant/internal/logging"
@@ -249,6 +250,20 @@ func (r *Runner) Shutdown(ctx context.Context) error {
 		r.stopBase()
 		return fmt.Errorf("runner: chats did not finish before shutdown: %w", ctx.Err())
 	}
+}
+
+// limitsFor : The ceilings a chat's history is held under.
+//
+// The count and the byte budget are the same for every chat. The context
+// window is the chosen model's, so a client answered by a smaller model is
+// sent less. A chosen model nobody has catalogued declares no window, leaving
+// the byte budget to bound it alone.
+func (r *Runner) limitsFor(m chat.Model) session.Limits {
+	limits := r.historyLimits
+	if m.Chosen() {
+		limits.ContextTokens = catalog.ContextTokens(m.Vendor, m.ID)
+	}
+	return limits
 }
 
 // stop : Cancels a chat, recording why. It reports whether one was running.

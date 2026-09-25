@@ -11,6 +11,7 @@ package views
 import (
 	"time"
 
+	"github.com/DhanushRamesh/personal-assistant/internal/catalog"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 )
 
@@ -113,7 +114,11 @@ type Client struct {
 	ID   string `json:"id"`
 	Name string `json:"name,omitempty"`
 	// Channel : How this client's prompts arrive, "voice" or "direct".
-	Channel         string     `json:"channel,omitempty"`
+	Channel string `json:"channel,omitempty"`
+	// Vendor, Model : Which model answers this client. Absent when it has
+	// chosen none and the server's configured one answers.
+	Vendor          string     `json:"vendor,omitempty"`
+	Model           string     `json:"model,omitempty"`
 	Current         bool       `json:"current"`
 	Revoked         bool       `json:"revoked"`
 	RevokedAt       *time.Time `json:"revoked_at,omitempty"`
@@ -128,6 +133,8 @@ func OfClient(d chat.Client, current bool) Client {
 		ID:              d.ID,
 		Name:            d.Name,
 		Channel:         string(d.Channel),
+		Vendor:          d.Model.Vendor,
+		Model:           d.Model.ID,
 		Current:         current,
 		Revoked:         d.Revoked(),
 		RevokedAt:       d.RevokedAt,
@@ -158,5 +165,28 @@ func OfSession(c chat.Session, active bool) Session {
 		ArchivedAt: c.ArchivedAt,
 		CreatedAt:  c.CreatedAt,
 		UpdatedAt:  c.UpdatedAt,
+	}
+}
+
+// Model : A model a client may be set to answer with.
+type Model struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Vendor string `json:"vendor"`
+	// ContextTokens : How much the model can be given at once. Shown so the
+	// choice between a large model and a fast one is an informed one.
+	ContextTokens int `json:"context_tokens"`
+	// SupportsTools : Whether it can be asked to call tools.
+	SupportsTools bool `json:"supports_tools"`
+}
+
+// OfModel : Renders a catalogued model for the API.
+func OfModel(m catalog.Model) Model {
+	return Model{
+		ID:            m.ID,
+		Name:          m.Name,
+		Vendor:        m.Vendor,
+		ContextTokens: m.ContextTokens,
+		SupportsTools: m.SupportsTools,
 	}
 }

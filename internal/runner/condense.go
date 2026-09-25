@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	"github.com/DhanushRamesh/personal-assistant/internal/provider"
 	"github.com/DhanushRamesh/personal-assistant/internal/session"
 )
@@ -19,10 +20,13 @@ var errNoAnswer = errors.New("runner: the provider said nothing")
 // Every failure here is logged and dropped. The session is left as it was, so
 // the next turn sends what it can and tries again; nothing the person asked
 // for depends on this succeeding.
-func (r *Runner) condense(ctx context.Context, sessionID string) {
+func (r *Runner) condense(ctx context.Context, t *chat.Chat) {
+	sessionID := t.SessionID
 	if sessionID == "" {
 		return
 	}
+
+	limits := r.limitsFor(t.Model)
 
 	current, err := r.messages.Summary(ctx, sessionID)
 	if err != nil {
@@ -36,7 +40,7 @@ func (r *Runner) condense(ctx context.Context, sessionID string) {
 		return
 	}
 
-	through, due := session.Due(said, current, r.historyLimits)
+	through, due := session.Due(said, current, limits)
 	if !due {
 		return
 	}
@@ -49,7 +53,7 @@ func (r *Runner) condense(ctx context.Context, sessionID string) {
 	askCtx, cancel := context.WithTimeout(ctx, r.condenseTimeout)
 	defer cancel()
 
-	notes, err := r.ask(askCtx, session.CondensePrompt(current.Text, fold))
+	notes, err := r.ask(askCtx, t.Model, session.CondensePrompt(current.Text, fold))
 	if err != nil {
 		r.logger.WarnContext(ctx, "cannot condense the session",
 			slog.String("session_id", sessionID), slog.Any("error", err))
@@ -85,8 +89,12 @@ func between(messages []session.Message, after, through int) []session.Message {
 //
 // Used for the assistant's own housekeeping rather than for a chat, so the
 // result is not recorded anywhere and no failure is shown to anyone.
-func (r *Runner) ask(ctx context.Context, prompt string) (string, error) {
-	stream, err := r.provider.Run(ctx, provider.Request{Prompt: prompt})
+func (r *Runner) ask(ctx context.Context, model chat.Model, prompt string) (string, error) {
+	stream, err := r.provider.Run(ctx, provider.Request{
+		Prompt: prompt,
+		Vendor: model.Vendor,
+		Model:  model.ID,
+	})
 	if err != nil {
 		return "", err
 	}

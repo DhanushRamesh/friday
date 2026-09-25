@@ -473,6 +473,33 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### A client chooses its model
+
+The model was configuration, so everything got the same one. What suits one
+client does not suit another: a spoken answer has to reach the satellite
+before it stops waiting, while a browser can wait for something slower and
+better.
+
+Per client rather than per account, because the client is the thing the
+difference belongs to, and because it is already loaded on every request to
+authenticate it. Per session was the alternative and is more flexible, but
+voice creates sessions implicitly and would always land on a default.
+
+The choice is copied onto the chat when it is accepted rather than read back
+from the client when it runs. A chat recovered after a restart then goes to
+the model it was accepted for, and a listing says which model answered rather
+than which one that client would use today.
+
+A client may set its own model, unlike its channel. The channel decides what
+the assistant may do about a prompt, so a client raising it would grant itself
+privileges; which model answers grants nothing, and the client you are sitting
+at is the obvious place to change it from.
+
+Only models the configured provider can reach are offered, and setting one it
+cannot is refused. A model that cannot be called is a setting that breaks
+every later prompt from that client, and it would break them at the moment
+somebody speaks rather than at the moment the mistake is made.
+
 ### Each ceiling comes from whatever knows it
 
 The three limits are declared in three places, because three different things

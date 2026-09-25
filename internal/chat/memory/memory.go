@@ -380,6 +380,25 @@ func (m *Repository) SetClientChannel(_ context.Context, userID, clientID string
 	return nil
 }
 
+// SetClientModel : Chooses which model answers a client's prompts.
+func (m *Repository) SetClientModel(_ context.Context, userID, clientID string, model chat.Model) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	client, ok := m.clients[clientID]
+	if !ok {
+		return chat.ErrNotFound
+	}
+	if client.UserID != userID {
+		return chat.ErrNotOwned
+	}
+
+	client.Model = model
+	client.UpdatedAt = time.Now().UTC().Truncate(chat.StoredPrecision)
+	m.clients[clientID] = client
+	return nil
+}
+
 // RevokeClient : Stops a client authenticating.
 func (m *Repository) RevokeClient(_ context.Context, userID, clientID string) error {
 	m.mu.Lock()

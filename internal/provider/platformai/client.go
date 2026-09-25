@@ -200,9 +200,14 @@ func (p *Provider) attemptChat(ctx context.Context, ask provider.Request) (strin
 		Content: ask.Prompt,
 	})
 
+	vendor, model := p.cfg.Vendor, p.cfg.Model
+	if ask.Model != "" {
+		vendor, model = ask.Vendor, ask.Model
+	}
+
 	body, err := json.Marshal(chatRequest{
-		Vendor:   p.cfg.Vendor,
-		Model:    p.cfg.Model,
+		Vendor:   vendor,
+		Model:    model,
 		Context:  withSummary(p.cfg.SystemPrompt, ask.Summary),
 		Messages: messages,
 	})

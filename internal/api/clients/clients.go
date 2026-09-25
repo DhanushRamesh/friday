@@ -9,12 +9,14 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/DhanushRamesh/personal-assistant/internal/api/authn"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/httpx"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/views"
+	"github.com/DhanushRamesh/personal-assistant/internal/catalog"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 )
 
@@ -29,15 +31,32 @@ type MeResponse struct {
 	Client views.Client `json:"client"`
 }
 
+// ModelsResponse : The models a client may be set to answer with.
+type ModelsResponse struct {
+	Models []views.Model `json:"models"`
+}
+
+// ModelRequest : Choosing which model answers a client.
+type ModelRequest struct {
+	// Vendor, Model : What to set. An empty Model clears the choice and
+	// leaves the server's configured one.
+	Vendor string `json:"vendor"`
+	Model  string `json:"model"`
+}
+
 // Handler : Serves the client endpoints.
 type Handler struct {
 	httpx.Responder
 	repo chat.Repository
+	// models : What the configured provider can actually reach. Offering
+	// anything else would offer a model the server cannot call.
+	models []catalog.Model
 }
 
-// New : Builds the handler from the store holding the clients.
-func New(logger *slog.Logger, repo chat.Repository) *Handler {
-	return &Handler{Responder: httpx.Responder{Logger: logger}, repo: repo}
+// New : Builds the handler from the store holding the clients and the models
+// the provider in use can reach.
+func New(logger *slog.Logger, repo chat.Repository, models []catalog.Model) *Handler {
+	return &Handler{Responder: httpx.Responder{Logger: logger}, repo: repo, models: models}
 }
 
 // Mount : Registers the client endpoints on r, which must already require
@@ -46,7 +65,11 @@ func (h *Handler) Mount(r chi.Router) {
 	r.Route("/v1/clients", func(r chi.Router) {
 		r.Get("/", h.List)
 		r.Post("/{id}/channel", h.SetChannel)
+		r.Post("/{id}/model", h.SetModel)
 		r.Delete("/{id}", h.Revoke)
+	})
+	r.Route("/v1/models", func(r chi.Router) {
+		r.Get("/", h.Models)
 	})
 	r.Route("/v1/me", func(r chi.Router) {
 		r.Get("/", h.Me)
@@ -174,4 +197,70 @@ func (h *Handler) Revoke(w http.ResponseWriter, r *http.Request) {
 
 	h.Logger.InfoContext(ctx, "client revoked", slog.String("revoked_client_id", id))
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Models : Lists the models a client may be set to answer with.
+func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
+	out := make([]views.Model, 0, len(h.models))
+	for _, m := range h.models {
+		out = append(out, views.OfModel(m))
+	}
+	httpx.WriteJSON(r.Context(), w, http.StatusOK, ModelsResponse{Models: out})
+}
+
+// SetModel : Chooses which model answers a client's prompts.
+//
+// A client may set its own, unlike its channel. The channel decides what the
+// assistant is allowed to do about a prompt, so letting a client raise it
+// would let it grant itself privileges; which model answers grants nothing,
+// and being able to change it from the client you are sitting at is the
+// obvious way to want to do it.
+func (h *Handler) SetModel(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	c := authn.Of(ctx)
+	id := chi.URLParam(r, "id")
+
+	if !chat.ValidClientID(id) {
+		httpx.WriteError(ctx, w, http.StatusNotFound, "No such client.")
+		return
+	}
+
+	var req ModelRequest
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		httpx.WriteError(ctx, w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	model := chat.NewModel(req.Vendor, req.Model)
+	if model.Chosen() && !h.offers(model) {
+		httpx.WriteError(ctx, w, http.StatusBadRequest,
+			"That is not a model this assistant can reach.")
+		return
+	}
+
+	err := h.repo.SetClientModel(ctx, c.User.ID, id, model)
+	switch {
+	case errors.Is(err, chat.ErrNotFound), errors.Is(err, chat.ErrNotOwned):
+		httpx.WriteError(ctx, w, http.StatusNotFound, "No such client.")
+		return
+	case err != nil:
+		h.Fail(ctx, w, "setting client model", err)
+		return
+	}
+
+	h.List(w, r)
+}
+
+// offers : Whether the provider in use can reach the given model.
+//
+// Checked here rather than left to fail at the moment somebody speaks, since
+// a model that cannot be called is a setting that silently breaks every later
+// prompt from that client.
+func (h *Handler) offers(m chat.Model) bool {
+	for _, known := range h.models {
+		if strings.EqualFold(known.ID, m.ID) && strings.EqualFold(known.Vendor, m.Vendor) {
+			return true
+		}
+	}
+	return false
 }

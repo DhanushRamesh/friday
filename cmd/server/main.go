@@ -164,6 +164,7 @@ func run() error {
 		Chats:          chats,
 		Runner:         chatRunner,
 		Events:         bus,
+		Models:         reachableModels(cfg),
 		RequestTimeout: cfg.Server.RequestTimeout,
 		// Development only: `flutter run` serves the UI from its own port so
 		// that hot reload works. In production the server serves it, so every
@@ -206,6 +207,20 @@ func buildProvider(cfg config.Config, logger *slog.Logger) (provider.Provider, e
 		// Answers from a script, so everything around an answer can be worked
 		// on without credentials or a network.
 		return &provider.Stub{Delay: 300 * time.Millisecond}, nil
+	}
+}
+
+// reachableModels : The models the configured provider can call, which are
+// the ones a client may be set to answer with.
+//
+// Which vendors a provider reaches is the provider's own business, so the
+// list is chosen here alongside it rather than filtered by the catalogue.
+func reachableModels(cfg config.Config) []catalog.Model {
+	switch cfg.Provider.Name {
+	case config.ProviderPlatformAI:
+		return catalog.ByVendors(platformai.Vendors()...)
+	default:
+		return nil
 	}
 }
 
