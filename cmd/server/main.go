@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/DhanushRamesh/personal-assistant/internal/api"
+	"github.com/DhanushRamesh/personal-assistant/internal/catalog"
 	chatmysql "github.com/DhanushRamesh/personal-assistant/internal/chat/mysql"
 	"github.com/DhanushRamesh/personal-assistant/internal/config"
 	"github.com/DhanushRamesh/personal-assistant/internal/events"
@@ -21,6 +22,7 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/provider"
 	"github.com/DhanushRamesh/personal-assistant/internal/provider/platformai"
 	"github.com/DhanushRamesh/personal-assistant/internal/runner"
+	"github.com/DhanushRamesh/personal-assistant/internal/session"
 	"github.com/DhanushRamesh/personal-assistant/internal/storage"
 )
 
@@ -140,11 +142,12 @@ func run() error {
 	logger.Info("provider selected", slog.String("provider", answerer.Name()))
 
 	chatRunner, err := runner.New(runner.Options{
-		Repository: chats,
-		Messages:   chats,
-		Provider:   answerer,
-		Logger:     logger.Logger,
-		Publisher:  bus,
+		Repository:    chats,
+		Messages:      chats,
+		Provider:      answerer,
+		Logger:        logger.Logger,
+		Publisher:     bus,
+		HistoryLimits: historyLimits(cfg, logger.Logger),
 	})
 	if err != nil {
 		return err
@@ -204,6 +207,34 @@ func buildProvider(cfg config.Config, logger *slog.Logger) (provider.Provider, e
 		// on without credentials or a network.
 		return &provider.Stub{Delay: 300 * time.Millisecond}, nil
 	}
+}
+
+// historyLimits : The ceilings the conversation sent to the provider is held
+// under, for the provider configuration selects.
+//
+// Each comes from whatever knows it: the message count from the service, the
+// context window from the model behind it, and the size budget from us. A
+// model missing from the catalogue contributes nothing and is reported, since
+// the budget then governs alone.
+func historyLimits(cfg config.Config, logger *slog.Logger) session.Limits {
+	limits := session.Limits{Bytes: session.DefaultBudget}
+
+	if cfg.Provider.Name != config.ProviderPlatformAI {
+		return limits
+	}
+
+	limits.Count = platformai.MaxMessages
+
+	vendor, id := cfg.PlatformAI.Vendor, cfg.PlatformAI.Model
+	model, known := catalog.Find(vendor, id)
+	if !known {
+		logger.Warn("model is not in the catalogue, so only the byte budget bounds the history",
+			slog.String("vendor", vendor), slog.String("model", id))
+		return limits
+	}
+	limits.ContextTokens = model.ContextTokens
+
+	return limits
 }
 
 // serve : Starts srv and blocks until an interrupt arrives, then drains

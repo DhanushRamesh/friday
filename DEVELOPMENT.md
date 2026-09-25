@@ -473,6 +473,35 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### Each ceiling comes from whatever knows it
+
+The three limits are declared in three places, because three different things
+know them:
+
+| ceiling | declared by | why there |
+| --- | --- | --- |
+| 100 messages | `platformai.MaxMessages` | a property of that endpoint's array |
+| context window | `internal/catalog` | a property of the model, not the endpoint |
+| 60,000 bytes | `session.DefaultBudget` | what we are willing to spend |
+
+The catalogue is a list of models with what is known about each. The same
+model reached through two endpoints has the same window, and two models behind
+one endpoint do not, so the window cannot live with the provider. A model
+missing from the list declares nothing and is logged; the byte budget then
+governs alone, which is the safe direction.
+
+Condensing starts at ninety-five percent of whichever ceiling is nearest and
+leaves forty-five messages as they were said. The gap left above the trigger
+is room for condensing to fail two or three times without overrunning.
+
+`Plan` caps the history at one below the message limit. The prompt is added to
+the array after the history is chosen, so a history filled to the limit is one
+message too many on the wire — which is a failure the service reports as
+`ARRAY_SIZE_OUT_OF_RANGE` and nothing here would have explained.
+
+In practice the count is what binds. A spoken turn is a few dozen bytes, so a
+hundred of them reach the message limit at a twentieth of the byte budget.
+
 ### A stopped turn is drawn as stopped
 
 The server records an interruption as a message of its own and leaves any

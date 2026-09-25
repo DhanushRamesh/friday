@@ -30,6 +30,12 @@ const (
 	// DefaultTimeout : How long a single call may take.
 	DefaultTimeout = 120 * time.Second
 
+	// MaxMessages : The most messages this endpoint accepts in one request.
+	//
+	// It answers ARRAY_SIZE_OUT_OF_RANGE beyond this. The prompt occupies one
+	// of the places, so the history sent alongside it is one shorter.
+	MaxMessages = 100
+
 	// promptBody : How the model is told to answer, after it has been told
 	// what it is.
 	//

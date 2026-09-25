@@ -80,12 +80,12 @@ func TestPlanOnAnEmptySession(t *testing.T) {
 }
 
 // A service that takes only so many messages gets only so many, however
-// small they are.
+// small they are, and one place is left for the prompt.
 func TestPlanHoldsToTheCountLimit(t *testing.T) {
 	window := session.Plan(turns(30, 4), session.Summary{}, session.Limits{Count: 10})
 
-	if len(window.Messages) != 10 {
-		t.Fatalf("sent %d messages, want 10", len(window.Messages))
+	if len(window.Messages) != 9 {
+		t.Fatalf("sent %d messages, want 9 so the prompt makes 10", len(window.Messages))
 	}
 	if window.Messages[len(window.Messages)-1].Seq != 30 {
 		t.Errorf("last message is seq %d, want the newest", window.Messages[len(window.Messages)-1].Seq)
@@ -132,10 +132,19 @@ func TestDueTriggersOnTheCountLimit(t *testing.T) {
 	if !due {
 		t.Fatal("did not condense at 95 of 100 messages")
 	}
-	// 95 less the 20 kept verbatim is seq 75, moved back one so the tail
-	// opens with a question rather than an answer.
-	if through != 74 {
-		t.Errorf("condensing through seq %d, want 74", through)
+	// 95 less the 45 kept verbatim is seq 50, which already opens a turn.
+	if through != 50 {
+		t.Errorf("condensing through seq %d, want 50", through)
+	}
+}
+
+// A service that will not take as many messages as the prompt needs is left
+// with no history rather than a request it refuses.
+func TestPlanLeavesRoomForThePromptEvenAtOne(t *testing.T) {
+	window := session.Plan(turns(30, 4), session.Summary{}, session.Limits{Count: 1})
+
+	if len(window.Messages) != 0 {
+		t.Errorf("sent %d messages, want none so the prompt fits alone", len(window.Messages))
 	}
 }
 
@@ -215,10 +224,10 @@ func TestPlanSurvivesAWindowSmallerThanTheReserve(t *testing.T) {
 
 // The model's window triggers condensing just as the other two ceilings do.
 func TestDueTriggersOnTheContextWindow(t *testing.T) {
-	// 4096 less the reserve is 8192 bytes; 30 messages of 300 is 9000.
+	// 4096 less the reserve is 8192 bytes; 60 messages of 300 is 18000.
 	limits := session.Limits{ContextTokens: 4096}
 
-	if _, due := session.Due(turns(30, 300), session.Summary{}, limits); !due {
+	if _, due := session.Due(turns(60, 300), session.Summary{}, limits); !due {
 		t.Error("did not condense a session overrunning the model's window")
 	}
 }

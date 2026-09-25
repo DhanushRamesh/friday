@@ -22,11 +22,18 @@ const MinBudget = 2000
 
 // KeepVerbatim : How many of the most recent messages stay as they were said
 // when the earlier ones are condensed.
-const KeepVerbatim = 20
+//
+// Enough that the wording of the last several exchanges is there to be
+// referred back to, rather than only the gist of them.
+const KeepVerbatim = 45
 
 // condenseAtPercent : How full a ceiling has to be before the earlier part of
 // a session is worth condensing.
-const condenseAtPercent = 90
+//
+// Close to the ceiling rather than halfway to it, because condensing costs a
+// model call and loses detail. The gap that is left is the room for
+// condensing to fail a few times and still not overrun.
+const condenseAtPercent = 95
 
 // Limits : The ceilings a session's history has to fit under.
 //
@@ -100,8 +107,9 @@ type Window struct {
 //
 // Messages the summary accounts for are replaced by it; the rest are prepared
 // with ForModel and then held under every ceiling, the oldest dropped first.
-// Whether the result has to open with a user message is a provider's rule,
-// not this one's.
+// The count leaves room for the prompt, which is not part of the history and
+// is added to the request afterwards. Whether the result has to open with a
+// user message is a provider's rule, not this one's.
 func Plan(messages []Message, s Summary, l Limits) Window {
 	tail := make([]Message, 0, len(messages))
 	for _, m := range messages {
@@ -112,8 +120,15 @@ func Plan(messages []Message, s Summary, l Limits) Window {
 	}
 
 	turns := within(ForModel(tail), l.bytes())
-	if l.Count > 0 && len(turns) > l.Count {
-		turns = turns[len(turns)-l.Count:]
+
+	if l.Count > 0 {
+		// One place in the array belongs to the prompt, which a provider adds
+		// after this. Counting it here is what keeps a full history from
+		// becoming one message too many on the wire.
+		room := max(l.Count-1, 0)
+		if len(turns) > room {
+			turns = turns[len(turns)-room:]
+		}
 	}
 
 	return Window{Summary: s.Text, Messages: turns}
