@@ -2,6 +2,7 @@ package sessions_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/DhanushRamesh/personal-assistant/internal/api/apitest"
@@ -209,5 +210,83 @@ func TestAnotherUsersSessionIsHidden(t *testing.T) {
 		if c.ID == theirs.ID {
 			t.Error("another user's session appears in the listing")
 		}
+	}
+}
+
+func TestASessionCanBeRenamed(t *testing.T) {
+	e := apitest.New(t)
+	rec := e.Do(t, http.MethodPost, "/v1/sessions", `{"title":"frist"}`)
+	var created views.Session
+	e.Decode(t, rec, &created)
+
+	rec = e.Do(t, http.MethodPost, "/v1/sessions/"+created.ID+"/rename",
+		`{"title":"  the grocery list  "}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("rename: status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	var renamed views.Session
+	e.Decode(t, rec, &renamed)
+	if renamed.Title != "the grocery list" {
+		t.Errorf("title = %q, want it trimmed", renamed.Title)
+	}
+
+	// Read back, because the response could be right while the write was not.
+	rec = e.Do(t, http.MethodGet, "/v1/sessions/"+created.ID, "")
+	var detail sessions.DetailResponse
+	e.Decode(t, rec, &detail)
+	if detail.Session.Title != "the grocery list" {
+		t.Errorf("stored title = %q, want the new one", detail.Session.Title)
+	}
+}
+
+func TestRenamingToNothingClearsTheName(t *testing.T) {
+	e := apitest.New(t)
+	rec := e.Do(t, http.MethodPost, "/v1/sessions", `{"title":"a mistake"}`)
+	var created views.Session
+	e.Decode(t, rec, &created)
+
+	// Allowed rather than refused: a name given by mistake should be
+	// removable without deleting the conversation under it.
+	rec = e.Do(t, http.MethodPost, "/v1/sessions/"+created.ID+"/rename", `{"title":""}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	var renamed views.Session
+	e.Decode(t, rec, &renamed)
+	if renamed.Title != "" {
+		t.Errorf("title = %q, want it cleared", renamed.Title)
+	}
+}
+
+func TestATitleTooLongIsRefused(t *testing.T) {
+	e := apitest.New(t)
+	rec := e.Do(t, http.MethodPost, "/v1/sessions", `{"title":"fits"}`)
+	var created views.Session
+	e.Decode(t, rec, &created)
+
+	long := strings.Repeat("a", chat.MaxTitleLen+1)
+	rec = e.Do(t, http.MethodPost, "/v1/sessions/"+created.ID+"/rename",
+		`{"title":"`+long+`"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400: %s", rec.Code, rec.Body)
+	}
+
+	// Exactly the limit fits, so the boundary is not off by one.
+	rec = e.Do(t, http.MethodPost, "/v1/sessions/"+created.ID+"/rename",
+		`{"title":"`+strings.Repeat("a", chat.MaxTitleLen)+`"}`)
+	if rec.Code != http.StatusOK {
+		t.Errorf("a title of exactly the limit was refused: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// A session that does not exist is answered as missing rather than as a bad
+// request, so that a valid-looking identifier cannot be probed for existence.
+func TestRenamingAMissingSessionIsNotFound(t *testing.T) {
+	e := apitest.New(t)
+
+	rec := e.Do(t, http.MethodPost,
+		"/v1/sessions/"+chat.NewSessionID()+"/rename", `{"title":"nowhere"}`)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404: %s", rec.Code, rec.Body)
 	}
 }

@@ -2,8 +2,10 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/oklog/ulid/v2"
 )
@@ -48,6 +50,31 @@ func NewSession(userID, title string) *Session {
 		CreatedAt: started,
 		UpdatedAt: started,
 	}
+}
+
+// MaxTitleLen : The longest a session title may be.
+//
+// Matches the column, so a title that is accepted here is one that can be
+// stored. Counted in runes rather than bytes: a name in Tamil should be
+// allowed the same number of characters as one in English, and MySQL counts
+// a VARCHAR in characters too.
+const MaxTitleLen = 200
+
+// ErrTitleTooLong : Returned when a title will not fit.
+var ErrTitleTooLong = errors.New("chat: the title is too long")
+
+// Rename : Changes what the session is called.
+//
+// An empty title is allowed and means the session goes back to having none,
+// which a listing shows as untitled. That is a real thing to want: a name
+// given by mistake should be removable without deleting the conversation.
+func (c *Session) Rename(title string) error {
+	title = strings.TrimSpace(title)
+	if utf8.RuneCountInString(title) > MaxTitleLen {
+		return ErrTitleTooLong
+	}
+	c.Title = title
+	return nil
 }
 
 // NewSessionID : Returns a fresh session identifier.

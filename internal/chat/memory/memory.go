@@ -314,6 +314,25 @@ func (m *Repository) RevokeClient(_ context.Context, userID, clientID string) er
 	return nil
 }
 
+// RenameSession : Changes a stored session's title.
+func (m *Repository) RenameSession(_ context.Context, userID, sessionID, title string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	session, ok := m.sessions[sessionID]
+	if !ok {
+		return chat.ErrNotFound
+	}
+	if session.UserID != userID {
+		return chat.ErrNotOwned
+	}
+	if err := session.Rename(title); err != nil {
+		return err
+	}
+	m.sessions[sessionID] = session
+	return nil
+}
+
 // SetActiveSession : Points a client at a session its user owns.
 func (m *Repository) SetActiveSession(_ context.Context, userID, clientID, sessionID string) error {
 	m.mu.Lock()

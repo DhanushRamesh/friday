@@ -150,6 +150,17 @@ class AssistantApi {
   Future<Session> activateSession(String sessionId) async =>
       Session.fromJson(await _send('POST', '/v1/sessions/$sessionId/activate'));
 
+  /// renameSession : Changes what a session is called.
+  ///
+  /// An empty title clears the name rather than being refused, so a name
+  /// given by mistake can be taken off without deleting the conversation.
+  Future<Session> renameSession(String sessionId, String title) async =>
+      Session.fromJson(await _send(
+        'POST',
+        '/v1/sessions/$sessionId/rename',
+        body: {'title': title},
+      ));
+
   /// createChat : Sends a prompt.
   ///
   /// Returns as soon as the assistant accepts it, with the chat still pending —

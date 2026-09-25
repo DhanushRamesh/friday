@@ -15,6 +15,7 @@ class AppSessionTile extends StatefulWidget {
     required this.onTap,
     this.subtitle,
     this.active = false,
+    this.onRename,
   });
 
   final String title;
@@ -28,6 +29,10 @@ class AppSessionTile extends StatefulWidget {
 
   final String? subtitle;
   final VoidCallback onTap;
+
+  /// onRename : Offered on hover, and always on a touch screen where there is
+  /// no hover to offer it on. Null leaves the tile without the control.
+  final VoidCallback? onRename;
 
   @override
   State<AppSessionTile> createState() => _FSessionTileState();
@@ -104,10 +109,40 @@ class _FSessionTileState extends State<AppSessionTile> {
                   ],
                 ),
               ),
+              if (widget.onRename != null && (_hovered || widget.selected))
+                _RenameButton(onPressed: widget.onRename!),
             ],
           ),
         ),
       ),
     );
   }
+}
+
+/// _RenameButton : The small control that opens a rename.
+///
+/// Shown on hover or while the session is selected, rather than always: a
+/// column of sessions each carrying a visible button is a column of buttons
+/// with names attached.
+class _RenameButton extends StatelessWidget {
+  const _RenameButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: 'Rename',
+    child: InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(AppRadius.xs),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xs),
+        child: Icon(
+          Icons.edit_outlined,
+          size: 14,
+          color: context.colors.textMuted,
+        ),
+      ),
+    ),
+  );
 }

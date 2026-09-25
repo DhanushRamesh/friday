@@ -266,6 +266,32 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// rename : Changes what a session is called.
+  ///
+  /// The listing is patched rather than reloaded: a reload would also reorder
+  /// it, and a name changing is not a reason for a session to move.
+  Future<void> rename(String id, String title) async {
+    try {
+      final updated = await api.renameSession(id, title);
+      _sessions = [
+        for (final s in _sessions)
+          if (s.id == id)
+            Session(
+              id: s.id,
+              title: updated.title,
+              active: s.active,
+              createdAt: s.createdAt,
+              updatedAt: s.updatedAt,
+            )
+          else
+            s,
+      ];
+    } on Object catch (e) {
+      _error = _explain(e);
+    }
+    notifyListeners();
+  }
+
   /// loadClients : Reads the clients holding a token, for the settings screen.
   Future<void> loadClients() async {
     try {

@@ -29,6 +29,14 @@ type CreateRequest struct {
 	Activate bool `json:"activate,omitempty"`
 }
 
+// RenameRequest : The body of a request to rename a session.
+type RenameRequest struct {
+	// Title : What to call it. Empty clears the name rather than being
+	// refused: a title given by mistake should be removable without deleting
+	// the conversation.
+	Title string `json:"title"`
+}
+
 // ListResponse : The body of a listing of sessions.
 type ListResponse struct {
 	Sessions []views.Session `json:"sessions"`
@@ -59,6 +67,7 @@ func (h *Handler) Mount(r chi.Router) {
 		r.Get("/", h.List)
 		r.Get("/{id}", h.Get)
 		r.Post("/{id}/activate", h.Activate)
+		r.Post("/{id}/rename", h.Rename)
 	})
 }
 
@@ -167,6 +176,53 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		Session: views.OfSession(*session, session.ID == c.Client.ActiveSessionID),
 		Chats:   views.OfSummaries(summaries),
 	})
+}
+
+// Rename : Changes what a session is called.
+//
+// A POST rather than a PATCH, so the API keeps to the three methods the
+// cross-origin rules already allow, and so it reads like the action beside
+// it: /activate changes which session is current, /rename changes its name.
+func (h *Handler) Rename(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	c := authn.Of(ctx)
+	id := chi.URLParam(r, "id")
+
+	if !chat.ValidSessionID(id) {
+		httpx.WriteError(ctx, w, http.StatusNotFound, "No such session.")
+		return
+	}
+
+	var req RenameRequest
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		httpx.WriteError(ctx, w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	err := h.repo.RenameSession(ctx, c.User.ID, id, req.Title)
+	switch {
+	case errors.Is(err, chat.ErrNotFound), errors.Is(err, chat.ErrNotOwned):
+		// Answered alike, as elsewhere: telling one user that another's
+		// session exists reveals more than it should.
+		httpx.WriteError(ctx, w, http.StatusNotFound, "No such session.")
+		return
+	case errors.Is(err, chat.ErrTitleTooLong):
+		httpx.WriteError(ctx, w, http.StatusBadRequest, "That name is too long.")
+		return
+	case err != nil:
+		h.Fail(ctx, w, "renaming session", err)
+		return
+	}
+
+	session, err := h.repo.GetSession(ctx, id)
+	if err != nil {
+		h.Fail(ctx, w, "reading session", err)
+		return
+	}
+
+	h.Logger.InfoContext(ctx, "session renamed", slog.String("session_id", id))
+	httpx.WriteJSON(ctx, w, http.StatusOK,
+		views.OfSession(*session, session.ID == c.Client.ActiveSessionID))
 }
 
 // Activate : Switches where a prompt from this client lands.

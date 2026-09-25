@@ -339,6 +339,36 @@ func (r *Repository) RevokeClient(ctx context.Context, userID, clientID string) 
 //
 // The session must belong to the client's user, not to the client: a
 // person may switch any client to any of their sessions.
+// RenameSession : Changes a session's title.
+//
+// Ownership is checked before the write rather than folded into its WHERE
+// clause, so that somebody else's session is refused as not theirs instead of
+// silently matching no rows and looking like success.
+func (r *Repository) RenameSession(ctx context.Context, userID, sessionID, title string) error {
+	session, err := r.GetSession(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	if session.UserID != userID {
+		return chat.ErrNotOwned
+	}
+	if err := session.Rename(title); err != nil {
+		return err
+	}
+
+	// updated_at is left alone: it means when the conversation last moved,
+	// and a listing is ordered by it. Renaming is not talking, and should not
+	// jump a session to the top.
+	result := r.db.WithContext(ctx).
+		Model(&sessionRow{}).
+		Where("id = ?", sessionID).
+		Update("title", session.Title)
+	if result.Error != nil {
+		return fmt.Errorf("chat: renaming session %s: %w", sessionID, result.Error)
+	}
+	return nil
+}
+
 func (r *Repository) SetActiveSession(ctx context.Context, userID, clientID, sessionID string) error {
 	session, err := r.GetSession(ctx, sessionID)
 	if err != nil {

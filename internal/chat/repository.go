@@ -150,6 +150,11 @@ type Repository interface {
 	// CreateSession : Stores a new session.
 	CreateSession(ctx context.Context, c *Session) error
 
+	// RenameSession : Changes a session's title. It reports ErrNotFound if
+	// there is no such session, and ErrNotOwned if it belongs to somebody
+	// else.
+	RenameSession(ctx context.Context, userID, sessionID, title string) error
+
 	// GetSession : Returns a session. It reports ErrNotFound if
 	// there is none.
 	GetSession(ctx context.Context, id string) (*Session, error)

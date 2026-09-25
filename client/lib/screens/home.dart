@@ -65,6 +65,51 @@ class _HomeScreenState extends State<HomeScreen> {
     await widget.state.send(text);
   }
 
+  /// _rename : Asks for a new name for a session and applies it.
+  ///
+  /// A dialog rather than editing in place: the tile is also the control that
+  /// switches session, and a text field inside it means every attempt to
+  /// rename risks navigating away from what you were reading.
+  Future<void> _rename(String id, String current) async {
+    final field = TextEditingController(text: current);
+    final title = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: context.colors.surfaceRaised,
+        title: Text('Rename session', style: context.text.subtitle),
+        // Sized, because AlertDialog gives its content the whole dialog to
+        // fill and a lone text field stretches to the bottom of the screen.
+        content: SizedBox(
+          width: 360,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppTextField(
+                controller: field,
+                hint: 'Untitled',
+                autofocus: true,
+                onSubmitted: (value) => Navigator.of(context).pop(value),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          AppButton(
+            label: 'Cancel',
+            variant: AppButtonVariant.ghost,
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          AppButton(
+            label: 'Rename',
+            onPressed: () => Navigator.of(context).pop(field.text),
+          ),
+        ],
+      ),
+    );
+    field.dispose();
+    if (title != null) await widget.state.rename(id, title);
+  }
+
   void _openSettings() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -84,6 +129,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final sidebar = _Sidebar(
           state: state,
           onSettings: _openSettings,
+          onRename: _rename,
           onPicked: compact ? () => Navigator.of(context).maybePop() : null,
         );
 
@@ -121,11 +167,15 @@ class _Sidebar extends StatelessWidget {
   const _Sidebar({
     required this.state,
     required this.onSettings,
+    required this.onRename,
     this.onPicked,
   });
 
   final AppState state;
   final VoidCallback onSettings;
+
+  /// onRename : Called with a session and its current name.
+  final void Function(String id, String title) onRename;
 
   /// onPicked : Called after a session is chosen, so the drawer can close
   /// itself when the sidebar is inside one.
@@ -204,6 +254,7 @@ class _Sidebar extends StatelessWidget {
                             await state.select(s.id);
                             onPicked?.call();
                           },
+                          onRename: () => onRename(s.id, s.title),
                         ),
                       );
                     },

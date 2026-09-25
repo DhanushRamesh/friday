@@ -320,3 +320,39 @@ func TestTransitionErrorExplainsFinality(t *testing.T) {
 		t.Errorf("error %q should say the state is final", err)
 	}
 }
+
+func TestRenameTrimsAndAllowsClearing(t *testing.T) {
+	s := chat.NewSession("usr_1", "first")
+
+	if err := s.Rename("  the grocery list  "); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	if s.Title != "the grocery list" {
+		t.Errorf("title = %q, want it trimmed", s.Title)
+	}
+
+	// Clearing is allowed: a name given by mistake should be removable
+	// without deleting the conversation under it.
+	if err := s.Rename("   "); err != nil {
+		t.Fatalf("clearing: %v", err)
+	}
+	if s.Title != "" {
+		t.Errorf("title = %q, want it cleared", s.Title)
+	}
+}
+
+func TestRenameCountsCharactersNotBytes(t *testing.T) {
+	s := chat.NewSession("usr_1", "")
+
+	// The column is VARCHAR(200), which MySQL counts in characters. Counting
+	// bytes here would give a name in Tamil a third of the length of one in
+	// English for no reason the person could see.
+	tamil := strings.Repeat("அ", chat.MaxTitleLen)
+	if err := s.Rename(tamil); err != nil {
+		t.Errorf("a title of exactly the limit was refused: %v", err)
+	}
+
+	if err := s.Rename(strings.Repeat("a", chat.MaxTitleLen+1)); !errors.Is(err, chat.ErrTitleTooLong) {
+		t.Errorf("err = %v, want ErrTitleTooLong", err)
+	}
+}
