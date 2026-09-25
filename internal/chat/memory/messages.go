@@ -4,40 +4,40 @@ import (
 	"context"
 	"time"
 
-	"github.com/DhanushRamesh/personal-assistant/internal/session"
+	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
 )
 
-// Append : Stores a message at the end of its session.
-func (m *Repository) Append(_ context.Context, msg session.Message) (session.Message, error) {
+// Append : Stores a message at the end of its conversation.
+func (m *Repository) Append(_ context.Context, msg conversation.Message) (conversation.Message, error) {
 	if err := msg.Valid(); err != nil {
-		return session.Message{}, err
+		return conversation.Message{}, err
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if m.appendSaidErr != nil {
-		return session.Message{}, m.appendSaidErr
+		return conversation.Message{}, m.appendSaidErr
 	}
-	if _, ok := m.sessions[msg.SessionID]; !ok {
-		return session.Message{}, session.ErrNoSession
+	if _, ok := m.conversations[msg.ConversationID]; !ok {
+		return conversation.Message{}, conversation.ErrNoConversation
 	}
 	if msg.At.IsZero() {
 		msg.At = time.Now().UTC()
 	}
 
-	msg.Seq = len(m.said[msg.SessionID]) + 1
-	m.said[msg.SessionID] = append(m.said[msg.SessionID], msg)
+	msg.Seq = len(m.said[msg.ConversationID]) + 1
+	m.said[msg.ConversationID] = append(m.said[msg.ConversationID], msg)
 	return msg, nil
 }
 
-// Before : Returns a session's messages up to but not including seq.
-func (m *Repository) Before(_ context.Context, sessionID string, seq int) ([]session.Message, error) {
+// Before : Returns a conversation's messages up to but not including seq.
+func (m *Repository) Before(_ context.Context, conversationID string, seq int) ([]conversation.Message, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	var out []session.Message
-	for _, msg := range m.said[sessionID] {
+	var out []conversation.Message
+	for _, msg := range m.said[conversationID] {
 		if seq > 0 && msg.Seq >= seq {
 			break
 		}
@@ -46,9 +46,9 @@ func (m *Repository) Before(_ context.Context, sessionID string, seq int) ([]ses
 	return out, nil
 }
 
-// All : Returns everything said in a session, oldest first.
-func (m *Repository) All(ctx context.Context, sessionID string) ([]session.Message, error) {
-	return m.Before(ctx, sessionID, 0)
+// All : Returns everything said in a conversation, oldest first.
+func (m *Repository) All(ctx context.Context, conversationID string) ([]conversation.Message, error) {
+	return m.Before(ctx, conversationID, 0)
 }
 
 // FailAppendingSaid : Makes every Append fail with err, so a caller's
@@ -59,32 +59,32 @@ func (m *Repository) FailAppendingSaid(err error) {
 	m.appendSaidErr = err
 }
 
-// Said : Returns what was said in a session, for a test to assert on.
-func (m *Repository) Said(sessionID string) []session.Message {
+// Said : Returns what was said in a conversation, for a test to assert on.
+func (m *Repository) Said(conversationID string) []conversation.Message {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return append([]session.Message(nil), m.said[sessionID]...)
+	return append([]conversation.Message(nil), m.said[conversationID]...)
 }
 
-// Summary : Returns the session's condensed earlier conversation.
-func (m *Repository) Summary(_ context.Context, sessionID string) (session.Summary, error) {
+// Summary : Returns the conversation's condensed earlier conversation.
+func (m *Repository) Summary(_ context.Context, conversationID string) (conversation.Summary, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if _, ok := m.sessions[sessionID]; !ok {
-		return session.Summary{}, session.ErrNoSession
+	if _, ok := m.conversations[conversationID]; !ok {
+		return conversation.Summary{}, conversation.ErrNoConversation
 	}
-	return m.summaries[sessionID], nil
+	return m.summaries[conversationID], nil
 }
 
-// SetSummary : Replaces the session's condensed earlier conversation.
-func (m *Repository) SetSummary(_ context.Context, sessionID string, s session.Summary) error {
+// SetSummary : Replaces the conversation's condensed earlier conversation.
+func (m *Repository) SetSummary(_ context.Context, conversationID string, s conversation.Summary) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if _, ok := m.sessions[sessionID]; !ok {
-		return session.ErrNoSession
+	if _, ok := m.conversations[conversationID]; !ok {
+		return conversation.ErrNoConversation
 	}
-	m.summaries[sessionID] = s
+	m.summaries[conversationID] = s
 	return nil
 }

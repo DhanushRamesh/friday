@@ -35,8 +35,8 @@ func (r *Repository) Create(ctx context.Context, t *chat.Chat) error {
 		}
 		return fmt.Errorf("chat: creating %s: %w", t.ID, err)
 	}
-	// So that listing sessions brings the most recently used to the top.
-	return r.touchSession(ctx, t.SessionID, t.CreatedAt)
+	// So that listing conversations brings the most recently used to the top.
+	return r.touchConversation(ctx, t.ConversationID, t.CreatedAt)
 }
 
 // Get : Returns the chat with the given identifier, including its response.
@@ -106,13 +106,13 @@ func (r *Repository) List(ctx context.Context, f chat.Filter) ([]chat.Summary, e
 	if f.Status != "" {
 		query = query.Where("status = ?", string(f.Status))
 	}
-	if f.SessionID != "" {
-		query = query.Where("session_id = ?", f.SessionID)
+	if f.ConversationID != "" {
+		query = query.Where("conversation_id = ?", f.ConversationID)
 	}
 	if f.UserID != "" {
 		// One user must never see another's chats.
-		query = query.Where("session_id IN (?)",
-			r.db.Model(&sessionRow{}).Select("id").Where("user_id = ?", f.UserID))
+		query = query.Where("conversation_id IN (?)",
+			r.db.Model(&conversationRow{}).Select("id").Where("user_id = ?", f.UserID))
 	}
 
 	var rows []summaryRow
@@ -196,16 +196,16 @@ func (r *Repository) GetUser(ctx context.Context, id string) (*chat.User, error)
 // CreateClient : Stores a new client.
 func (r *Repository) CreateClient(ctx context.Context, d *chat.Client) error {
 	row := &clientRow{
-		ID:              d.ID,
-		UserID:          nullable(d.UserID),
-		Name:            d.Name,
-		Channel:         string(d.Channel),
-		Vendor:          nullable(d.Model.Vendor),
-		Model:           nullable(d.Model.ID),
-		TokenHash:       nullable(d.TokenHash),
-		ActiveSessionID: nullable(d.ActiveSessionID),
-		CreatedAt:       d.CreatedAt,
-		UpdatedAt:       d.UpdatedAt,
+		ID:                   d.ID,
+		UserID:               nullable(d.UserID),
+		Name:                 d.Name,
+		Channel:              string(d.Channel),
+		Vendor:               nullable(d.Model.Vendor),
+		Model:                nullable(d.Model.ID),
+		TokenHash:            nullable(d.TokenHash),
+		ActiveConversationID: nullable(d.ActiveConversationID),
+		CreatedAt:            d.CreatedAt,
+		UpdatedAt:            d.UpdatedAt,
 	}
 	if err := r.db.WithContext(ctx).Create(row).Error; err != nil {
 		return fmt.Errorf("chat: creating client %s: %w", d.ID, err)
@@ -391,115 +391,115 @@ func (r *Repository) RevokeClient(ctx context.Context, userID, clientID string) 
 	return nil
 }
 
-// SetActiveSession : Makes a session the one a prompt from this
+// SetActiveConversation : Makes a conversation the one a prompt from this
 // client lands in.
 //
-// The session must belong to the client's user, not to the client: a
-// person may switch any client to any of their sessions.
-// RenameSession : Changes a session's title.
+// The conversation must belong to the client's user, not to the client: a
+// person may switch any client to any of their conversations.
+// RenameConversation : Changes a conversation's title.
 //
 // Ownership is checked before the write rather than folded into its WHERE
-// clause, so that somebody else's session is refused as not theirs instead of
+// clause, so that somebody else's conversation is refused as not theirs instead of
 // silently matching no rows and looking like success.
-func (r *Repository) RenameSession(ctx context.Context, userID, sessionID, title string) error {
-	session, err := r.GetSession(ctx, sessionID)
+func (r *Repository) RenameConversation(ctx context.Context, userID, conversationID, title string) error {
+	conversation, err := r.GetConversation(ctx, conversationID)
 	if err != nil {
 		return err
 	}
-	if session.UserID != userID {
+	if conversation.UserID != userID {
 		return chat.ErrNotOwned
 	}
-	if err := session.Rename(title); err != nil {
+	if err := conversation.Rename(title); err != nil {
 		return err
 	}
 
 	// updated_at is left alone: it means when the conversation last moved,
 	// and a listing is ordered by it. Renaming is not talking, and should not
-	// jump a session to the top.
+	// jump a conversation to the top.
 	result := r.db.WithContext(ctx).
-		Model(&sessionRow{}).
-		Where("id = ?", sessionID).
-		Update("title", session.Title)
+		Model(&conversationRow{}).
+		Where("id = ?", conversationID).
+		Update("title", conversation.Title)
 	if result.Error != nil {
-		return fmt.Errorf("chat: renaming session %s: %w", sessionID, result.Error)
+		return fmt.Errorf("chat: renaming conversation %s: %w", conversationID, result.Error)
 	}
 	return nil
 }
 
-// SetSessionArchived : Puts a session away or brings it back.
-func (r *Repository) SetSessionArchived(ctx context.Context, userID, sessionID string, archived bool) error {
-	session, err := r.GetSession(ctx, sessionID)
+// SetConversationArchived : Puts a conversation away or brings it back.
+func (r *Repository) SetConversationArchived(ctx context.Context, userID, conversationID string, archived bool) error {
+	conversation, err := r.GetConversation(ctx, conversationID)
 	if err != nil {
 		return err
 	}
-	if session.UserID != userID {
+	if conversation.UserID != userID {
 		return chat.ErrNotOwned
 	}
 
 	if archived {
-		session.Archive()
+		conversation.Archive()
 	} else {
-		session.Unarchive()
+		conversation.Unarchive()
 	}
 
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&sessionRow{}).
-			Where("id = ?", sessionID).
-			Update("archived_at", session.ArchivedAt).Error; err != nil {
-			return fmt.Errorf("chat: archiving session %s: %w", sessionID, err)
+		if err := tx.Model(&conversationRow{}).
+			Where("id = ?", conversationID).
+			Update("archived_at", conversation.ArchivedAt).Error; err != nil {
+			return fmt.Errorf("chat: archiving conversation %s: %w", conversationID, err)
 		}
 		if !archived {
 			return nil
 		}
-		// A client left pointing at an archived session would keep putting
+		// A client left pointing at an archived conversation would keep putting
 		// prompts into it, which is the one thing archiving is meant to stop.
-		return clearActiveSession(tx, sessionID)
+		return clearActiveConversation(tx, conversationID)
 	})
 }
 
-// DeleteSession : Removes a session and everything said in it.
-func (r *Repository) DeleteSession(ctx context.Context, userID, sessionID string) error {
-	session, err := r.GetSession(ctx, sessionID)
+// DeleteConversation : Removes a conversation and everything said in it.
+func (r *Repository) DeleteConversation(ctx context.Context, userID, conversationID string) error {
+	conversation, err := r.GetConversation(ctx, conversationID)
 	if err != nil {
 		return err
 	}
-	if session.UserID != userID {
+	if conversation.UserID != userID {
 		return chat.ErrNotOwned
 	}
 
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// Before the row goes, not after: active_session_id has no foreign
-		// key, so a client left pointing at a deleted session would be
+		// Before the row goes, not after: active_conversation_id has no foreign
+		// key, so a client left pointing at a deleted conversation would be
 		// holding an identifier nothing can resolve, and the next prompt
 		// would fail on the chats foreign key instead.
-		if err := clearActiveSession(tx, sessionID); err != nil {
+		if err := clearActiveConversation(tx, conversationID); err != nil {
 			return err
 		}
 		// The chats and the transcript follow by their own cascades.
-		if err := tx.Where("id = ?", sessionID).Delete(&sessionRow{}).Error; err != nil {
-			return fmt.Errorf("chat: deleting session %s: %w", sessionID, err)
+		if err := tx.Where("id = ?", conversationID).Delete(&conversationRow{}).Error; err != nil {
+			return fmt.Errorf("chat: deleting conversation %s: %w", conversationID, err)
 		}
 		return nil
 	})
 }
 
-// clearActiveSession : Unpoints every client that was using a session.
-func clearActiveSession(tx *gorm.DB, sessionID string) error {
+// clearActiveConversation : Unpoints every client that was using a conversation.
+func clearActiveConversation(tx *gorm.DB, conversationID string) error {
 	err := tx.Model(&clientRow{}).
-		Where("active_session_id = ?", sessionID).
-		Update("active_session_id", nil).Error
+		Where("active_conversation_id = ?", conversationID).
+		Update("active_conversation_id", nil).Error
 	if err != nil {
-		return fmt.Errorf("chat: clearing active session %s: %w", sessionID, err)
+		return fmt.Errorf("chat: clearing active conversation %s: %w", conversationID, err)
 	}
 	return nil
 }
 
-func (r *Repository) SetActiveSession(ctx context.Context, userID, clientID, sessionID string) error {
-	session, err := r.GetSession(ctx, sessionID)
+func (r *Repository) SetActiveConversation(ctx context.Context, userID, clientID, conversationID string) error {
+	conversation, err := r.GetConversation(ctx, conversationID)
 	if err != nil {
 		return err
 	}
-	if session.UserID != userID {
+	if conversation.UserID != userID {
 		return chat.ErrNotOwned
 	}
 
@@ -507,17 +507,17 @@ func (r *Repository) SetActiveSession(ctx context.Context, userID, clientID, ses
 		Model(&clientRow{}).
 		Where("id = ? AND user_id = ?", clientID, userID).
 		Updates(map[string]any{
-			"active_session_id": sessionID,
-			"updated_at":        time.Now().UTC().Truncate(chat.StoredPrecision),
+			"active_conversation_id": conversationID,
+			"updated_at":             time.Now().UTC().Truncate(chat.StoredPrecision),
 		})
 	if result.Error != nil {
-		return fmt.Errorf("chat: activating session %s: %w", sessionID, result.Error)
+		return fmt.Errorf("chat: activating conversation %s: %w", conversationID, result.Error)
 	}
 	if result.RowsAffected == 0 {
 		var exists int64
 		if err := r.db.WithContext(ctx).Model(&clientRow{}).
 			Where("id = ? AND user_id = ?", clientID, userID).Count(&exists).Error; err != nil {
-			return fmt.Errorf("chat: activating session %s: %w", sessionID, err)
+			return fmt.Errorf("chat: activating conversation %s: %w", conversationID, err)
 		}
 		if exists == 0 {
 			return chat.ErrNotFound
@@ -526,9 +526,9 @@ func (r *Repository) SetActiveSession(ctx context.Context, userID, clientID, ses
 	return nil
 }
 
-// CreateSession : Stores a new session.
-func (r *Repository) CreateSession(ctx context.Context, c *chat.Session) error {
-	row := &sessionRow{
+// CreateConversation : Stores a new conversation.
+func (r *Repository) CreateConversation(ctx context.Context, c *chat.Conversation) error {
+	row := &conversationRow{
 		ID:        c.ID,
 		UserID:    nullable(c.UserID),
 		Title:     c.Title,
@@ -536,28 +536,28 @@ func (r *Repository) CreateSession(ctx context.Context, c *chat.Session) error {
 		UpdatedAt: c.UpdatedAt,
 	}
 	if err := r.db.WithContext(ctx).Create(row).Error; err != nil {
-		return fmt.Errorf("chat: creating session %s: %w", c.ID, err)
+		return fmt.Errorf("chat: creating conversation %s: %w", c.ID, err)
 	}
 	return nil
 }
 
-// GetSession : Returns a session.
-func (r *Repository) GetSession(ctx context.Context, id string) (*chat.Session, error) {
-	var row sessionRow
+// GetConversation : Returns a conversation.
+func (r *Repository) GetConversation(ctx context.Context, id string) (*chat.Conversation, error) {
+	var row conversationRow
 	err := r.db.WithContext(ctx).First(&row, "id = ?", id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, chat.ErrNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("chat: reading session %s: %w", id, err)
+		return nil, fmt.Errorf("chat: reading conversation %s: %w", id, err)
 	}
-	session := row.toSession()
-	return &session, nil
+	conversation := row.toConversation()
+	return &conversation, nil
 }
 
-// ListSessions : Returns a user's sessions, most recently used
+// ListConversations : Returns a user's conversations, most recently used
 // first.
-func (r *Repository) ListSessions(ctx context.Context, userID string, limit int) ([]chat.Session, error) {
+func (r *Repository) ListConversations(ctx context.Context, userID string, limit int) ([]chat.Conversation, error) {
 	if limit <= 0 {
 		limit = chat.DefaultListLimit
 	}
@@ -565,21 +565,21 @@ func (r *Repository) ListSessions(ctx context.Context, userID string, limit int)
 		limit = chat.MaxListLimit
 	}
 
-	return r.listSessions(ctx, userID, limit, false)
+	return r.listConversations(ctx, userID, limit, false)
 }
 
-// ListArchivedSessions : Returns a user's archived sessions.
-func (r *Repository) ListArchivedSessions(ctx context.Context, userID string, limit int) ([]chat.Session, error) {
-	return r.listSessions(ctx, userID, limit, true)
+// ListArchivedConversations : Returns a user's archived conversations.
+func (r *Repository) ListArchivedConversations(ctx context.Context, userID string, limit int) ([]chat.Conversation, error) {
+	return r.listConversations(ctx, userID, limit, true)
 }
 
-// listSessions : The listing both views share.
+// listConversations : The listing both views share.
 //
-// Archived sessions are excluded from the ordinary one rather than mixed in
-// and filtered by the caller, because EnsureSession takes the first row of it
-// to decide where a prompt lands. An archived session reaching that would put
+// Archived conversations are excluded from the ordinary one rather than mixed in
+// and filtered by the caller, because EnsureConversation takes the first row of it
+// to decide where a prompt lands. An archived conversation reaching that would put
 // a prompt into a conversation the user had put away.
-func (r *Repository) listSessions(ctx context.Context, userID string, limit int, archived bool) ([]chat.Session, error) {
+func (r *Repository) listConversations(ctx context.Context, userID string, limit int, archived bool) ([]chat.Conversation, error) {
 	if limit <= 0 {
 		limit = chat.DefaultListLimit
 	}
@@ -587,58 +587,58 @@ func (r *Repository) listSessions(ctx context.Context, userID string, limit int,
 		limit = chat.MaxListLimit
 	}
 
-	q := r.db.WithContext(ctx).Model(&sessionRow{}).Where("user_id = ?", userID)
+	q := r.db.WithContext(ctx).Model(&conversationRow{}).Where("user_id = ?", userID)
 	if archived {
 		q = q.Where("archived_at IS NOT NULL")
 	} else {
 		q = q.Where("archived_at IS NULL")
 	}
 
-	var rows []sessionRow
+	var rows []conversationRow
 	err := q.Order("updated_at DESC").Limit(limit).Find(&rows).Error
 	if err != nil {
-		return nil, fmt.Errorf("chat: listing sessions: %w", err)
+		return nil, fmt.Errorf("chat: listing conversations: %w", err)
 	}
 
-	out := make([]chat.Session, len(rows))
+	out := make([]chat.Conversation, len(rows))
 	for i := range rows {
-		out[i] = rows[i].toSession()
+		out[i] = rows[i].toConversation()
 	}
 	return out, nil
 }
 
-// touchSession : Records that a session was used, so listing brings
+// touchConversation : Records that a conversation was used, so listing brings
 // the most recent to the top.
-func (r *Repository) touchSession(ctx context.Context, id string, at time.Time) error {
+func (r *Repository) touchConversation(ctx context.Context, id string, at time.Time) error {
 	if id == "" {
 		return nil
 	}
 	err := r.db.WithContext(ctx).
-		Model(&sessionRow{}).
+		Model(&conversationRow{}).
 		Where("id = ?", id).
 		Update("updated_at", at).Error
 	if err != nil {
-		return fmt.Errorf("chat: touching session %s: %w", id, err)
+		return fmt.Errorf("chat: touching conversation %s: %w", id, err)
 	}
 	return nil
 }
 
-// Unfinished : Returns the identifiers of a session's chats that have not
+// Unfinished : Returns the identifiers of a conversation's chats that have not
 // reached a terminal status, oldest first.
-func (r *Repository) Unfinished(ctx context.Context, sessionID string) ([]string, error) {
-	if sessionID == "" {
+func (r *Repository) Unfinished(ctx context.Context, conversationID string) ([]string, error) {
+	if conversationID == "" {
 		return nil, nil
 	}
 
 	var ids []string
 	err := r.db.WithContext(ctx).
 		Model(&chatRow{}).
-		Where("session_id = ? AND status IN ?", sessionID,
+		Where("conversation_id = ? AND status IN ?", conversationID,
 			[]string{string(chat.StatusPending), string(chat.StatusRunning)}).
 		Order("id ASC").
 		Pluck("id", &ids).Error
 	if err != nil {
-		return nil, fmt.Errorf("chat: reading unfinished chats of %s: %w", sessionID, err)
+		return nil, fmt.Errorf("chat: reading unfinished chats of %s: %w", conversationID, err)
 	}
 	return ids, nil
 }

@@ -27,13 +27,13 @@ var ErrClientNameTooLong = errors.New("chat: client name is too long")
 // Client : One thing a user talks to the server through, such as a phone, a
 // laptop or a speaker.
 //
-// A client is a credential and nothing more: it owns no sessions and is
+// A client is a credential and nothing more: it owns no conversations and is
 // not a boundary between anyone. Its user is. Several exist per user so that
 // a lost phone is one revocation rather than a password change.
 //
-// Each client holds its own active session, because a person may be
+// Each client holds its own active conversation, because a person may be
 // speaking to a speaker in one room while typing at a laptop in another.
-// Which sessions exist is a property of the user; which one a client is
+// Which conversations exist is a property of the user; which one a client is
 // currently in is a property of the client.
 type Client struct {
 	// ID : The identifier, a ClientIDPrefix followed by a ULID.
@@ -63,9 +63,9 @@ type Client struct {
 	TokenHash string
 	// RevokedAt : When the client was revoked, or nil while it is usable.
 	RevokedAt *time.Time
-	// ActiveSessionID : Where a prompt from this client lands. Empty
-	// only before the first session is created.
-	ActiveSessionID string
+	// ActiveConversationID : Where a prompt from this client lands. Empty
+	// only before the first conversation is created.
+	ActiveConversationID string
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

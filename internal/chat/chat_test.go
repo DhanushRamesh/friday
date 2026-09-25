@@ -322,7 +322,7 @@ func TestTransitionErrorExplainsFinality(t *testing.T) {
 }
 
 func TestRenameTrimsAndAllowsClearing(t *testing.T) {
-	s := chat.NewSession("usr_1", "first")
+	s := chat.NewConversation("usr_1", "first")
 
 	if err := s.Rename("  the grocery list  "); err != nil {
 		t.Fatalf("rename: %v", err)
@@ -342,7 +342,7 @@ func TestRenameTrimsAndAllowsClearing(t *testing.T) {
 }
 
 func TestRenameCountsCharactersNotBytes(t *testing.T) {
-	s := chat.NewSession("usr_1", "")
+	s := chat.NewConversation("usr_1", "")
 
 	// The column is VARCHAR(200), which MySQL counts in characters. Counting
 	// bytes here would give a name in Tamil a third of the length of one in

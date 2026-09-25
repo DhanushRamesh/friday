@@ -473,6 +473,32 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### A session is a conversation
+
+Migration 00007 renamed conversations to sessions. This renames them back,
+because the word has since been taken: everywhere else in this field a session
+is one exchange with a service, a single call and its reply. Ulaa's
+`SessionContext` is exactly that. What this holds is a thread of talk that
+outlives any number of those.
+
+It went all the way: the package, the types, the tables, the columns, the
+indexes, the routes, and the `sess_` prefix on every stored identifier. A
+conversation identified by `sess_` would be the kind of detail that is
+puzzling a year later, and both prefixes are five characters so nothing had to
+be widened.
+
+Two words were not ours and had to be put back after the rewrite:
+`@@session.time_zone`, which is MySQL's, and `session_token` in the log
+redaction list, which is the web's. The second would have stopped a real
+session token being redacted, so the rename would have quietly removed a
+protection. Sweeping a word out of a codebase catches the places it means
+something else, and those are found by reading the diff rather than by the
+compiler.
+
+The Down blocks of every migration here are documentation: nothing runs them
+and no test exercises them. This one is the most involved of them, since it
+drops constraints, renames, rewrites identifiers and rebuilds indexes.
+
 ### A client chooses its model
 
 The model was configuration, so everything got the same one. What suits one

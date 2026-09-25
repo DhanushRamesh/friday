@@ -1,6 +1,6 @@
-package session
+package conversation
 
-// DefaultBudget : How much of a session, in bytes of text, is sent to a
+// DefaultBudget : How much of a conversation, in bytes of text, is sent to a
 // provider when no budget is given. Roughly fifteen thousand tokens.
 const DefaultBudget = 60000
 
@@ -28,14 +28,14 @@ const MinBudget = 2000
 const KeepVerbatim = 45
 
 // condenseAtPercent : How full a ceiling has to be before the earlier part of
-// a session is worth condensing.
+// a conversation is worth condensing.
 //
 // Close to the ceiling rather than halfway to it, because condensing costs a
 // model call and loses detail. The gap that is left is the room for
 // condensing to fail a few times and still not overrun.
 const condenseAtPercent = 95
 
-// Limits : The ceilings a session's history has to fit under.
+// Limits : The ceilings a conversation's history has to fit under.
 //
 // They come from three different places and all of them hold: Count is the
 // service's, ContextTokens is the model's, and Bytes is our own.
@@ -82,7 +82,7 @@ func (l Limits) bytes() int {
 	return budget
 }
 
-// Summary : The earlier part of a session, condensed.
+// Summary : The earlier part of a conversation, condensed.
 type Summary struct {
 	// Text : The condensation, empty when nothing has been condensed.
 	Text string
@@ -134,7 +134,7 @@ func Plan(messages []Message, s Summary, l Limits) Window {
 	return Window{Summary: s.Text, Messages: turns}
 }
 
-// Due : Whether the earlier part of the session should be condensed, and the
+// Due : Whether the earlier part of the conversation should be condensed, and the
 // sequence number to condense through.
 //
 // It reports true once either ceiling is condenseAtPercent full, leaving

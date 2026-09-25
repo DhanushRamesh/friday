@@ -26,7 +26,7 @@ type oauthResponse struct {
 	ExpiresIn   int    `json:"expires_in"`
 }
 
-// chatMessage : One message in a session.
+// chatMessage : One message in a conversation.
 type chatMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`

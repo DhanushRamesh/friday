@@ -1,17 +1,17 @@
-package session_test
+package conversation_test
 
 import (
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/DhanushRamesh/personal-assistant/internal/session"
+	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
 )
 
 // said : A message of the given role and length, so a test can say how much
 // budget it consumes without writing out the text.
-func said(role session.Role, text string) session.Message {
-	return session.Message{Role: role, Content: text, At: time.Now()}
+func said(role conversation.Role, text string) conversation.Message {
+	return conversation.Message{Role: role, Content: text, At: time.Now()}
 }
 
 // Joining two questions keeps the time of the earlier one: that is when the
@@ -19,12 +19,12 @@ func said(role session.Role, text string) session.Message {
 func TestForModelKeepsTheEarlierTime(t *testing.T) {
 	first := time.Date(2026, 9, 22, 9, 0, 0, 0, time.UTC)
 	second := first.Add(time.Minute)
-	messages := []session.Message{
-		{Kind: session.Chat, Role: session.User, Content: "list three languages", At: first},
-		{Kind: session.Chat, Role: session.User, Content: "no, make it four", At: second},
+	messages := []conversation.Message{
+		{Kind: conversation.Chat, Role: conversation.User, Content: "list three languages", At: first},
+		{Kind: conversation.Chat, Role: conversation.User, Content: "no, make it four", At: second},
 	}
 
-	joined := session.ForModel(messages)
+	joined := conversation.ForModel(messages)
 
 	if len(joined) != 1 {
 		t.Fatalf("joined into %d messages, want one", len(joined))
@@ -40,18 +40,18 @@ func TestForModelKeepsTheEarlierTime(t *testing.T) {
 // A failure is shown to the person but never sent back to a model: read as
 // conversation it becomes the model explaining an outage it had no part in.
 func TestForModelIsGivenFailuresWithTheirDetail(t *testing.T) {
-	messages := []session.Message{
-		{Kind: session.Chat, Role: session.User, Content: "what is the time"},
+	messages := []conversation.Message{
+		{Kind: conversation.Chat, Role: conversation.User, Content: "what is the time"},
 		{
-			Kind:    session.Failure,
-			Role:    session.Assistant,
+			Kind:    conversation.Failure,
+			Role:    conversation.Assistant,
 			Content: "The service could not complete the request.",
 			Detail:  "INVALID_OAUTHTOKEN (HTTP 401)",
 		},
-		{Kind: session.Chat, Role: session.User, Content: "what exactly went wrong"},
+		{Kind: conversation.Chat, Role: conversation.User, Content: "what exactly went wrong"},
 	}
 
-	forModel := session.ForModel(messages)
+	forModel := conversation.ForModel(messages)
 
 	// Three, not two joined into one: the failure separates the questions, so
 	// the model can see that the first was answered with an outage and that
@@ -65,7 +65,7 @@ func TestForModelIsGivenFailuresWithTheirDetail(t *testing.T) {
 
 	// The person is shown the sentence and not the detail; the detail is
 	// carried beside it for a client to reveal when asked.
-	shown := session.ForPerson(messages)
+	shown := conversation.ForPerson(messages)
 	if len(shown) != 3 {
 		t.Fatalf("the person saw %d messages, want all three", len(shown))
 	}
@@ -79,25 +79,25 @@ func TestForModelIsGivenFailuresWithTheirDetail(t *testing.T) {
 
 // An answer that came back blank is not part of the conversation.
 func TestForModelDropsEmptyMessages(t *testing.T) {
-	messages := []session.Message{
-		{Kind: session.Chat, Role: session.User, Content: "hello"},
-		{Kind: session.Chat, Role: session.Assistant, Content: "   "},
-		{Kind: session.Chat, Role: session.User, Content: "still there?"},
+	messages := []conversation.Message{
+		{Kind: conversation.Chat, Role: conversation.User, Content: "hello"},
+		{Kind: conversation.Chat, Role: conversation.Assistant, Content: "   "},
+		{Kind: conversation.Chat, Role: conversation.User, Content: "still there?"},
 	}
 
-	if got := len(session.ForModel(messages)); got != 1 {
+	if got := len(conversation.ForModel(messages)); got != 1 {
 		t.Errorf("kept %d messages, want the two questions joined into one", got)
 	}
 }
 
 func TestForModelKeepsAnInterruption(t *testing.T) {
-	messages := []session.Message{
-		{Kind: session.Chat, Role: session.User, Content: "add rice to the list"},
-		{Kind: session.Interruption, Role: session.Assistant, Content: "[stopped]"},
-		{Kind: session.Chat, Role: session.User, Content: "what did you get done"},
+	messages := []conversation.Message{
+		{Kind: conversation.Chat, Role: conversation.User, Content: "add rice to the list"},
+		{Kind: conversation.Interruption, Role: conversation.Assistant, Content: "[stopped]"},
+		{Kind: conversation.Chat, Role: conversation.User, Content: "what did you get done"},
 	}
 
-	forModel := session.ForModel(messages)
+	forModel := conversation.ForModel(messages)
 
 	// Three messages, not two joined into one: the interruption sits between
 	// the questions and keeps them apart, which is the whole point. A model
@@ -106,7 +106,7 @@ func TestForModelKeepsAnInterruption(t *testing.T) {
 	if len(forModel) != 3 {
 		t.Fatalf("model saw %d messages, want all three", len(forModel))
 	}
-	if forModel[1].Kind != session.Interruption {
+	if forModel[1].Kind != conversation.Interruption {
 		t.Errorf("the interruption did not reach the model: %+v", forModel[1])
 	}
 }
@@ -114,15 +114,15 @@ func TestForModelKeepsAnInterruption(t *testing.T) {
 func TestInterruptedIsTheAssistantsTurn(t *testing.T) {
 	at := time.Date(2026, 9, 25, 13, 0, 0, 0, time.UTC)
 
-	m := session.Interrupted("ses_1", at)
+	m := conversation.Interrupted("ses_1", at)
 
 	// Written as the assistant so the roles still alternate. As the user it
 	// would join onto the question before it and read as part of what was
 	// asked.
-	if m.Role != session.Assistant {
+	if m.Role != conversation.Assistant {
 		t.Errorf("role = %q, want the assistant", m.Role)
 	}
-	if m.Kind != session.Interruption {
+	if m.Kind != conversation.Interruption {
 		t.Errorf("kind = %q, want an interruption", m.Kind)
 	}
 	if strings.TrimSpace(m.Content) == "" {
@@ -136,11 +136,11 @@ func TestInterruptedIsTheAssistantsTurn(t *testing.T) {
 func TestEveryConstructedMessageIsValid(t *testing.T) {
 	at := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
 
-	for name, m := range map[string]session.Message{
-		"said":        session.Said("ses_1", "what is the time", at),
-		"answered":    session.Answered("ses_1", "half past two", at),
-		"failed":      session.Failed("ses_1", "it did not work", "HTTP 500", at),
-		"interrupted": session.Interrupted("ses_1", at),
+	for name, m := range map[string]conversation.Message{
+		"said":        conversation.Said("ses_1", "what is the time", at),
+		"answered":    conversation.Answered("ses_1", "half past two", at),
+		"failed":      conversation.Failed("ses_1", "it did not work", "HTTP 500", at),
+		"interrupted": conversation.Interrupted("ses_1", at),
 	} {
 		if err := m.Valid(); err != nil {
 			t.Errorf("%s: %v", name, err)
@@ -155,15 +155,15 @@ func TestEveryMessageGetsItsOwnIdentifier(t *testing.T) {
 	at := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
 	seen := map[string]bool{}
 
-	for _, m := range []session.Message{
-		session.Said("ses_1", "one", at),
-		session.Said("ses_1", "one", at),
-		session.Answered("ses_1", "two", at),
-		session.Failed("ses_1", "three", "detail", at),
-		session.Interrupted("ses_1", at),
+	for _, m := range []conversation.Message{
+		conversation.Said("ses_1", "one", at),
+		conversation.Said("ses_1", "one", at),
+		conversation.Answered("ses_1", "two", at),
+		conversation.Failed("ses_1", "three", "detail", at),
+		conversation.Interrupted("ses_1", at),
 	} {
-		if !strings.HasPrefix(m.ID, session.MessageIDPrefix) {
-			t.Errorf("id = %q, want the %s prefix", m.ID, session.MessageIDPrefix)
+		if !strings.HasPrefix(m.ID, conversation.MessageIDPrefix) {
+			t.Errorf("id = %q, want the %s prefix", m.ID, conversation.MessageIDPrefix)
 		}
 		if seen[m.ID] {
 			t.Errorf("identifier handed out twice: %s", m.ID)
@@ -173,7 +173,7 @@ func TestEveryMessageGetsItsOwnIdentifier(t *testing.T) {
 }
 
 func TestAMessageWithoutAnIdentifierIsRefused(t *testing.T) {
-	m := session.Said("ses_1", "hello", time.Now())
+	m := conversation.Said("ses_1", "hello", time.Now())
 	m.ID = ""
 
 	if err := m.Valid(); err == nil {

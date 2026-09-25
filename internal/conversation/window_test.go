@@ -1,20 +1,20 @@
-package session_test
+package conversation_test
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/DhanushRamesh/personal-assistant/internal/session"
+	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
 )
 
 // turns : An alternating conversation of n messages, each of the given
 // length, numbered from one.
-func turns(n, size int) []session.Message {
-	out := make([]session.Message, n)
+func turns(n, size int) []conversation.Message {
+	out := make([]conversation.Message, n)
 	for i := range out {
-		role := session.User
+		role := conversation.User
 		if i%2 == 1 {
-			role = session.Assistant
+			role = conversation.Assistant
 		}
 		out[i] = said(role, strings.Repeat("a", size))
 		out[i].Seq = i + 1
@@ -22,14 +22,14 @@ func turns(n, size int) []session.Message {
 	return out
 }
 
-// Nothing is dropped while the whole session fits.
-func TestPlanKeepsASessionThatFits(t *testing.T) {
-	messages := []session.Message{
-		said(session.User, "what time is it"),
-		said(session.Assistant, "half past two"),
+// Nothing is dropped while the whole conversation fits.
+func TestPlanKeepsAConversationThatFits(t *testing.T) {
+	messages := []conversation.Message{
+		said(conversation.User, "what time is it"),
+		said(conversation.Assistant, "half past two"),
 	}
 
-	window := session.Plan(messages, session.Summary{}, session.Limits{Bytes: 1000})
+	window := conversation.Plan(messages, conversation.Summary{}, conversation.Limits{Bytes: 1000})
 
 	if len(window.Messages) != 2 {
 		t.Fatalf("kept %d messages, want both", len(window.Messages))
@@ -40,15 +40,15 @@ func TestPlanKeepsASessionThatFits(t *testing.T) {
 }
 
 // The oldest go first: a follow-up refers to what was just said, not to what
-// opened the session an hour ago.
+// opened the conversation an hour ago.
 func TestPlanDropsTheOldest(t *testing.T) {
-	messages := []session.Message{
-		said(session.User, strings.Repeat("a", 10)),
-		said(session.Assistant, strings.Repeat("b", 10)),
-		said(session.User, strings.Repeat("c", 10)),
+	messages := []conversation.Message{
+		said(conversation.User, strings.Repeat("a", 10)),
+		said(conversation.Assistant, strings.Repeat("b", 10)),
+		said(conversation.User, strings.Repeat("c", 10)),
 	}
 
-	window := session.Plan(messages, session.Summary{}, session.Limits{Bytes: 20})
+	window := conversation.Plan(messages, conversation.Summary{}, conversation.Limits{Bytes: 20})
 
 	if len(window.Messages) != 2 {
 		t.Fatalf("kept %d messages, want the last two", len(window.Messages))
@@ -60,9 +60,9 @@ func TestPlanDropsTheOldest(t *testing.T) {
 
 // A single turn longer than the whole budget is cut rather than dropped.
 func TestPlanCutsATurnTooLongToFit(t *testing.T) {
-	messages := []session.Message{said(session.User, strings.Repeat("a", 100))}
+	messages := []conversation.Message{said(conversation.User, strings.Repeat("a", 100))}
 
-	window := session.Plan(messages, session.Summary{}, session.Limits{Bytes: 30})
+	window := conversation.Plan(messages, conversation.Summary{}, conversation.Limits{Bytes: 30})
 
 	if len(window.Messages) != 1 {
 		t.Fatalf("kept %d messages, want the one cut down", len(window.Messages))
@@ -72,9 +72,9 @@ func TestPlanCutsATurnTooLongToFit(t *testing.T) {
 	}
 }
 
-// Planning an empty session is not an error, and asks for nothing.
-func TestPlanOnAnEmptySession(t *testing.T) {
-	if window := session.Plan(nil, session.Summary{}, session.Limits{Bytes: 100}); len(window.Messages) != 0 {
+// Planning an empty conversation is not an error, and asks for nothing.
+func TestPlanOnAnEmptyConversation(t *testing.T) {
+	if window := conversation.Plan(nil, conversation.Summary{}, conversation.Limits{Bytes: 100}); len(window.Messages) != 0 {
 		t.Errorf("kept %d messages from nothing", len(window.Messages))
 	}
 }
@@ -82,7 +82,7 @@ func TestPlanOnAnEmptySession(t *testing.T) {
 // A service that takes only so many messages gets only so many, however
 // small they are, and one place is left for the prompt.
 func TestPlanHoldsToTheCountLimit(t *testing.T) {
-	window := session.Plan(turns(30, 4), session.Summary{}, session.Limits{Count: 10})
+	window := conversation.Plan(turns(30, 4), conversation.Summary{}, conversation.Limits{Count: 10})
 
 	if len(window.Messages) != 9 {
 		t.Fatalf("sent %d messages, want 9 so the prompt makes 10", len(window.Messages))
@@ -94,9 +94,9 @@ func TestPlanHoldsToTheCountLimit(t *testing.T) {
 
 // What the summary accounts for is sent as the summary, not again as itself.
 func TestPlanReplacesWhatIsSummarised(t *testing.T) {
-	summary := session.Summary{Text: "they discussed the weather", ThroughSeq: 24}
+	summary := conversation.Summary{Text: "they discussed the weather", ThroughSeq: 24}
 
-	window := session.Plan(turns(30, 4), summary, session.Limits{})
+	window := conversation.Plan(turns(30, 4), summary, conversation.Limits{})
 
 	if window.Summary != summary.Text {
 		t.Errorf("summary is %q, want it carried through", window.Summary)
@@ -111,23 +111,23 @@ func TestPlanReplacesWhatIsSummarised(t *testing.T) {
 
 // Nothing is condensed while there is room, however many messages there are.
 func TestDueWaitsUntilACeilingIsNear(t *testing.T) {
-	if _, due := session.Due(turns(60, 10), session.Summary{}, session.Limits{Bytes: 60000}); due {
-		t.Error("condensed a session with room to spare")
+	if _, due := conversation.Due(turns(60, 10), conversation.Summary{}, conversation.Limits{Bytes: 60000}); due {
+		t.Error("condensed a conversation with room to spare")
 	}
 }
 
-// A short session is left alone even when its few messages are enormous:
+// A short conversation is left alone even when its few messages are enormous:
 // condensing it would leave nothing to condense into.
-func TestDueLeavesAShortSessionAlone(t *testing.T) {
-	if _, due := session.Due(turns(session.KeepVerbatim, 100000), session.Summary{}, session.Limits{}); due {
-		t.Error("condensed a session of only a few messages")
+func TestDueLeavesAShortConversationAlone(t *testing.T) {
+	if _, due := conversation.Due(turns(conversation.KeepVerbatim, 100000), conversation.Summary{}, conversation.Limits{}); due {
+		t.Error("condensed a conversation of only a few messages")
 	}
 }
 
 // The count ceiling triggers condensing just as the size ceiling does, so a
 // service that limits messages rather than bytes is served too.
 func TestDueTriggersOnTheCountLimit(t *testing.T) {
-	through, due := session.Due(turns(95, 4), session.Summary{}, session.Limits{Count: 100})
+	through, due := conversation.Due(turns(95, 4), conversation.Summary{}, conversation.Limits{Count: 100})
 
 	if !due {
 		t.Fatal("did not condense at 95 of 100 messages")
@@ -141,7 +141,7 @@ func TestDueTriggersOnTheCountLimit(t *testing.T) {
 // A service that will not take as many messages as the prompt needs is left
 // with no history rather than a request it refuses.
 func TestPlanLeavesRoomForThePromptEvenAtOne(t *testing.T) {
-	window := session.Plan(turns(30, 4), session.Summary{}, session.Limits{Count: 1})
+	window := conversation.Plan(turns(30, 4), conversation.Summary{}, conversation.Limits{Count: 1})
 
 	if len(window.Messages) != 0 {
 		t.Errorf("sent %d messages, want none so the prompt fits alone", len(window.Messages))
@@ -153,13 +153,13 @@ func TestPlanLeavesRoomForThePromptEvenAtOne(t *testing.T) {
 func TestDueCutsAtTheStartOfATurn(t *testing.T) {
 	messages := turns(95, 4)
 
-	through, due := session.Due(messages, session.Summary{}, session.Limits{Count: 100})
+	through, due := conversation.Due(messages, conversation.Summary{}, conversation.Limits{Count: 100})
 	if !due {
 		t.Fatal("did not condense")
 	}
 
 	for _, m := range messages {
-		if m.Seq == through+1 && m.Role != session.User {
+		if m.Seq == through+1 && m.Role != conversation.User {
 			t.Errorf("the verbatim tail opens with %s at seq %d, want a question", m.Role, m.Seq)
 		}
 	}
@@ -167,9 +167,9 @@ func TestDueCutsAtTheStartOfATurn(t *testing.T) {
 
 // Only what the summary does not already cover counts towards a ceiling.
 func TestDueIgnoresWhatIsAlreadySummarised(t *testing.T) {
-	summary := session.Summary{Text: "the first ninety", ThroughSeq: 90}
+	summary := conversation.Summary{Text: "the first ninety", ThroughSeq: 90}
 
-	if _, due := session.Due(turns(95, 4), summary, session.Limits{Count: 100}); due {
+	if _, due := conversation.Due(turns(95, 4), summary, conversation.Limits{Count: 100}); due {
 		t.Error("condensed again with only five messages outstanding")
 	}
 }
@@ -178,14 +178,14 @@ func TestDueIgnoresWhatIsAlreadySummarised(t *testing.T) {
 func TestPlanHoldsToTheModelsContextWindow(t *testing.T) {
 	// 4096 tokens less the 2048 reserved, at four bytes each, is 8192 bytes:
 	// two of these messages and not the third.
-	limits := session.Limits{Bytes: session.DefaultBudget, ContextTokens: 4096}
-	messages := []session.Message{
-		said(session.User, strings.Repeat("a", 5000)),
-		said(session.Assistant, strings.Repeat("b", 5000)),
-		said(session.User, strings.Repeat("c", 3000)),
+	limits := conversation.Limits{Bytes: conversation.DefaultBudget, ContextTokens: 4096}
+	messages := []conversation.Message{
+		said(conversation.User, strings.Repeat("a", 5000)),
+		said(conversation.Assistant, strings.Repeat("b", 5000)),
+		said(conversation.User, strings.Repeat("c", 3000)),
 	}
 
-	window := session.Plan(messages, session.Summary{}, limits)
+	window := conversation.Plan(messages, conversation.Summary{}, limits)
 
 	if len(window.Messages) != 2 {
 		t.Fatalf("sent %d messages, want the 2 that fit the window", len(window.Messages))
@@ -197,13 +197,13 @@ func TestPlanHoldsToTheModelsContextWindow(t *testing.T) {
 
 // A large context window does not licence sending more than our own budget.
 func TestPlanKeepsOurBudgetUnderALargeWindow(t *testing.T) {
-	limits := session.Limits{Bytes: 4000, ContextTokens: 128000}
-	messages := []session.Message{
-		said(session.User, strings.Repeat("a", 3000)),
-		said(session.Assistant, strings.Repeat("b", 3000)),
+	limits := conversation.Limits{Bytes: 4000, ContextTokens: 128000}
+	messages := []conversation.Message{
+		said(conversation.User, strings.Repeat("a", 3000)),
+		said(conversation.Assistant, strings.Repeat("b", 3000)),
 	}
 
-	window := session.Plan(messages, session.Summary{}, limits)
+	window := conversation.Plan(messages, conversation.Summary{}, limits)
 
 	if len(window.Messages) != 1 {
 		t.Fatalf("sent %d messages, want the 1 our budget allows", len(window.Messages))
@@ -212,10 +212,10 @@ func TestPlanKeepsOurBudgetUnderALargeWindow(t *testing.T) {
 
 // A context window no larger than the reserve still leaves room for a turn.
 func TestPlanSurvivesAWindowSmallerThanTheReserve(t *testing.T) {
-	limits := session.Limits{ContextTokens: 512}
-	messages := []session.Message{said(session.User, "what time is it")}
+	limits := conversation.Limits{ContextTokens: 512}
+	messages := []conversation.Message{said(conversation.User, "what time is it")}
 
-	window := session.Plan(messages, session.Summary{}, limits)
+	window := conversation.Plan(messages, conversation.Summary{}, limits)
 
 	if len(window.Messages) != 1 {
 		t.Fatalf("sent %d messages, want the question itself", len(window.Messages))
@@ -225,9 +225,9 @@ func TestPlanSurvivesAWindowSmallerThanTheReserve(t *testing.T) {
 // The model's window triggers condensing just as the other two ceilings do.
 func TestDueTriggersOnTheContextWindow(t *testing.T) {
 	// 4096 less the reserve is 8192 bytes; 60 messages of 300 is 18000.
-	limits := session.Limits{ContextTokens: 4096}
+	limits := conversation.Limits{ContextTokens: 4096}
 
-	if _, due := session.Due(turns(60, 300), session.Summary{}, limits); !due {
-		t.Error("did not condense a session overrunning the model's window")
+	if _, due := conversation.Due(turns(60, 300), conversation.Summary{}, limits); !due {
+		t.Error("did not condense a conversation overrunning the model's window")
 	}
 }

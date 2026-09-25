@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
-	"github.com/DhanushRamesh/personal-assistant/internal/session"
+	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
 )
 
 // Repository : An in-memory chat.Repository.
@@ -28,14 +28,14 @@ type Repository struct {
 	mu    sync.Mutex
 	chats map[string]*chat.Chat
 
-	// said : Each session's conversation, in the order it was said.
-	said          map[string][]session.Message
+	// said : Each conversation's conversation, in the order it was said.
+	said          map[string][]conversation.Message
 	appendSaidErr error
-	// summaries : Each session's condensed earlier conversation.
-	summaries map[string]session.Summary
-	sessions  map[string]chat.Session
-	clients   map[string]chat.Client
-	users     map[string]chat.User
+	// summaries : Each conversation's condensed earlier conversation.
+	summaries     map[string]conversation.Summary
+	conversations map[string]chat.Conversation
+	clients       map[string]chat.Client
+	users         map[string]chat.User
 
 	// Fault injection, for exercising the paths a caller takes when storage
 	// misbehaves. A real repository fails; one that never does lets those
@@ -52,12 +52,12 @@ type Repository struct {
 // New : Returns an empty repository.
 func New() *Repository {
 	return &Repository{
-		chats:     map[string]*chat.Chat{},
-		said:      map[string][]session.Message{},
-		summaries: map[string]session.Summary{},
-		sessions:  map[string]chat.Session{},
-		clients:   map[string]chat.Client{},
-		users:     map[string]chat.User{},
+		chats:         map[string]*chat.Chat{},
+		said:          map[string][]conversation.Message{},
+		summaries:     map[string]conversation.Summary{},
+		conversations: map[string]chat.Conversation{},
+		clients:       map[string]chat.Client{},
+		users:         map[string]chat.User{},
 	}
 }
 
@@ -110,17 +110,17 @@ func (m *Repository) List(_ context.Context, f chat.Filter) ([]chat.Summary, err
 		if f.Status != "" && t.Status != f.Status {
 			continue
 		}
-		if f.SessionID != "" && t.SessionID != f.SessionID {
+		if f.ConversationID != "" && t.ConversationID != f.ConversationID {
 			continue
 		}
 		if f.UserID != "" {
-			owner, ok := m.sessions[t.SessionID]
+			owner, ok := m.conversations[t.ConversationID]
 			if !ok || owner.UserID != f.UserID {
 				continue
 			}
 		}
 		out = append(out, chat.Summary{
-			ID: t.ID, SessionID: t.SessionID, Prompt: t.Prompt,
+			ID: t.ID, ConversationID: t.ConversationID, Prompt: t.Prompt,
 			Channel: t.Channel, Status: t.Status, Error: t.Error,
 			ErrorCode: t.ErrorCode,
 		})
@@ -152,43 +152,43 @@ func (m *Repository) FailRunning(_ context.Context, reason string) (int64, error
 
 var _ chat.Repository = (*Repository)(nil)
 
-// CreateSession : Stores a new session.
-func (m *Repository) CreateSession(_ context.Context, c *chat.Session) error {
+// CreateConversation : Stores a new conversation.
+func (m *Repository) CreateConversation(_ context.Context, c *chat.Conversation) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.sessions == nil {
-		m.sessions = map[string]chat.Session{}
+	if m.conversations == nil {
+		m.conversations = map[string]chat.Conversation{}
 	}
-	m.sessions[c.ID] = *c
+	m.conversations[c.ID] = *c
 	return nil
 }
 
-// GetSession : Returns a stored session.
-func (m *Repository) GetSession(_ context.Context, id string) (*chat.Session, error) {
+// GetConversation : Returns a stored conversation.
+func (m *Repository) GetConversation(_ context.Context, id string) (*chat.Conversation, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	c, ok := m.sessions[id]
+	c, ok := m.conversations[id]
 	if !ok {
 		return nil, chat.ErrNotFound
 	}
 	return &c, nil
 }
 
-// ListSessions : Returns stored sessions.
-func (m *Repository) ListSessions(ctx context.Context, userID string, limit int) ([]chat.Session, error) {
-	return m.listSessions(ctx, userID, limit, false)
+// ListConversations : Returns stored conversations.
+func (m *Repository) ListConversations(ctx context.Context, userID string, limit int) ([]chat.Conversation, error) {
+	return m.listConversations(ctx, userID, limit, false)
 }
 
-// ListArchivedSessions : Returns stored sessions that have been put away.
-func (m *Repository) ListArchivedSessions(ctx context.Context, userID string, limit int) ([]chat.Session, error) {
-	return m.listSessions(ctx, userID, limit, true)
+// ListArchivedConversations : Returns stored conversations that have been put away.
+func (m *Repository) ListArchivedConversations(ctx context.Context, userID string, limit int) ([]chat.Conversation, error) {
+	return m.listConversations(ctx, userID, limit, true)
 }
 
-func (m *Repository) listSessions(_ context.Context, userID string, limit int, archived bool) ([]chat.Session, error) {
+func (m *Repository) listConversations(_ context.Context, userID string, limit int, archived bool) ([]chat.Conversation, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var out []chat.Session
-	for _, c := range m.sessions {
+	var out []chat.Conversation
+	for _, c := range m.conversations {
 		if c.UserID != userID || c.Archived() != archived {
 			continue
 		}
@@ -201,59 +201,59 @@ func (m *Repository) listSessions(_ context.Context, userID string, limit int, a
 	return out, nil
 }
 
-// SetSessionArchived : Puts a stored session away or brings it back.
-func (m *Repository) SetSessionArchived(_ context.Context, userID, sessionID string, archived bool) error {
+// SetConversationArchived : Puts a stored conversation away or brings it back.
+func (m *Repository) SetConversationArchived(_ context.Context, userID, conversationID string, archived bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	session, ok := m.sessions[sessionID]
+	conversation, ok := m.conversations[conversationID]
 	if !ok {
 		return chat.ErrNotFound
 	}
-	if session.UserID != userID {
+	if conversation.UserID != userID {
 		return chat.ErrNotOwned
 	}
 	if archived {
-		session.Archive()
-		m.clearActive(sessionID)
+		conversation.Archive()
+		m.clearActive(conversationID)
 	} else {
-		session.Unarchive()
+		conversation.Unarchive()
 	}
-	m.sessions[sessionID] = session
+	m.conversations[conversationID] = conversation
 	return nil
 }
 
-// DeleteSession : Removes a stored session and everything said in it.
-func (m *Repository) DeleteSession(_ context.Context, userID, sessionID string) error {
+// DeleteConversation : Removes a stored conversation and everything said in it.
+func (m *Repository) DeleteConversation(_ context.Context, userID, conversationID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	session, ok := m.sessions[sessionID]
+	conversation, ok := m.conversations[conversationID]
 	if !ok {
 		return chat.ErrNotFound
 	}
-	if session.UserID != userID {
+	if conversation.UserID != userID {
 		return chat.ErrNotOwned
 	}
 
-	m.clearActive(sessionID)
-	delete(m.sessions, sessionID)
+	m.clearActive(conversationID)
+	delete(m.conversations, conversationID)
 	// Standing in for the database's cascades, so a test sees what a real
-	// delete leaves behind rather than a session's chats outliving it.
+	// delete leaves behind rather than a conversation's chats outliving it.
 	for id, t := range m.chats {
-		if t.SessionID == sessionID {
+		if t.ConversationID == conversationID {
 			delete(m.chats, id)
 		}
 	}
-	delete(m.said, sessionID)
+	delete(m.said, conversationID)
 	return nil
 }
 
-// clearActive : Unpoints every client using a session. The caller holds mu.
-func (m *Repository) clearActive(sessionID string) {
+// clearActive : Unpoints every client using a conversation. The caller holds mu.
+func (m *Repository) clearActive(conversationID string) {
 	for id, d := range m.clients {
-		if d.ActiveSessionID == sessionID {
-			d.ActiveSessionID = ""
+		if d.ActiveConversationID == conversationID {
+			d.ActiveConversationID = ""
 			m.clients[id] = d
 		}
 	}
@@ -418,49 +418,49 @@ func (m *Repository) RevokeClient(_ context.Context, userID, clientID string) er
 	return nil
 }
 
-// RenameSession : Changes a stored session's title.
-func (m *Repository) RenameSession(_ context.Context, userID, sessionID, title string) error {
+// RenameConversation : Changes a stored conversation's title.
+func (m *Repository) RenameConversation(_ context.Context, userID, conversationID, title string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	session, ok := m.sessions[sessionID]
+	conversation, ok := m.conversations[conversationID]
 	if !ok {
 		return chat.ErrNotFound
 	}
-	if session.UserID != userID {
+	if conversation.UserID != userID {
 		return chat.ErrNotOwned
 	}
-	if err := session.Rename(title); err != nil {
+	if err := conversation.Rename(title); err != nil {
 		return err
 	}
-	m.sessions[sessionID] = session
+	m.conversations[conversationID] = conversation
 	return nil
 }
 
-// SetActiveSession : Points a client at a session its user owns.
-func (m *Repository) SetActiveSession(_ context.Context, userID, clientID, sessionID string) error {
+// SetActiveConversation : Points a client at a conversation its user owns.
+func (m *Repository) SetActiveConversation(_ context.Context, userID, clientID, conversationID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	session, ok := m.sessions[sessionID]
+	conversation, ok := m.conversations[conversationID]
 	if !ok {
 		return chat.ErrNotFound
 	}
-	if session.UserID != userID {
+	if conversation.UserID != userID {
 		return chat.ErrNotOwned
 	}
 	d, ok := m.clients[clientID]
 	if !ok || d.UserID != userID {
 		return chat.ErrNotFound
 	}
-	d.ActiveSessionID = sessionID
+	d.ActiveConversationID = conversationID
 	m.clients[clientID] = d
 	return nil
 }
 
-// Unfinished : Returns a session's chats that have not finished.
-func (m *Repository) Unfinished(_ context.Context, sessionID string) ([]string, error) {
-	if sessionID == "" {
+// Unfinished : Returns a conversation's chats that have not finished.
+func (m *Repository) Unfinished(_ context.Context, conversationID string) ([]string, error) {
+	if conversationID == "" {
 		return nil, nil
 	}
 	m.mu.Lock()
@@ -468,7 +468,7 @@ func (m *Repository) Unfinished(_ context.Context, sessionID string) ([]string, 
 
 	var ids []string
 	for id, t := range m.chats {
-		if t.SessionID == sessionID && !t.Status.IsTerminal() {
+		if t.ConversationID == conversationID && !t.Status.IsTerminal() {
 			ids = append(ids, id)
 		}
 	}

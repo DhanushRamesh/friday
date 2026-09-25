@@ -17,12 +17,12 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/catalog"
 	chatmysql "github.com/DhanushRamesh/personal-assistant/internal/chat/mysql"
 	"github.com/DhanushRamesh/personal-assistant/internal/config"
+	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
 	"github.com/DhanushRamesh/personal-assistant/internal/events"
 	"github.com/DhanushRamesh/personal-assistant/internal/logging"
 	"github.com/DhanushRamesh/personal-assistant/internal/provider"
 	"github.com/DhanushRamesh/personal-assistant/internal/provider/platformai"
 	"github.com/DhanushRamesh/personal-assistant/internal/runner"
-	"github.com/DhanushRamesh/personal-assistant/internal/session"
 	"github.com/DhanushRamesh/personal-assistant/internal/storage"
 )
 
@@ -231,8 +231,8 @@ func reachableModels(cfg config.Config) []catalog.Model {
 // context window from the model behind it, and the size budget from us. A
 // model missing from the catalogue contributes nothing and is reported, since
 // the budget then governs alone.
-func historyLimits(cfg config.Config, logger *slog.Logger) session.Limits {
-	limits := session.Limits{Bytes: session.DefaultBudget}
+func historyLimits(cfg config.Config, logger *slog.Logger) conversation.Limits {
+	limits := conversation.Limits{Bytes: conversation.DefaultBudget}
 
 	if cfg.Provider.Name != config.ProviderPlatformAI {
 		return limits

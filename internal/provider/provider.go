@@ -84,7 +84,7 @@ func Failure(text, code, detail string) Message {
 	}
 }
 
-// Role : Who said something in a session.
+// Role : Who said something in a conversation.
 type Role string
 
 const (
@@ -94,7 +94,7 @@ const (
 	RoleAssistant Role = "assistant"
 )
 
-// Turn : One thing said earlier in the same session.
+// Turn : One thing said earlier in the same conversation.
 type Turn struct {
 	Role Role
 	Text string
@@ -104,7 +104,7 @@ type Turn struct {
 type Request struct {
 	// Prompt : What the user asked for.
 	Prompt string
-	// History : What was said earlier in the same session, oldest first,
+	// History : What was said earlier in the same conversation, oldest first,
 	// excluding this prompt. Without it a correction such as "no, make it
 	// four" reaches the model with nothing to make four.
 	History []Turn
@@ -113,8 +113,8 @@ type Request struct {
 	// sends.
 	Vendor string
 	Model  string
-	// Summary : The part of the session too old to send in full, condensed.
-	// Empty when the whole session fits.
+	// Summary : The part of the conversation too old to send in full, condensed.
+	// Empty when the whole conversation fits.
 	//
 	// Not a Turn, because nobody said it. Where it belongs in a request is
 	// the provider's to decide: alongside the system prompt for one that

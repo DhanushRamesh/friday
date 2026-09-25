@@ -1,7 +1,7 @@
 // Package api : Assembles the server's HTTP interface from its modules.
 //
 // Nothing is served from here. Each group of endpoints lives in its own
-// package below this one — authn, clients, sessions, chats, assist, health —
+// package below this one — authn, clients, conversations, chats, assist, health —
 // holding its own handlers and wire types, and this package's only job is to build
 // them from one set of dependencies, decide the middleware they sit behind,
 // and mount them on one router.
@@ -23,9 +23,9 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/api/authn"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/chats"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/clients"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/conversations"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/health"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/middleware"
-	"github.com/DhanushRamesh/personal-assistant/internal/api/sessions"
 	"github.com/DhanushRamesh/personal-assistant/internal/catalog"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 )
@@ -85,12 +85,12 @@ type Server struct {
 	allowCrossOrigin bool
 	router           chi.Router
 
-	health   *health.Handler
-	authn    *authn.Handler
-	clients  *clients.Handler
-	sessions *sessions.Handler
-	chats    *chats.Handler
-	assist   *assist.Handler
+	health        *health.Handler
+	authn         *authn.Handler
+	clients       *clients.Handler
+	conversations *conversations.Handler
+	chats         *chats.Handler
+	assist        *assist.Handler
 }
 
 // New : Builds a Server from opts and registers its routes.
@@ -105,12 +105,12 @@ func New(opts Options) *Server {
 		allowCrossOrigin: opts.AllowCrossOrigin,
 		router:           chi.NewRouter(),
 
-		health:   health.New(opts.Logger, opts.DB),
-		authn:    authn.New(opts.Logger, opts.Chats),
-		clients:  clients.New(opts.Logger, opts.Chats, opts.Models),
-		sessions: sessions.New(opts.Logger, opts.Chats),
-		chats:    chats.New(opts.Logger, opts.Chats, opts.Runner, opts.Events),
-		assist:   assist.New(opts.Logger, opts.Chats, opts.Runner, opts.Events),
+		health:        health.New(opts.Logger, opts.DB),
+		authn:         authn.New(opts.Logger, opts.Chats),
+		clients:       clients.New(opts.Logger, opts.Chats, opts.Models),
+		conversations: conversations.New(opts.Logger, opts.Chats),
+		chats:         chats.New(opts.Logger, opts.Chats, opts.Runner, opts.Events),
+		assist:        assist.New(opts.Logger, opts.Chats, opts.Runner, opts.Events),
 	}
 	s.routes()
 	return s
@@ -148,7 +148,7 @@ func (s *Server) routes() {
 	s.router.Group(func(r chi.Router) {
 		r.Use(s.authn.Require)
 		s.clients.Mount(r)
-		s.sessions.Mount(r)
+		s.conversations.Mount(r)
 		s.chats.Mount(r)
 		s.assist.Mount(r)
 	})

@@ -61,9 +61,9 @@ var (
 type Chat struct {
 	// ID : The identifier, an IDPrefix followed by a ULID.
 	ID string
-	// SessionID : The exchange this chat belongs to, empty for a chat
-	// created before sessions existed.
-	SessionID string
+	// ConversationID : The exchange this chat belongs to, empty for a chat
+	// created before conversations existed.
+	ConversationID string
 	// Prompt : What the user asked for.
 	Prompt string
 
@@ -135,13 +135,13 @@ const (
 func (c Channel) Valid() bool { return c == ChannelVoice || c == ChannelDirect }
 
 // New : Creates a pending chat from a user's prompt, belonging to the given
-// session and arriving by the given channel. Surrounding whitespace is
+// conversation and arriving by the given channel. Surrounding whitespace is
 // removed.
 //
 // The channel is a parameter rather than a field set afterwards, so that a
 // new caller has to say how its prompts arrive instead of defaulting into
 // whichever answer grants more.
-func New(sessionID string, channel Channel, prompt string) (*Chat, error) {
+func New(conversationID string, channel Channel, prompt string) (*Chat, error) {
 	prompt = strings.TrimSpace(prompt)
 	if prompt == "" {
 		return nil, ErrEmptyPrompt
@@ -156,13 +156,13 @@ func New(sessionID string, channel Channel, prompt string) (*Chat, error) {
 
 	created := now()
 	return &Chat{
-		ID:        NewID(),
-		SessionID: sessionID,
-		Channel:   channel,
-		Prompt:    prompt,
-		Status:    StatusPending,
-		CreatedAt: created,
-		UpdatedAt: created,
+		ID:             NewID(),
+		ConversationID: conversationID,
+		Channel:        channel,
+		Prompt:         prompt,
+		Status:         StatusPending,
+		CreatedAt:      created,
+		UpdatedAt:      created,
 	}, nil
 }
 

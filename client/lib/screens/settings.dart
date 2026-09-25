@@ -24,7 +24,7 @@ enum SettingsModule {
 /// Separate pages rather than one scrolling list: clients is the only part
 /// that is a list of things to act on, and putting it under the account
 /// fields meant scrolling past them to reach it. Down a side it can also
-/// grow — sessions and voice belong here eventually — without the page
+/// grow — conversations and voice belong here eventually — without the page
 /// getting longer.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, required this.state});

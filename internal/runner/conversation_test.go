@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
 	"github.com/DhanushRamesh/personal-assistant/internal/provider"
 	"github.com/DhanushRamesh/personal-assistant/internal/runner"
-	"github.com/DhanushRamesh/personal-assistant/internal/session"
 )
 
-// contents : What was said in a session, as plain strings.
-func contents(messages []session.Message) []string {
+// contents : What was said in a conversation, as plain strings.
+func contents(messages []conversation.Message) []string {
 	out := make([]string, len(messages))
 	for i, m := range messages {
 		out[i] = string(m.Role) + "/" + string(m.Kind) + ": " + m.Content
@@ -28,15 +28,15 @@ func TestAnExchangeIsRecorded(t *testing.T) {
 	tk := h.submit(t, "check my merge requests")
 	h.await(t, tk.ID, chat.StatusCompleted, chat.StatusFailed)
 
-	said := h.repo.Said(h.session(t))
+	said := h.repo.Said(h.conversation(t))
 	if len(said) != 2 {
 		t.Fatalf("recorded %v, want the question and the answer", contents(said))
 	}
 
-	if said[0].Role != session.User || said[0].Content != "check my merge requests" {
+	if said[0].Role != conversation.User || said[0].Content != "check my merge requests" {
 		t.Errorf("first message = %q by %q, want the question", said[0].Content, said[0].Role)
 	}
-	if said[1].Role != session.Assistant || said[1].Kind != session.Chat {
+	if said[1].Role != conversation.Assistant || said[1].Kind != conversation.Chat {
 		t.Errorf("second message = %q by %q", said[1].Content, said[1].Role)
 	}
 	if said[0].Seq != 1 || said[1].Seq != 2 {
@@ -88,7 +88,7 @@ func TestTheEarlierExchangeReachesTheModel(t *testing.T) {
 	}
 	// The log knows when each was said; the model is not told. Timestamps
 	// on the wire made the model echo them back into its answers.
-	said := h.repo.Said(h.session(t))
+	said := h.repo.Said(h.conversation(t))
 	for _, m := range said {
 		if m.At.IsZero() {
 			t.Errorf("the log did not record when %q was said", m.Role)
@@ -111,11 +111,11 @@ func TestAFailureIsRecordedAndSentOnWithItsDetail(t *testing.T) {
 	first := h.submit(t, "what is the time")
 	h.await(t, first.ID, chat.StatusFailed, chat.StatusCompleted)
 
-	said := h.repo.Said(h.session(t))
-	if len(said) != 2 || said[1].Kind != session.Failure {
+	said := h.repo.Said(h.conversation(t))
+	if len(said) != 2 || said[1].Kind != conversation.Failure {
 		t.Fatalf("recorded %v, want the question then the failure", contents(said))
 	}
-	if len(session.ForPerson(said)) != 2 {
+	if len(conversation.ForPerson(said)) != 2 {
 		t.Error("the person is not shown the failure they watched happen")
 	}
 
@@ -155,17 +155,17 @@ func TestACancelledChatLeavesItsQuestionAndAMark(t *testing.T) {
 	h.runner.Cancel(tk.ID)
 	h.await(t, tk.ID, chat.StatusCancelled, chat.StatusCompleted, chat.StatusFailed)
 
-	said := h.repo.Said(h.session(t))
+	said := h.repo.Said(h.conversation(t))
 	if len(said) != 2 {
 		t.Fatalf("recorded %v, want the question and the mark", contents(said))
 	}
 	if said[0].Content != "List three programming languages." {
 		t.Errorf("recorded %q", said[0].Content)
 	}
-	if said[1].Kind != session.Interruption {
+	if said[1].Kind != conversation.Interruption {
 		t.Errorf("second message is %q, want an interruption", said[1].Kind)
 	}
-	if said[1].Role != session.Assistant {
+	if said[1].Role != conversation.Assistant {
 		t.Errorf("the mark is %q, want the assistant so the roles alternate", said[1].Role)
 	}
 }

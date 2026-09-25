@@ -3,7 +3,7 @@
 // Every type here is a wire format, deliberately separate from the domain so
 // that the two can change independently and so that a field added for
 // The server's own use is never published by accident. The rendering lives in one
-// package rather than beside each handler because a session detail carries
+// package rather than beside each handler because a conversation detail carries
 // chats, a login carries a user and a client, and those shapes must agree
 // wherever they appear.
 package views
@@ -17,9 +17,9 @@ import (
 
 // Chat : A chat as the API returns it.
 type Chat struct {
-	ID        string `json:"id"`
-	SessionID string `json:"session_id,omitempty"`
-	Prompt    string `json:"prompt"`
+	ID             string `json:"id"`
+	ConversationID string `json:"conversation_id,omitempty"`
+	Prompt         string `json:"prompt"`
 	// Channel : How the prompt arrived, "voice" or "direct".
 	Channel  string `json:"channel,omitempty"`
 	Status   string `json:"status"`
@@ -40,51 +40,51 @@ type Chat struct {
 // OfChat : Renders a chat for the API.
 func OfChat(t *chat.Chat) Chat {
 	return Chat{
-		ID:          t.ID,
-		SessionID:   t.SessionID,
-		Prompt:      t.Prompt,
-		Channel:     string(t.Channel),
-		Status:      string(t.Status),
-		Response:    t.Response,
-		Error:       t.Error,
-		ErrorCode:   t.ErrorCode,
-		ErrorDetail: t.ErrorDetail,
-		CreatedAt:   t.CreatedAt,
-		UpdatedAt:   t.UpdatedAt,
-		StartedAt:   t.StartedAt,
-		FinishedAt:  t.FinishedAt,
+		ID:             t.ID,
+		ConversationID: t.ConversationID,
+		Prompt:         t.Prompt,
+		Channel:        string(t.Channel),
+		Status:         string(t.Status),
+		Response:       t.Response,
+		Error:          t.Error,
+		ErrorCode:      t.ErrorCode,
+		ErrorDetail:    t.ErrorDetail,
+		CreatedAt:      t.CreatedAt,
+		UpdatedAt:      t.UpdatedAt,
+		StartedAt:      t.StartedAt,
+		FinishedAt:     t.FinishedAt,
 	}
 }
 
 // Summary : A chat in a listing, which carries no response body.
 type Summary struct {
-	ID         string     `json:"id"`
-	SessionID  string     `json:"session_id,omitempty"`
-	Prompt     string     `json:"prompt"`
-	Channel    string     `json:"channel,omitempty"`
-	Status     string     `json:"status"`
-	Error      string     `json:"error,omitempty"`
-	ErrorCode  string     `json:"error_code,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
-	StartedAt  *time.Time `json:"started_at,omitempty"`
-	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	ID             string     `json:"id"`
+	ConversationID string     `json:"conversation_id,omitempty"`
+	Prompt         string     `json:"prompt"`
+	Channel        string     `json:"channel,omitempty"`
+	Status         string     `json:"status"`
+	Error          string     `json:"error,omitempty"`
+	ErrorCode      string     `json:"error_code,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	StartedAt      *time.Time `json:"started_at,omitempty"`
+	FinishedAt     *time.Time `json:"finished_at,omitempty"`
 }
 
 // OfSummary : Renders a chat summary for the API.
 func OfSummary(s chat.Summary) Summary {
 	return Summary{
-		ID:         s.ID,
-		SessionID:  s.SessionID,
-		Prompt:     s.Prompt,
-		Channel:    string(s.Channel),
-		Status:     string(s.Status),
-		Error:      s.Error,
-		ErrorCode:  s.ErrorCode,
-		CreatedAt:  s.CreatedAt,
-		UpdatedAt:  s.UpdatedAt,
-		StartedAt:  s.StartedAt,
-		FinishedAt: s.FinishedAt,
+		ID:             s.ID,
+		ConversationID: s.ConversationID,
+		Prompt:         s.Prompt,
+		Channel:        string(s.Channel),
+		Status:         string(s.Status),
+		Error:          s.Error,
+		ErrorCode:      s.ErrorCode,
+		CreatedAt:      s.CreatedAt,
+		UpdatedAt:      s.UpdatedAt,
+		StartedAt:      s.StartedAt,
+		FinishedAt:     s.FinishedAt,
 	}
 }
 
@@ -117,34 +117,34 @@ type Client struct {
 	Channel string `json:"channel,omitempty"`
 	// Vendor, Model : Which model answers this client. Absent when it has
 	// chosen none and the server's configured one answers.
-	Vendor          string     `json:"vendor,omitempty"`
-	Model           string     `json:"model,omitempty"`
-	Current         bool       `json:"current"`
-	Revoked         bool       `json:"revoked"`
-	RevokedAt       *time.Time `json:"revoked_at,omitempty"`
-	ActiveSessionID string     `json:"active_session_id,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
+	Vendor               string     `json:"vendor,omitempty"`
+	Model                string     `json:"model,omitempty"`
+	Current              bool       `json:"current"`
+	Revoked              bool       `json:"revoked"`
+	RevokedAt            *time.Time `json:"revoked_at,omitempty"`
+	ActiveConversationID string     `json:"active_conversation_id,omitempty"`
+	CreatedAt            time.Time  `json:"created_at"`
 }
 
 // OfClient : Renders a client for the API. Current marks the one the request
 // was made from.
 func OfClient(d chat.Client, current bool) Client {
 	return Client{
-		ID:              d.ID,
-		Name:            d.Name,
-		Channel:         string(d.Channel),
-		Vendor:          d.Model.Vendor,
-		Model:           d.Model.ID,
-		Current:         current,
-		Revoked:         d.Revoked(),
-		RevokedAt:       d.RevokedAt,
-		ActiveSessionID: d.ActiveSessionID,
-		CreatedAt:       d.CreatedAt,
+		ID:                   d.ID,
+		Name:                 d.Name,
+		Channel:              string(d.Channel),
+		Vendor:               d.Model.Vendor,
+		Model:                d.Model.ID,
+		Current:              current,
+		Revoked:              d.Revoked(),
+		RevokedAt:            d.RevokedAt,
+		ActiveConversationID: d.ActiveConversationID,
+		CreatedAt:            d.CreatedAt,
 	}
 }
 
-// Session : A session as the API returns it.
-type Session struct {
+// Conversation : A conversation as the API returns it.
+type Conversation struct {
 	ID       string `json:"id"`
 	Title    string `json:"title,omitempty"`
 	Active   bool   `json:"active"`
@@ -155,9 +155,9 @@ type Session struct {
 	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
-// OfSession : Renders a session for the API.
-func OfSession(c chat.Session, active bool) Session {
-	return Session{
+// OfConversation : Renders a conversation for the API.
+func OfConversation(c chat.Conversation, active bool) Conversation {
+	return Conversation{
 		ID:         c.ID,
 		Title:      c.Title,
 		Active:     active,

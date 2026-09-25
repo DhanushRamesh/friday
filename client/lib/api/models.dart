@@ -68,7 +68,7 @@ enum EventKind {
 class Chat {
   const Chat({
     required this.id,
-    required this.sessionId,
+    required this.conversationId,
     required this.prompt,
     required this.status,
     required this.response,
@@ -82,7 +82,7 @@ class Chat {
   });
 
   final String id;
-  final String sessionId;
+  final String conversationId;
   final String prompt;
   final ChatStatus status;
 
@@ -108,7 +108,7 @@ class Chat {
   /// fromJson : Parses a chat as the API returns it.
   factory Chat.fromJson(Map<String, dynamic> json) => Chat(
     id: json['id'] as String,
-    sessionId: json['session_id'] as String? ?? '',
+    conversationId: json['conversation_id'] as String? ?? '',
     prompt: json['prompt'] as String? ?? '',
     status: ChatStatus.parse(json['status'] as String?),
     response: json['response'] as String? ?? '',
@@ -128,7 +128,7 @@ class Chat {
 class ChatSummary {
   const ChatSummary({
     required this.id,
-    required this.sessionId,
+    required this.conversationId,
     required this.prompt,
     required this.status,
     required this.error,
@@ -140,7 +140,7 @@ class ChatSummary {
   });
 
   final String id;
-  final String sessionId;
+  final String conversationId;
   final String prompt;
   final ChatStatus status;
   final String error;
@@ -157,7 +157,7 @@ class ChatSummary {
   /// fromJson : Parses a chat summary as the API returns it.
   factory ChatSummary.fromJson(Map<String, dynamic> json) => ChatSummary(
     id: json['id'] as String,
-    sessionId: json['session_id'] as String? ?? '',
+    conversationId: json['conversation_id'] as String? ?? '',
     prompt: json['prompt'] as String? ?? '',
     status: ChatStatus.parse(json['status'] as String?),
     error: json['error'] as String? ?? '',
@@ -237,7 +237,7 @@ class Client {
     this.vendor = '',
     this.model = '',
     required this.revoked,
-    required this.activeSessionId,
+    required this.activeConversationId,
     required this.createdAt,
     this.revokedAt,
   });
@@ -259,8 +259,8 @@ class Client {
   final bool revoked;
   final DateTime? revokedAt;
 
-  /// activeSessionId : Where a prompt from this client lands.
-  final String activeSessionId;
+  /// activeConversationId : Where a prompt from this client lands.
+  final String activeConversationId;
 
   final DateTime createdAt;
 
@@ -274,7 +274,7 @@ class Client {
     model: json['model'] as String? ?? '',
     revoked: json['revoked'] as bool? ?? false,
     revokedAt: _time(json['revoked_at']),
-    activeSessionId: json['active_session_id'] as String? ?? '',
+    activeConversationId: json['active_conversation_id'] as String? ?? '',
     createdAt: _time(json['created_at'])!,
   );
 
@@ -282,10 +282,10 @@ class Client {
   String toString() => 'Client($id, $name)';
 }
 
-/// Session : One thread of conversation, owned by the user rather than by any
+/// Conversation : One thread of conversation, owned by the user rather than by any
 /// one of their clients.
-class Session {
-  const Session({
+class Conversation {
+  const Conversation({
     required this.id,
     required this.title,
     required this.active,
@@ -300,15 +300,15 @@ class Session {
   /// active : Whether this is where the calling client's prompts land.
   final bool active;
 
-  /// archived : Whether it has been put away. An archived session keeps
+  /// archived : Whether it has been put away. An archived conversation keeps
   /// everything said in it and simply stops being offered.
   final bool archived;
 
   final DateTime createdAt;
   final DateTime updatedAt;
 
-  /// fromJson : Parses a session as the API returns it.
-  factory Session.fromJson(Map<String, dynamic> json) => Session(
+  /// fromJson : Parses a conversation as the API returns it.
+  factory Conversation.fromJson(Map<String, dynamic> json) => Conversation(
     id: json['id'] as String,
     title: json['title'] as String? ?? '',
     active: json['active'] as bool? ?? false,
@@ -318,19 +318,19 @@ class Session {
   );
 
   @override
-  String toString() => 'Session($id, $title)';
+  String toString() => 'Conversation($id, $title)';
 }
 
-/// SessionDetail : A session together with its chats, oldest first.
-class SessionDetail {
-  const SessionDetail({required this.session, required this.chats});
+/// ConversationDetail : A conversation together with its chats, oldest first.
+class ConversationDetail {
+  const ConversationDetail({required this.conversation, required this.chats});
 
-  final Session session;
+  final Conversation conversation;
   final List<ChatSummary> chats;
 
-  /// fromJson : Parses a session detail as the API returns it.
-  factory SessionDetail.fromJson(Map<String, dynamic> json) => SessionDetail(
-    session: Session.fromJson(json['session'] as Map<String, dynamic>),
+  /// fromJson : Parses a conversation detail as the API returns it.
+  factory ConversationDetail.fromJson(Map<String, dynamic> json) => ConversationDetail(
+    conversation: Conversation.fromJson(json['conversation'] as Map<String, dynamic>),
     chats: _list(json['chats'], ChatSummary.fromJson),
   );
 }

@@ -45,22 +45,22 @@ func TestLoginRegistersTheClientAndIssuesAToken(t *testing.T) {
 	if out.Client.Name != "my phone" {
 		t.Errorf("client name = %q, want it echoed back", out.Client.Name)
 	}
-	if !chat.ValidSessionID(out.Client.ActiveSessionID) {
-		t.Errorf("active session = %q, want one ready to talk in", out.Client.ActiveSessionID)
+	if !chat.ValidConversationID(out.Client.ActiveConversationID) {
+		t.Errorf("active conversation = %q, want one ready to talk in", out.Client.ActiveConversationID)
 	}
 }
 
-// A second client joins the session already there rather than starting a new
-// thread, because a session belongs to the user and not to the client.
-func TestASecondClientJoinsTheExistingSession(t *testing.T) {
+// A second client joins the conversation already there rather than starting a new
+// thread, because a conversation belongs to the user and not to the client.
+func TestASecondClientJoinsTheExistingConversation(t *testing.T) {
 	e := apitest.New(t)
 
 	phone := e.Login(t, "my phone")
 	laptop := e.Login(t, "my laptop")
 
-	if laptop.Client.ActiveSessionID != phone.Client.ActiveSessionID {
+	if laptop.Client.ActiveConversationID != phone.Client.ActiveConversationID {
 		t.Errorf("laptop started in %q, want the phone's %q",
-			laptop.Client.ActiveSessionID, phone.Client.ActiveSessionID)
+			laptop.Client.ActiveConversationID, phone.Client.ActiveConversationID)
 	}
 }
 
@@ -177,7 +177,7 @@ func TestSigningInAgainReusesTheClient(t *testing.T) {
 	}
 
 	// One credential per client: the old token stops working, so a browser
-	// left open elsewhere does not keep the session it had.
+	// left open elsewhere does not keep the conversation it had.
 	rec := e.As(t, first.Token, http.MethodGet, "/v1/me")
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("old token: status = %d, want 401", rec.Code)

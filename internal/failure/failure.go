@@ -60,7 +60,7 @@ var sentences = map[Code]string{
 	RateLimited:  "The service is busy. Ask me again in a moment.",
 	Unavailable:  "The service is unavailable at the moment. Try again shortly.",
 	BadRequest:   "The service would not accept that request.",
-	TooLong:      "This conversation has grown too long. Start a new session.",
+	TooLong:      "This conversation has grown too long. Start a new conversation.",
 	BadResponse:  "The service answered with something I could not use.",
 	Unexpected:   "The service could not complete the request.",
 }

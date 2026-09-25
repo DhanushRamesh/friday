@@ -87,11 +87,11 @@ class AppState extends ChangeNotifier {
   Identity? _identity;
   Identity? get identity => _identity;
 
-  List<Session> _sessions = const [];
-  List<Session> get sessions => _sessions;
+  List<Conversation> _conversations = const [];
+  List<Conversation> get conversations => _conversations;
 
-  String? _sessionId;
-  String? get sessionId => _sessionId;
+  String? _conversationId;
+  String? get conversationId => _conversationId;
 
   List<Turn> _turns = const [];
   List<Turn> get turns => _turns;
@@ -116,7 +116,7 @@ class AppState extends ChangeNotifier {
 
   /// showArchived : Whether the sidebar is listing what has been put away
   /// rather than what is in use. The two are separate listings, not one with
-  /// a filter, because an archived session is never where a prompt lands.
+  /// a filter, because an archived conversation is never where a prompt lands.
   bool get showArchived => _showArchived;
 
   bool _busy = false;
@@ -134,7 +134,7 @@ class AppState extends ChangeNotifier {
 
 
   /// start : Restores a kept token and loads what the screens need, returning
-  /// whether there was a usable session.
+  /// whether there was a usable conversation.
   ///
   /// A token the server refuses is discarded here rather than left to fail
   /// the first real call, so the app opens on the login screen instead of on
@@ -154,7 +154,7 @@ class AppState extends ChangeNotifier {
     }
     try {
       _identity = await api.me();
-      await _loadSessions();
+      await _loadConversations();
       return true;
     } on NotAuthenticated {
       await api.logout();
@@ -167,7 +167,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// signIn : Authenticates, then loads the sessions the token can see.
+  /// signIn : Authenticates, then loads the conversations the token can see.
   Future<bool> signIn({
     required String username,
     required String password,
@@ -189,7 +189,7 @@ class AppState extends ChangeNotifier {
       _clientName = result.client.name.isEmpty ? clientName : result.client.name;
       _clientId = result.client.id;
       await _remembered.remember(id: _clientId!, name: _clientName ?? '');
-      await _loadSessions();
+      await _loadConversations();
       return true;
     } on Object catch (e) {
       _error = _explain(e);
@@ -214,20 +214,20 @@ class AppState extends ChangeNotifier {
   Future<void> signOut() async {
     await api.logout();
     _identity = null;
-    _sessions = const [];
+    _conversations = const [];
     _clients = const [];
     _turns = const [];
-    _sessionId = null;
+    _conversationId = null;
     _error = null;
     notifyListeners();
   }
 
-  /// newSession : Starts a session and moves into it.
-  Future<void> newSession() async {
+  /// newConversation : Starts a conversation and moves into it.
+  Future<void> newConversation() async {
     _set(busy: true, error: null);
     try {
-      final created = await api.createSession();
-      await _loadSessions();
+      final created = await api.createConversation();
+      await _loadConversations();
       await _open(created.id);
     } on Object catch (e) {
       _error = _explain(e);
@@ -236,19 +236,19 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// select : Switches to a session, making it the one this client is in.
+  /// select : Switches to a conversation, making it the one this client is in.
   ///
-  /// Activating matters beyond this screen: a chat sent without a session
+  /// Activating matters beyond this screen: a chat sent without a conversation
   /// joins whichever one the client is active in, so the voice satellite and
   /// this client would otherwise drift into different conversations.
   Future<void> select(String id) async {
-    if (id == _sessionId) return;
+    if (id == _conversationId) return;
     _set(busy: true, error: null);
     try {
-      await api.activateSession(id);
+      await api.activateConversation(id);
       await _open(id);
-      _sessions = [
-        for (final s in _sessions) Session(
+      _conversations = [
+        for (final s in _conversations) Conversation(
           id: s.id,
           title: s.title,
           active: s.id == id,
@@ -279,10 +279,10 @@ class AppState extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _follow(text, _sessionId);
-      // The session is named after its first prompt, so a new one only gets
+      await _follow(text, _conversationId);
+      // The conversation is named after its first prompt, so a new one only gets
       // a name once something has been asked in it.
-      _sessions = await api.listSessions(archived: _showArchived);
+      _conversations = await api.listConversations(archived: _showArchived);
     } on Object catch (e) {
       _error = _explain(e);
       _replaceLast((t) => t.copyWith(status: ChatStatus.failed));
@@ -309,9 +309,9 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// refresh : Reads the sessions and the open transcript again.
+  /// refresh : Reads the conversations and the open transcript again.
   ///
-  /// The voice satellite writes into the same sessions this is showing, so
+  /// The voice satellite writes into the same conversations this is showing, so
   /// what is on screen goes stale whenever something is said out loud. There
   /// is nothing pushing that here — the only stream the client opens is for a
   /// chat it started itself — so seeing it means asking.
@@ -319,9 +319,9 @@ class AppState extends ChangeNotifier {
     if (_busy) return;
     _set(busy: true, error: null);
     try {
-      _sessions = await api.listSessions();
-      final open = _sessionId;
-      if (open != null && _sessions.any((s) => s.id == open)) {
+      _conversations = await api.listConversations();
+      final open = _conversationId;
+      if (open != null && _conversations.any((s) => s.id == open)) {
         await _open(open, keepVisible: true);
       }
     } on Object catch (e) {
@@ -337,7 +337,7 @@ class AppState extends ChangeNotifier {
     _showArchived = archived;
     _set(busy: true, error: null);
     try {
-      _sessions = await api.listSessions(archived: archived);
+      _conversations = await api.listConversations(archived: archived);
     } on Object catch (e) {
       _error = _explain(e);
     } finally {
@@ -345,11 +345,11 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// archive : Puts a session away, or brings it back.
+  /// archive : Puts a conversation away, or brings it back.
   Future<void> archive(String id, {bool archived = true}) async {
     _set(busy: true, error: null);
     try {
-      final active = await api.archiveSession(id, archived: archived);
+      final active = await api.archiveConversation(id, archived: archived);
       await _afterRemoval(id, active);
     } on Object catch (e) {
       _error = _explain(e);
@@ -358,11 +358,11 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// remove : Deletes a session and everything said in it.
+  /// remove : Deletes a conversation and everything said in it.
   Future<void> remove(String id) async {
     _set(busy: true, error: null);
     try {
-      final active = await api.deleteSession(id);
+      final active = await api.deleteConversation(id);
       await _afterRemoval(id, active);
     } on Object catch (e) {
       _error = _explain(e);
@@ -374,26 +374,26 @@ class AppState extends ChangeNotifier {
   /// _afterRemoval : Reloads the listing and opens wherever the client now is.
   ///
   /// The server decides that, because it is the one that knows whether the
-  /// session removed was the active one. Following its answer rather than
+  /// conversation removed was the active one. Following its answer rather than
   /// guessing keeps the two from disagreeing about where a prompt will land.
-  Future<void> _afterRemoval(String removed, Session active) async {
-    _sessions = await api.listSessions(archived: _showArchived);
-    if (_sessionId == removed) {
+  Future<void> _afterRemoval(String removed, Conversation active) async {
+    _conversations = await api.listConversations(archived: _showArchived);
+    if (_conversationId == removed) {
       await _open(active.id);
     }
   }
 
-  /// rename : Changes what a session is called.
+  /// rename : Changes what a conversation is called.
   ///
   /// The listing is patched rather than reloaded: a reload would also reorder
-  /// it, and a name changing is not a reason for a session to move.
+  /// it, and a name changing is not a reason for a conversation to move.
   Future<void> rename(String id, String title) async {
     try {
-      final updated = await api.renameSession(id, title);
-      _sessions = [
-        for (final s in _sessions)
+      final updated = await api.renameConversation(id, title);
+      _conversations = [
+        for (final s in _conversations)
           if (s.id == id)
-            Session(
+            Conversation(
               id: s.id,
               title: updated.title,
               active: s.active,
@@ -496,9 +496,9 @@ class AppState extends ChangeNotifier {
   ///
   /// Chunks add to what is there rather than replacing it: the endpoint sends
   /// the piece that is new, not the answer so far.
-  Future<void> _follow(String prompt, String? sessionId) async {
+  Future<void> _follow(String prompt, String? conversationId) async {
     var answer = '';
-    await for (final piece in api.ask(prompt, sessionId: sessionId)) {
+    await for (final piece in api.ask(prompt, conversationId: conversationId)) {
       if (piece.text.isNotEmpty) {
         answer += piece.text;
         _replaceLast((t) => t.copyWith(answer: answer, status: ChatStatus.running));
@@ -520,21 +520,21 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// _open : Loads a session's turns and shows them.
+  /// _open : Loads a conversation's turns and shows them.
   ///
   /// A listing carries each chat's prompt but not its answer, so the answers
   /// are fetched one call per chat. They go together rather than in turn: a
-  /// session of twenty chats would otherwise take twenty round trips end to
+  /// conversation of twenty chats would otherwise take twenty round trips end to
   /// end before anything appeared.
   /// [keepVisible] leaves what is on screen in place while the new turns are
-  /// fetched, which is what a refresh of the session already open wants:
+  /// fetched, which is what a refresh of the conversation already open wants:
   /// clearing first would blank a transcript only being brought up to date.
   Future<void> _open(String id, {bool keepVisible = false}) async {
-    _sessionId = id;
+    _conversationId = id;
     if (!keepVisible) _turns = const [];
     notifyListeners();
 
-    final detail = await api.session(id);
+    final detail = await api.conversation(id);
     final chats = await Future.wait(
       detail.chats.map((c) async {
         try {
@@ -543,7 +543,7 @@ class AppState extends ChangeNotifier {
           // One unreadable chat should not empty the whole transcript.
           return Chat(
             id: c.id,
-            sessionId: c.sessionId,
+            conversationId: c.conversationId,
             prompt: c.prompt,
             status: c.status,
             response: '',
@@ -570,10 +570,10 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _loadSessions() async {
-    _sessions = await api.listSessions();
-    final active = _sessions.where((s) => s.active).toList();
-    if (_sessionId == null && active.isNotEmpty) {
+  Future<void> _loadConversations() async {
+    _conversations = await api.listConversations();
+    final active = _conversations.where((s) => s.active).toList();
+    if (_conversationId == null && active.isNotEmpty) {
       await _open(active.first.id);
     }
     notifyListeners();

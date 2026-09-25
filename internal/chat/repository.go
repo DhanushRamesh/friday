@@ -15,15 +15,15 @@ var (
 	//
 	// Distinguished from ErrNotFound inside the server so that a mistake is
 	// diagnosable; at the edge both are answered the same way, because
-	// telling one user that another's session exists reveals more than
+	// telling one user that another's conversation exists reveals more than
 	// it should.
 	ErrNotOwned = errors.New("chat: belongs to another user")
 )
 
-// SessionSummary : A session with the chats belonging to it.
-type SessionSummary struct {
-	Session Session
-	Chats   []Summary
+// ConversationSummary : A conversation with the chats belonging to it.
+type ConversationSummary struct {
+	Conversation Conversation
+	Chats        []Summary
 }
 
 // Summary : A chat without its response body.
@@ -31,26 +31,26 @@ type SessionSummary struct {
 // Listing chats and checking on one both read far more often than they need
 // the answer itself, and a response can run to megabytes.
 type Summary struct {
-	ID         string
-	SessionID  string
-	Prompt     string
-	Channel    Channel
-	Status     Status
-	Error      string
-	ErrorCode  string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-	StartedAt  *time.Time
-	FinishedAt *time.Time
+	ID             string
+	ConversationID string
+	Prompt         string
+	Channel        Channel
+	Status         Status
+	Error          string
+	ErrorCode      string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	StartedAt      *time.Time
+	FinishedAt     *time.Time
 }
 
 // Filter : Narrows a listing of chats.
 type Filter struct {
 	// Status : Restricts the listing to one status. Empty means any.
 	Status Status
-	// SessionID : Restricts the listing to one session. Empty means
+	// ConversationID : Restricts the listing to one conversation. Empty means
 	// any.
-	SessionID string
+	ConversationID string
 	// UserID : Restricts the listing to one user's chats. Empty means any.
 	UserID string
 	// Limit : The greatest number of chats to return. Zero selects
@@ -140,51 +140,51 @@ type Repository interface {
 	// one already revoked changes nothing.
 	RevokeClient(ctx context.Context, userID, clientID string) error
 
-	// SetActiveSession : Makes a session the one a prompt from this
+	// SetActiveConversation : Makes a conversation the one a prompt from this
 	// client lands in. It reports ErrNotFound if either does not exist, and
-	// ErrNotOwned if the session belongs to another user.
-	SetActiveSession(ctx context.Context, userID, clientID, sessionID string) error
+	// ErrNotOwned if the conversation belongs to another user.
+	SetActiveConversation(ctx context.Context, userID, clientID, conversationID string) error
 
-	// CreateSession : Stores a new session.
-	CreateSession(ctx context.Context, c *Session) error
+	// CreateConversation : Stores a new conversation.
+	CreateConversation(ctx context.Context, c *Conversation) error
 
-	// RenameSession : Changes a session's title. It reports ErrNotFound if
-	// there is no such session, and ErrNotOwned if it belongs to somebody
+	// RenameConversation : Changes a conversation's title. It reports ErrNotFound if
+	// there is no such conversation, and ErrNotOwned if it belongs to somebody
 	// else.
-	RenameSession(ctx context.Context, userID, sessionID, title string) error
+	RenameConversation(ctx context.Context, userID, conversationID, title string) error
 
-	// SetSessionArchived : Puts a session away or brings it back. It reports
-	// ErrNotFound if there is no such session, and ErrNotOwned if it belongs
+	// SetConversationArchived : Puts a conversation away or brings it back. It reports
+	// ErrNotFound if there is no such conversation, and ErrNotOwned if it belongs
 	// to somebody else.
 	//
 	// Archiving clears it from any client that was pointed at it, so that a
-	// prompt does not land in a session the user has put away.
-	SetSessionArchived(ctx context.Context, userID, sessionID string, archived bool) error
+	// prompt does not land in a conversation the user has put away.
+	SetConversationArchived(ctx context.Context, userID, conversationID string, archived bool) error
 
-	// DeleteSession : Removes a session and everything said in it. It reports
-	// ErrNotFound if there is no such session, and ErrNotOwned if it belongs
+	// DeleteConversation : Removes a conversation and everything said in it. It reports
+	// ErrNotFound if there is no such conversation, and ErrNotOwned if it belongs
 	// to somebody else.
 	//
 	// The chats and the transcript go with it, by the cascade on their
 	// foreign keys. Nothing here can be undone.
-	DeleteSession(ctx context.Context, userID, sessionID string) error
+	DeleteConversation(ctx context.Context, userID, conversationID string) error
 
-	// GetSession : Returns a session. It reports ErrNotFound if
+	// GetConversation : Returns a conversation. It reports ErrNotFound if
 	// there is none.
-	GetSession(ctx context.Context, id string) (*Session, error)
+	GetConversation(ctx context.Context, id string) (*Conversation, error)
 
-	// ListSessions : Returns a user's sessions, most recently used
+	// ListConversations : Returns a user's conversations, most recently used
 	// first. They belong to the person, so every one of their clients sees
 	// all of them.
-	ListSessions(ctx context.Context, userID string, limit int) ([]Session, error)
+	ListConversations(ctx context.Context, userID string, limit int) ([]Conversation, error)
 
-	// ListArchivedSessions : Returns a user's archived sessions, most
+	// ListArchivedConversations : Returns a user's archived conversations, most
 	// recently used first.
-	ListArchivedSessions(ctx context.Context, userID string, limit int) ([]Session, error)
+	ListArchivedConversations(ctx context.Context, userID string, limit int) ([]Conversation, error)
 
-	// Unfinished : Returns the identifiers of a session's chats that
+	// Unfinished : Returns the identifiers of a conversation's chats that
 	// have not reached a terminal status, oldest first.
-	Unfinished(ctx context.Context, sessionID string) ([]string, error)
+	Unfinished(ctx context.Context, conversationID string) ([]string, error)
 
 	// FailRunning : Marks every chat still recorded as running as failed,
 	// with the given explanation, and reports how many were changed.

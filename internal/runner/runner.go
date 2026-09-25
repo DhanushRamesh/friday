@@ -15,10 +15,10 @@ import (
 
 	"github.com/DhanushRamesh/personal-assistant/internal/catalog"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
 	"github.com/DhanushRamesh/personal-assistant/internal/events"
 	"github.com/DhanushRamesh/personal-assistant/internal/logging"
 	"github.com/DhanushRamesh/personal-assistant/internal/provider"
-	"github.com/DhanushRamesh/personal-assistant/internal/session"
 )
 
 const (
@@ -73,11 +73,11 @@ type Options struct {
 	// DefaultMaxConcurrent.
 	MaxConcurrent int
 	// Messages : Where the conversation is read and written. Required.
-	Messages session.Repository
+	Messages conversation.Repository
 	// HistoryLimits : The ceilings the conversation sent to the provider is
-	// held under. A zero size selects session.DefaultBudget, and a zero
+	// held under. A zero size selects conversation.DefaultBudget, and a zero
 	// count means the provider accepts any number of messages.
-	HistoryLimits session.Limits
+	HistoryLimits conversation.Limits
 	// CondenseTimeout : How long condensing an old conversation may take.
 	// Zero selects DefaultCondenseTimeout.
 	CondenseTimeout time.Duration
@@ -88,12 +88,12 @@ type Options struct {
 // It is safe for concurrent use.
 type Runner struct {
 	repo            chat.Repository
-	messages        session.Repository
+	messages        conversation.Repository
 	provider        provider.Provider
 	publisher       Publisher
 	logger          *slog.Logger
 	chatTimeout     time.Duration
-	historyLimits   session.Limits
+	historyLimits   conversation.Limits
 	condenseTimeout time.Duration
 
 	// slots : Limits how many chats run at once. A chat holds one for the
@@ -258,7 +258,7 @@ func (r *Runner) Shutdown(ctx context.Context) error {
 // window is the chosen model's, so a client answered by a smaller model is
 // sent less. A chosen model nobody has catalogued declares no window, leaving
 // the byte budget to bound it alone.
-func (r *Runner) limitsFor(m chat.Model) session.Limits {
+func (r *Runner) limitsFor(m chat.Model) conversation.Limits {
 	limits := r.historyLimits
 	if m.Chosen() {
 		limits.ContextTokens = catalog.ContextTokens(m.Vendor, m.ID)

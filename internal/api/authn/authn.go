@@ -165,18 +165,18 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 			slog.String("client_id", client.ID))
 	}
 
-	// Somewhere to talk at once. A session belongs to the user, so a second
+	// Somewhere to talk at once. A conversation belongs to the user, so a second
 	// client joins whatever already exists rather than starting over.
-	sessionID, err := chat.EnsureSession(ctx, h.repo, user.ID)
+	conversationID, err := chat.EnsureConversation(ctx, h.repo, user.ID)
 	if err != nil {
-		h.Fail(ctx, w, "preparing a session", err)
+		h.Fail(ctx, w, "preparing a conversation", err)
 		return
 	}
-	if err := h.repo.SetActiveSession(ctx, user.ID, client.ID, sessionID); err != nil {
-		h.Fail(ctx, w, "activating session", err)
+	if err := h.repo.SetActiveConversation(ctx, user.ID, client.ID, conversationID); err != nil {
+		h.Fail(ctx, w, "activating conversation", err)
 		return
 	}
-	client.ActiveSessionID = sessionID
+	client.ActiveConversationID = conversationID
 
 	h.Logger.InfoContext(ctx, "client logged in",
 		slog.String("user_id", user.ID),

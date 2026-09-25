@@ -1,9 +1,9 @@
-// Package session holds what was said in a conversation.
+// Package conversation holds what was said in a conversation.
 //
-// It is deliberately separate from the work that produced it. A session is a
+// It is deliberately separate from the work that produced it. A conversation is a
 // log of messages; how any one of them came to be written — which request,
 // which provider, how long it took — is somebody else's concern.
-package session
+package conversation
 
 import (
 	"errors"
@@ -22,10 +22,10 @@ const maxContentBytes = 1 << 20
 
 var (
 	// ErrTooLarge : Returned when a message's content will not fit.
-	ErrTooLarge = errors.New("session: the message is too long to store")
+	ErrTooLarge = errors.New("conversation: the message is too long to store")
 
-	// ErrNoSession : Returned when the session written to does not exist.
-	ErrNoSession = errors.New("session: no such session")
+	// ErrNoConversation : Returned when the conversation written to does not exist.
+	ErrNoConversation = errors.New("conversation: no such conversation")
 )
 
 // Kind : Whether a message is part of the conversation or a report that
@@ -85,7 +85,7 @@ const MessageIDPrefix = "msg_"
 // NewMessageID : Returns a fresh message identifier.
 func NewMessageID() string { return MessageIDPrefix + ulid.Make().String() }
 
-// Message : One thing said in a session.
+// Message : One thing said in a conversation.
 type Message struct {
 	// ID : The identifier, a MessageIDPrefix followed by a ULID.
 	//
@@ -93,9 +93,9 @@ type Message struct {
 	// orders the conversation and moves if anything is ever removed from the
 	// middle of one, while this names the same message afterwards.
 	ID string
-	// SessionID : The conversation it belongs to.
-	SessionID string
-	// Seq : Position within the session, starting at 1. Assigned when the
+	// ConversationID : The conversation it belongs to.
+	ConversationID string
+	// Seq : Position within the conversation, starting at 1. Assigned when the
 	// message is stored, so it is zero until then.
 	Seq int
 	// Kind : Whether this is conversation or a reported failure.
@@ -112,26 +112,26 @@ type Message struct {
 }
 
 // Said : A message from the person.
-func Said(sessionID, content string, at time.Time) Message {
+func Said(conversationID, content string, at time.Time) Message {
 	return Message{
-		ID:        NewMessageID(),
-		SessionID: sessionID,
-		Kind:      Chat,
-		Role:      User,
-		Content:   content,
-		At:        at,
+		ID:             NewMessageID(),
+		ConversationID: conversationID,
+		Kind:           Chat,
+		Role:           User,
+		Content:        content,
+		At:             at,
 	}
 }
 
 // Answered : A message from the server.
-func Answered(sessionID, content string, at time.Time) Message {
+func Answered(conversationID, content string, at time.Time) Message {
 	return Message{
-		ID:        NewMessageID(),
-		SessionID: sessionID,
-		Kind:      Chat,
-		Role:      Assistant,
-		Content:   content,
-		At:        at,
+		ID:             NewMessageID(),
+		ConversationID: conversationID,
+		Kind:           Chat,
+		Role:           Assistant,
+		Content:        content,
+		At:             at,
 	}
 }
 
@@ -141,14 +141,14 @@ func Answered(sessionID, content string, at time.Time) Message {
 // worded as a statement of what happened rather than an apology: it is read
 // back to a model, which should treat it as a fact about the conversation and
 // not as something to make up for.
-func Interrupted(sessionID string, at time.Time) Message {
+func Interrupted(conversationID string, at time.Time) Message {
 	return Message{
-		ID:        NewMessageID(),
-		SessionID: sessionID,
-		Kind:      Interruption,
-		Role:      Assistant,
-		Content:   "[The person stopped this before it finished.]",
-		At:        at,
+		ID:             NewMessageID(),
+		ConversationID: conversationID,
+		Kind:           Interruption,
+		Role:           Assistant,
+		Content:        "[The person stopped this before it finished.]",
+		At:             at,
 	}
 }
 
@@ -156,15 +156,15 @@ func Interrupted(sessionID string, at time.Time) Message {
 //
 // [detail] is what the service actually said, and may be empty when nothing
 // more is known than the sentence.
-func Failed(sessionID, content, detail string, at time.Time) Message {
+func Failed(conversationID, content, detail string, at time.Time) Message {
 	return Message{
-		ID:        NewMessageID(),
-		SessionID: sessionID,
-		Kind:      Failure,
-		Detail:    strings.TrimSpace(detail),
-		Role:      Assistant,
-		Content:   content,
-		At:        at,
+		ID:             NewMessageID(),
+		ConversationID: conversationID,
+		Kind:           Failure,
+		Detail:         strings.TrimSpace(detail),
+		Role:           Assistant,
+		Content:        content,
+		At:             at,
 	}
 }
 
@@ -172,17 +172,17 @@ func Failed(sessionID, content, detail string, at time.Time) Message {
 func (m Message) Valid() error {
 	switch {
 	case m.ID == "":
-		return errors.New("session: a message needs an identifier")
-	case m.SessionID == "":
-		return errors.New("session: a message needs a session")
+		return errors.New("conversation: a message needs an identifier")
+	case m.ConversationID == "":
+		return errors.New("conversation: a message needs a conversation")
 	case strings.TrimSpace(m.Content) == "":
-		return errors.New("session: a message needs something in it")
+		return errors.New("conversation: a message needs something in it")
 	case len(m.Content) > maxContentBytes:
 		return ErrTooLarge
 	case !m.Kind.known():
-		return errors.New("session: a message needs a kind")
+		return errors.New("conversation: a message needs a kind")
 	case m.Role != User && m.Role != Assistant:
-		return errors.New("session: a message needs a speaker")
+		return errors.New("conversation: a message needs a speaker")
 	}
 	return nil
 }

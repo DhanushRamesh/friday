@@ -81,8 +81,8 @@ func newRepository(t *testing.T) *chatmysql.Repository {
 	return chatmysql.NewRepository(db)
 }
 
-// storedSession : Creates a session for a test to attach chats to.
-func storedSession(t *testing.T, r *chatmysql.Repository) string {
+// storedConversation : Creates a conversation for a test to attach chats to.
+func storedConversation(t *testing.T, r *chatmysql.Repository) string {
 	t.Helper()
 	owner, err := chat.NewUser("tester"+chat.NewUserID()[4:14], "hash")
 	if err != nil {
@@ -91,9 +91,9 @@ func storedSession(t *testing.T, r *chatmysql.Repository) string {
 	if err := r.CreateUser(context.Background(), owner); err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
-	c := chat.NewSession(owner.ID, "")
-	if err := r.CreateSession(context.Background(), c); err != nil {
-		t.Fatalf("CreateSession: %v", err)
+	c := chat.NewConversation(owner.ID, "")
+	if err := r.CreateConversation(context.Background(), c); err != nil {
+		t.Fatalf("CreateConversation: %v", err)
 	}
 	return c.ID
 }
@@ -124,7 +124,7 @@ func storedClient(t *testing.T, r *chatmysql.Repository) *chat.Client {
 // storedChat : Creates a chat, stores it, and removes it when the test ends.
 func storedChat(t *testing.T, r *chatmysql.Repository, prompt string) *chat.Chat {
 	t.Helper()
-	tk, err := chat.New(storedSession(t, r), chat.ChannelDirect, prompt)
+	tk, err := chat.New(storedConversation(t, r), chat.ChannelDirect, prompt)
 	if err != nil {
 		t.Fatalf("chat.New: %v", err)
 	}
@@ -456,7 +456,7 @@ func TestUnicodeSurvivesTheRoundTrip(t *testing.T) {
 // deliberate "direct" rather than as the bug it was.
 func TestChannelSurvivesStorage(t *testing.T) {
 	r := newRepository(t)
-	tk, err := chat.New(storedSession(t, r), chat.ChannelVoice, "spoken aloud")
+	tk, err := chat.New(storedConversation(t, r), chat.ChannelVoice, "spoken aloud")
 	if err != nil {
 		t.Fatalf("chat.New: %v", err)
 	}
@@ -474,7 +474,7 @@ func TestChannelSurvivesStorage(t *testing.T) {
 
 	// And in a listing, which selects its columns by name and is the other
 	// place a new column is easy to forget.
-	found, err := r.List(context.Background(), chat.Filter{SessionID: tk.SessionID})
+	found, err := r.List(context.Background(), chat.Filter{ConversationID: tk.ConversationID})
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -567,7 +567,7 @@ func TestAChatRemembersItsModel(t *testing.T) {
 	r := newRepository(t)
 	ctx := context.Background()
 
-	t2, err := chat.New(storedSession(t, r), chat.ChannelDirect, "what is the time")
+	t2, err := chat.New(storedConversation(t, r), chat.ChannelDirect, "what is the time")
 	if err != nil {
 		t.Fatalf("chat.New: %v", err)
 	}

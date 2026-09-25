@@ -9,22 +9,22 @@ import (
 	"time"
 
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
-	"github.com/DhanushRamesh/personal-assistant/internal/session"
+	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
 )
 
 func TestAppendNumbersMessagesInOrder(t *testing.T) {
 	r := newRepository(t)
 	ctx := context.Background()
-	id := storedSession(t, r)
+	id := storedConversation(t, r)
 
 	at := time.Now().UTC().Truncate(time.Millisecond)
 	for i, content := range []string{"what is the time", "half past two", "and the date"} {
-		m, err := r.Append(ctx, session.Message{
-			SessionID: id,
-			Kind:      session.Chat,
-			Role:      session.User,
-			Content:   content,
-			At:        at.Add(time.Duration(i) * time.Second),
+		m, err := r.Append(ctx, conversation.Message{
+			ConversationID: id,
+			Kind:           conversation.Chat,
+			Role:           conversation.User,
+			Content:        content,
+			At:             at.Add(time.Duration(i) * time.Second),
 		})
 		if err != nil {
 			t.Fatalf("Append(%q): %v", content, err)
@@ -55,10 +55,10 @@ func TestAppendNumbersMessagesInOrder(t *testing.T) {
 func TestBeforeStopsShortOfThePosition(t *testing.T) {
 	r := newRepository(t)
 	ctx := context.Background()
-	id := storedSession(t, r)
+	id := storedConversation(t, r)
 
 	for _, content := range []string{"first", "second", "third"} {
-		if _, err := r.Append(ctx, session.Said(id, content, time.Now().UTC())); err != nil {
+		if _, err := r.Append(ctx, conversation.Said(id, content, time.Now().UTC())); err != nil {
 			t.Fatalf("Append: %v", err)
 		}
 	}
@@ -80,7 +80,7 @@ func TestBeforeStopsShortOfThePosition(t *testing.T) {
 func TestConcurrentAppendsGetDistinctPositions(t *testing.T) {
 	r := newRepository(t)
 	ctx := context.Background()
-	id := storedSession(t, r)
+	id := storedConversation(t, r)
 
 	const writers = 5
 	var wg sync.WaitGroup
@@ -90,7 +90,7 @@ func TestConcurrentAppendsGetDistinctPositions(t *testing.T) {
 	for i := 0; i < writers; i++ {
 		go func(i int) {
 			defer wg.Done()
-			_, errs[i] = r.Append(ctx, session.Said(id, "message", time.Now().UTC()))
+			_, errs[i] = r.Append(ctx, conversation.Said(id, "message", time.Now().UTC()))
 		}(i)
 	}
 	wg.Wait()
@@ -118,41 +118,41 @@ func TestConcurrentAppendsGetDistinctPositions(t *testing.T) {
 	}
 }
 
-func TestAppendRefusesAMessageWithNoSession(t *testing.T) {
+func TestAppendRefusesAMessageWithNoConversation(t *testing.T) {
 	r := newRepository(t)
 
 	_, err := r.Append(context.Background(),
-		session.Said("sess_00000000000000000000000000", "hello", time.Now().UTC()))
-	if !errors.Is(err, session.ErrNoSession) {
-		t.Errorf("err = %v, want ErrNoSession", err)
+		conversation.Said("sess_00000000000000000000000000", "hello", time.Now().UTC()))
+	if !errors.Is(err, conversation.ErrNoConversation) {
+		t.Errorf("err = %v, want ErrNoConversation", err)
 	}
 }
 
 func TestAppendRefusesAnEmptyMessage(t *testing.T) {
 	r := newRepository(t)
-	id := storedSession(t, r)
+	id := storedConversation(t, r)
 
-	if _, err := r.Append(context.Background(), session.Said(id, "   ", time.Now().UTC())); err == nil {
+	if _, err := r.Append(context.Background(), conversation.Said(id, "   ", time.Now().UTC())); err == nil {
 		t.Error("an empty message was stored")
 	}
 }
 
 func TestAppendRefusesAMessageTooLarge(t *testing.T) {
 	r := newRepository(t)
-	id := storedSession(t, r)
+	id := storedConversation(t, r)
 
 	huge := strings.Repeat("a", (1<<20)+1)
-	_, err := r.Append(context.Background(), session.Said(id, huge, time.Now().UTC()))
-	if !errors.Is(err, session.ErrTooLarge) {
+	_, err := r.Append(context.Background(), conversation.Said(id, huge, time.Now().UTC()))
+	if !errors.Is(err, conversation.ErrTooLarge) {
 		t.Errorf("err = %v, want ErrTooLarge", err)
 	}
 }
 
-// A session with nothing condensed reports the zero summary rather than an
+// A conversation with nothing condensed reports the zero summary rather than an
 // error: having no summary yet is the ordinary case.
-func TestSummaryOfAnUncondensedSession(t *testing.T) {
+func TestSummaryOfAnUncondensedConversation(t *testing.T) {
 	r := newRepository(t)
-	id := storedSession(t, r)
+	id := storedConversation(t, r)
 
 	got, err := r.Summary(context.Background(), id)
 	if err != nil {
@@ -168,9 +168,9 @@ func TestSummaryOfAnUncondensedSession(t *testing.T) {
 func TestSummarySurvivesStorage(t *testing.T) {
 	r := newRepository(t)
 	ctx := context.Background()
-	id := storedSession(t, r)
+	id := storedConversation(t, r)
 
-	want := session.Summary{Text: "they agreed on the roof", ThroughSeq: 42}
+	want := conversation.Summary{Text: "they agreed on the roof", ThroughSeq: 42}
 	if err := r.SetSummary(ctx, id, want); err != nil {
 		t.Fatalf("SetSummary: %v", err)
 	}
@@ -188,13 +188,13 @@ func TestSummarySurvivesStorage(t *testing.T) {
 func TestSummaryIsReplaced(t *testing.T) {
 	r := newRepository(t)
 	ctx := context.Background()
-	id := storedSession(t, r)
+	id := storedConversation(t, r)
 
-	first := session.Summary{Text: "the first part", ThroughSeq: 20}
+	first := conversation.Summary{Text: "the first part", ThroughSeq: 20}
 	if err := r.SetSummary(ctx, id, first); err != nil {
 		t.Fatalf("SetSummary: %v", err)
 	}
-	second := session.Summary{Text: "the first and second parts", ThroughSeq: 60}
+	second := conversation.Summary{Text: "the first and second parts", ThroughSeq: 60}
 	if err := r.SetSummary(ctx, id, second); err != nil {
 		t.Fatalf("SetSummary: %v", err)
 	}
@@ -208,14 +208,14 @@ func TestSummaryIsReplaced(t *testing.T) {
 	}
 }
 
-// Writing the same summary twice is not mistaken for a session that is not
+// Writing the same summary twice is not mistaken for a conversation that is not
 // there. MySQL counts rows it changed, not rows it matched.
-func TestSummaryWrittenTwiceIsNotAMissingSession(t *testing.T) {
+func TestSummaryWrittenTwiceIsNotAMissingConversation(t *testing.T) {
 	r := newRepository(t)
 	ctx := context.Background()
-	id := storedSession(t, r)
+	id := storedConversation(t, r)
 
-	same := session.Summary{Text: "unchanged", ThroughSeq: 7}
+	same := conversation.Summary{Text: "unchanged", ThroughSeq: 7}
 	if err := r.SetSummary(ctx, id, same); err != nil {
 		t.Fatalf("first SetSummary: %v", err)
 	}
@@ -224,16 +224,16 @@ func TestSummaryWrittenTwiceIsNotAMissingSession(t *testing.T) {
 	}
 }
 
-// A session that does not exist is an error rather than a silent no-op.
-func TestSummaryOfAMissingSession(t *testing.T) {
+// A conversation that does not exist is an error rather than a silent no-op.
+func TestSummaryOfAMissingConversation(t *testing.T) {
 	r := newRepository(t)
 	ctx := context.Background()
 
-	if _, err := r.Summary(ctx, chat.NewSessionID()); !errors.Is(err, session.ErrNoSession) {
-		t.Errorf("Summary error = %v, want ErrNoSession", err)
+	if _, err := r.Summary(ctx, chat.NewConversationID()); !errors.Is(err, conversation.ErrNoConversation) {
+		t.Errorf("Summary error = %v, want ErrNoConversation", err)
 	}
-	err := r.SetSummary(ctx, chat.NewSessionID(), session.Summary{Text: "x", ThroughSeq: 1})
-	if !errors.Is(err, session.ErrNoSession) {
-		t.Errorf("SetSummary error = %v, want ErrNoSession", err)
+	err := r.SetSummary(ctx, chat.NewConversationID(), conversation.Summary{Text: "x", ThroughSeq: 1})
+	if !errors.Is(err, conversation.ErrNoConversation) {
+		t.Errorf("SetSummary error = %v, want ErrNoConversation", err)
 	}
 }

@@ -97,15 +97,15 @@ type ChatRequest struct {
 	Model string `json:"model"`
 	// Messages : The conversation so far, oldest first.
 	Messages []Message `json:"messages"`
-	// SessionID : Which session to talk in. Empty joins the one this client
+	// ConversationID : Which conversation to talk in. Empty joins the one this client
 	// is active in, which is what Home Assistant does since it knows
-	// nothing about sessions.
+	// nothing about conversations.
 	//
 	// Not part of Ollama's shape. It is added rather than kept on a second
 	// endpoint because a caller that does know which conversation it means
-	// should not have to switch the client's active session first and race
+	// should not have to switch the client's active conversation first and race
 	// anything else using the same token.
-	SessionID string `json:"session_id,omitempty"`
+	ConversationID string `json:"conversation_id,omitempty"`
 }
 
 // ChatChunk : One piece of an answer.
@@ -207,7 +207,7 @@ func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
 // forms.
 //
 // The conversation Home Assistant sends is not stored. The server keeps its own
-// log of a session and builds a model's history from that, so only the
+// log of a conversation and builds a model's history from that, so only the
 // question is taken from the request; taking the rest would give the chat two
 // disagreeing accounts of what was said.
 func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
@@ -234,19 +234,19 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	caller := authn.Of(ctx)
-	// A named session is used when the caller knows one and it is theirs;
+	// A named conversation is used when the caller knows one and it is theirs;
 	// anything else falls back to whichever this client is active in.
-	asked := req.SessionID
+	asked := req.ConversationID
 	if asked != "" && !h.ownedByCaller(ctx, caller, asked) {
-		httpx.WriteError(ctx, w, http.StatusNotFound, "No such session.")
+		httpx.WriteError(ctx, w, http.StatusNotFound, "No such conversation.")
 		return
 	}
 	if asked == "" {
-		asked = caller.Client.ActiveSessionID
+		asked = caller.Client.ActiveConversationID
 	}
-	sessionID, err := chat.ActiveSession(ctx, h.repo, caller.User.ID, caller.Client.ID, asked)
+	conversationID, err := chat.ActiveConversation(ctx, h.repo, caller.User.ID, caller.Client.ID, asked)
 	if err != nil {
-		h.Fail(ctx, w, "resolving session", err)
+		h.Fail(ctx, w, "resolving conversation", err)
 		return
 	}
 
@@ -256,9 +256,9 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 	// will.
 	// Speaking again means the previous answer is no longer wanted, and two
 	// cannot be listened to at once.
-	h.supersede(ctx, sessionID)
+	h.supersede(ctx, conversationID)
 
-	t, err := chat.New(sessionID, caller.Client.Channel, prompt)
+	t, err := chat.New(conversationID, caller.Client.Channel, prompt)
 	switch {
 	case errors.Is(err, chat.ErrEmptyPrompt):
 		httpx.WriteError(ctx, w, http.StatusBadRequest, "A question is required.")
@@ -444,14 +444,14 @@ func lastQuestion(messages []Message) string {
 	return ""
 }
 
-// supersede : Stops whatever is still running in a session.
+// supersede : Stops whatever is still running in a conversation.
 //
 // Speaking again means the previous answer is no longer wanted, and two
 // cannot be listened to at once. A failure here is logged rather than
 // refused: the new prompt matters more than tidying the old one, and a chat
 // left running still reaches a terminal status on its own.
-func (h *Handler) supersede(ctx context.Context, sessionID string) {
-	unfinished, err := h.repo.Unfinished(ctx, sessionID)
+func (h *Handler) supersede(ctx context.Context, conversationID string) {
+	unfinished, err := h.repo.Unfinished(ctx, conversationID)
 	if err != nil {
 		h.Logger.ErrorContext(ctx, "cannot find chats to supersede", slog.Any("error", err))
 		return
@@ -474,14 +474,14 @@ func (h *Handler) supersede(ctx context.Context, sessionID string) {
 	}
 }
 
-// ownedByCaller : Whether a session exists and belongs to the caller.
+// ownedByCaller : Whether a conversation exists and belongs to the caller.
 //
-// A session that is somebody else's is answered as missing, as everywhere
+// A conversation that is somebody else's is answered as missing, as everywhere
 // else: saying it exists tells one user about another's.
-func (h *Handler) ownedByCaller(ctx context.Context, c *authn.Caller, sessionID string) bool {
-	if !chat.ValidSessionID(sessionID) {
+func (h *Handler) ownedByCaller(ctx context.Context, c *authn.Caller, conversationID string) bool {
+	if !chat.ValidConversationID(conversationID) {
 		return false
 	}
-	session, err := h.repo.GetSession(ctx, sessionID)
-	return err == nil && session.UserID == c.User.ID
+	conversation, err := h.repo.GetConversation(ctx, conversationID)
+	return err == nil && conversation.UserID == c.User.ID
 }

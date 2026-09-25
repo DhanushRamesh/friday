@@ -1,4 +1,4 @@
-/// The signed-in screen: sessions beside a conversation.
+/// The signed-in screen: conversations beside a conversation.
 library;
 
 import 'package:flutter/material.dart';
@@ -12,7 +12,7 @@ import 'settings.dart';
 ///
 /// Wide enough, and both are on screen at once. Narrower, the sidebar becomes
 /// a drawer, because a phone-width column cannot hold a readable conversation
-/// and a list of sessions side by side.
+/// and a list of conversations side by side.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.state});
 
@@ -66,10 +66,10 @@ class _HomeScreenState extends State<HomeScreen> {
     await widget.state.send(text);
   }
 
-  /// _rename : Asks for a new name for a session and applies it.
+  /// _rename : Asks for a new name for a conversation and applies it.
   ///
   /// A dialog rather than editing in place: the tile is also the control that
-  /// switches session, and a text field inside it means every attempt to
+  /// switches conversation, and a text field inside it means every attempt to
   /// rename risks navigating away from what you were reading.
   Future<void> _rename(String id, String current) async {
     final field = TextEditingController(text: current);
@@ -77,7 +77,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: context.colors.surfaceRaised,
-        title: Text('Rename session', style: context.text.subtitle),
+        title: Text('Rename conversation', style: context.text.subtitle),
         // Sized, because AlertDialog gives its content the whole dialog to
         // fill and a lone text field stretches to the bottom of the screen.
         content: SizedBox(
@@ -111,13 +111,13 @@ class _HomeScreenState extends State<HomeScreen> {
     if (title != null) await widget.state.rename(id, title);
   }
 
-  /// _confirmDelete : Asks before removing a session for good.
+  /// _confirmDelete : Asks before removing a conversation for good.
   ///
   /// Archive is reversible and asks nothing. This one cannot be undone and
   /// takes the transcript with it, so it is the only action here that stops
   /// to check.
   Future<void> _confirmDelete(String id, String title) async {
-    final name = title.isEmpty ? 'this session' : '"$title"';
+    final name = title.isEmpty ? 'this conversation' : '"$title"';
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -198,7 +198,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-/// _Sidebar : The sessions, a way to start one, and the way to settings.
+/// _Sidebar : The conversations, a way to start one, and the way to settings.
 class _Sidebar extends StatelessWidget {
   const _Sidebar({
     required this.state,
@@ -211,11 +211,11 @@ class _Sidebar extends StatelessWidget {
   final AppState state;
   final VoidCallback onSettings;
 
-  /// onRename, onDelete : Called with a session and its current name.
+  /// onRename, onDelete : Called with a conversation and its current name.
   final void Function(String id, String title) onRename;
   final void Function(String id, String title) onDelete;
 
-  /// onPicked : Called after a session is chosen, so the drawer can close
+  /// onPicked : Called after a conversation is chosen, so the drawer can close
   /// itself when the sidebar is inside one.
   final VoidCallback? onPicked;
 
@@ -251,14 +251,14 @@ class _Sidebar extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
             child: AppButton(
-              label: 'New session',
+              label: 'New conversation',
               icon: Icons.add,
               variant: AppButtonVariant.secondary,
               expand: true,
               onPressed: state.busy
                   ? null
                   : () async {
-                      await state.newSession();
+                      await state.newConversation();
                       onPicked?.call();
                     },
             ),
@@ -270,7 +270,7 @@ class _Sidebar extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    state.showArchived ? 'Archived' : 'Sessions',
+                    state.showArchived ? 'Archived' : 'Conversations',
                     style: context.text.label.copyWith(
                       color: context.colors.textMuted,
                     ),
@@ -294,12 +294,12 @@ class _Sidebar extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.xs),
           Expanded(
-            child: state.sessions.isEmpty
+            child: state.conversations.isEmpty
                 ? Center(
                     child: Text(
                       state.showArchived
                           ? 'Nothing archived.'
-                          : 'No sessions yet.',
+                          : 'No conversations yet.',
                       style: context.text.caption.copyWith(
                         color: context.colors.textMuted,
                       ),
@@ -309,15 +309,15 @@ class _Sidebar extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(
                       horizontal: AppSpacing.sm,
                     ),
-                    itemCount: state.sessions.length,
+                    itemCount: state.conversations.length,
                     itemBuilder: (context, i) {
-                      final s = state.sessions[i];
+                      final s = state.conversations[i];
                       return Padding(
                         padding: const EdgeInsets.only(bottom: AppSpacing.xxs),
-                        child: AppSessionTile(
+                        child: AppConversationTile(
                           title: s.title.isEmpty ? 'Untitled' : s.title,
                           subtitle: _when(s.updatedAt),
-                          selected: s.id == state.sessionId,
+                          selected: s.id == state.conversationId,
                           active: s.active,
                           onTap: () async {
                             await state.select(s.id);
@@ -394,7 +394,7 @@ class _Conversation extends StatelessWidget {
                   child: AppEmptyState(
                     icon: Icons.chat_bubble_outline,
                     title: 'Nothing here yet',
-                    body: 'Ask something to start this session.',
+                    body: 'Ask something to start this conversation.',
                   ),
                 )
               : ListView.builder(

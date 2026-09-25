@@ -52,9 +52,9 @@ const (
 // endpoint's doing and not the identifier failing validation first, which
 // would pass whatever the endpoint did.
 var (
-	SomeChatID    = chat.NewID()
-	SomeSessionID = chat.NewSessionID()
-	SomeClientID  = chat.NewClientID()
+	SomeChatID         = chat.NewID()
+	SomeConversationID = chat.NewConversationID()
+	SomeClientID       = chat.NewClientID()
 )
 
 // ErrStorage : A storage failure used to check that internal errors are
@@ -205,14 +205,14 @@ func (e *Env) register(t *testing.T) {
 		t.Fatalf("CreateClient: %v", err)
 	}
 
-	session := chat.NewSession(user.ID, "")
-	if err := e.Repo.CreateSession(ctx, session); err != nil {
-		t.Fatalf("CreateSession: %v", err)
+	conversation := chat.NewConversation(user.ID, "")
+	if err := e.Repo.CreateConversation(ctx, conversation); err != nil {
+		t.Fatalf("CreateConversation: %v", err)
 	}
-	if err := e.Repo.SetActiveSession(ctx, user.ID, client.ID, session.ID); err != nil {
-		t.Fatalf("SetActiveSession: %v", err)
+	if err := e.Repo.SetActiveConversation(ctx, user.ID, client.ID, conversation.ID); err != nil {
+		t.Fatalf("SetActiveConversation: %v", err)
 	}
-	client.ActiveSessionID = session.ID
+	client.ActiveConversationID = conversation.ID
 
 	e.Token, e.User, e.Client = token, user, client
 }
@@ -374,16 +374,16 @@ func Records(t *testing.T, buf *bytes.Buffer) []map[string]any {
 	return out
 }
 
-// CreateIn : Submits a prompt continuing the named session, or the active one
-// when sessionID is empty.
-func (e *Env) CreateIn(t *testing.T, sessionID, prompt, query string) views.Chat {
+// CreateIn : Submits a prompt continuing the named conversation, or the active one
+// when conversationID is empty.
+func (e *Env) CreateIn(t *testing.T, conversationID, prompt, query string) views.Chat {
 	t.Helper()
 	body := map[string]any{
 		"model":    "assistant",
 		"messages": []map[string]string{{"role": "user", "content": prompt}},
 	}
-	if sessionID != "" {
-		body["session_id"] = sessionID
+	if conversationID != "" {
+		body["conversation_id"] = conversationID
 	}
 	encoded, _ := json.Marshal(body)
 
@@ -417,14 +417,14 @@ func (e *Env) CreateIn(t *testing.T, sessionID, prompt, query string) views.Chat
 // still running has to send on another goroutine and then look for it. That
 // is what a client does too: it holds the response open and reads as the
 // answer arrives.
-func (e *Env) Ask(t *testing.T, sessionID, prompt string) views.Summary {
+func (e *Env) Ask(t *testing.T, conversationID, prompt string) views.Summary {
 	t.Helper()
 	body := map[string]any{
 		"model":    "assistant",
 		"messages": []map[string]string{{"role": "user", "content": prompt}},
 	}
-	if sessionID != "" {
-		body["session_id"] = sessionID
+	if conversationID != "" {
+		body["conversation_id"] = conversationID
 	}
 	encoded, _ := json.Marshal(body)
 	go func() { _ = e.Serve(e.request(http.MethodPost, "/api/chat", string(encoded), "Bearer "+e.Token)) }()

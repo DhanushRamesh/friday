@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
 	"github.com/DhanushRamesh/personal-assistant/internal/provider"
 	"github.com/DhanushRamesh/personal-assistant/internal/runner"
-	"github.com/DhanushRamesh/personal-assistant/internal/session"
 )
 
 // chatDone : Every status a chat can finish in.
@@ -59,7 +59,7 @@ func (p *recorder) requests() []provider.Request {
 	return append([]provider.Request(nil), p.seen...)
 }
 
-// condensations : The requests that asked for a session to be condensed.
+// condensations : The requests that asked for a conversation to be condensed.
 func (p *recorder) condensations() []provider.Request {
 	var out []provider.Request
 	for _, r := range p.requests() {
@@ -82,23 +82,23 @@ func (p *recorder) asking(prompt string) *provider.Request {
 	return nil
 }
 
-// fill : Says n things in the harness's session, so its history is long
+// fill : Says n things in the harness's conversation, so its history is long
 // enough to be worth condensing.
 func (h *harness) fill(t *testing.T, n int) {
 	t.Helper()
-	id := h.session(t)
+	id := h.conversation(t)
 	for i := 0; i < n; i++ {
-		role, text := session.User, "the person said something"
+		role, text := conversation.User, "the person said something"
 		if i%2 == 1 {
-			role, text = session.Assistant, "the assistant answered"
+			role, text = conversation.Assistant, "the assistant answered"
 		}
-		m := session.Message{
-			ID:        session.NewMessageID(),
-			SessionID: id,
-			Kind:      session.Chat,
-			Role:      role,
-			Content:   text,
-			At:        time.Now().UTC(),
+		m := conversation.Message{
+			ID:             conversation.NewMessageID(),
+			ConversationID: id,
+			Kind:           conversation.Chat,
+			Role:           role,
+			Content:        text,
+			At:             time.Now().UTC(),
 		}
 		if _, err := h.repo.Append(context.Background(), m); err != nil {
 			t.Fatalf("Append: %v", err)
@@ -106,21 +106,21 @@ func (h *harness) fill(t *testing.T, n int) {
 	}
 }
 
-// summary : The session's stored summary.
-func (h *harness) summary(t *testing.T) session.Summary {
+// summary : The conversation's stored summary.
+func (h *harness) summary(t *testing.T) conversation.Summary {
 	t.Helper()
-	s, err := h.repo.Summary(context.Background(), h.session(t))
+	s, err := h.repo.Summary(context.Background(), h.conversation(t))
 	if err != nil {
 		t.Fatalf("Summary: %v", err)
 	}
 	return s
 }
 
-// awaitSummary : Waits for the session to be condensed.
+// awaitSummary : Waits for the conversation to be condensed.
 //
 // Condensing happens after the chat reaches its final status, so waiting for
 // the chat is not enough to see it.
-func (h *harness) awaitSummary(t *testing.T) session.Summary {
+func (h *harness) awaitSummary(t *testing.T) conversation.Summary {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -129,8 +129,8 @@ func (h *harness) awaitSummary(t *testing.T) session.Summary {
 		}
 		time.Sleep(2 * time.Millisecond)
 	}
-	t.Fatal("the session was never condensed")
-	return session.Summary{}
+	t.Fatal("the conversation was never condensed")
+	return conversation.Summary{}
 }
 
 // settle : Waits for everything the runner has in flight, including work that
@@ -144,9 +144,9 @@ func (h *harness) settle(t *testing.T) {
 	}
 }
 
-// A session short enough to send in full is left alone: condensing it would
+// A conversation short enough to send in full is left alone: condensing it would
 // spend a model call to lose detail for nothing.
-func TestAShortSessionIsNotCondensed(t *testing.T) {
+func TestAShortConversationIsNotCondensed(t *testing.T) {
 	p := &recorder{notes: "they talked"}
 	h := newHarness(t, p, runner.Options{})
 
@@ -155,7 +155,7 @@ func TestAShortSessionIsNotCondensed(t *testing.T) {
 	h.settle(t)
 
 	if got := p.condensations(); len(got) != 0 {
-		t.Errorf("condensed a short session %d times", len(got))
+		t.Errorf("condensed a short conversation %d times", len(got))
 	}
 	if s := h.summary(t); s.Text != "" {
 		t.Errorf("summary = %q, want none", s.Text)
@@ -163,10 +163,10 @@ func TestAShortSessionIsNotCondensed(t *testing.T) {
 }
 
 // Once the conversation nears a ceiling its earliest part is folded into the
-// session's notes, and the messages themselves stay where they are.
-func TestALongSessionIsCondensedAfterTheTurn(t *testing.T) {
+// conversation's notes, and the messages themselves stay where they are.
+func TestALongConversationIsCondensedAfterTheTurn(t *testing.T) {
 	p := &recorder{notes: "The person asked about the roof and was told it is fine."}
-	h := newHarness(t, p, runner.Options{HistoryLimits: session.Limits{Count: 100}})
+	h := newHarness(t, p, runner.Options{HistoryLimits: conversation.Limits{Count: 100}})
 
 	h.fill(t, 94)
 	tk := h.submit(t, "and what about the gutters")
@@ -182,12 +182,12 @@ func TestALongSessionIsCondensedAfterTheTurn(t *testing.T) {
 
 	// The transcript records what was said, so condensing must not remove
 	// any of it.
-	said, err := h.repo.All(context.Background(), h.session(t))
+	said, err := h.repo.All(context.Background(), h.conversation(t))
 	if err != nil {
 		t.Fatalf("All: %v", err)
 	}
 	if len(said) != 96 {
-		t.Errorf("session holds %d messages, want all 96 still there", len(said))
+		t.Errorf("conversation holds %d messages, want all 96 still there", len(said))
 	}
 }
 
@@ -195,19 +195,19 @@ func TestALongSessionIsCondensedAfterTheTurn(t *testing.T) {
 // apart from the answer to it.
 func TestCondensingStopsAtATurnBoundary(t *testing.T) {
 	p := &recorder{notes: "notes"}
-	h := newHarness(t, p, runner.Options{HistoryLimits: session.Limits{Count: 100}})
+	h := newHarness(t, p, runner.Options{HistoryLimits: conversation.Limits{Count: 100}})
 
 	h.fill(t, 94)
 	tk := h.submit(t, "and what about the gutters")
 	h.await(t, tk.ID, chatDone...)
 	s := h.awaitSummary(t)
 
-	said, err := h.repo.All(context.Background(), h.session(t))
+	said, err := h.repo.All(context.Background(), h.conversation(t))
 	if err != nil {
 		t.Fatalf("All: %v", err)
 	}
 	for _, m := range said {
-		if m.Seq == s.ThroughSeq+1 && m.Role != session.User {
+		if m.Seq == s.ThroughSeq+1 && m.Role != conversation.User {
 			t.Errorf("what is left verbatim opens with %s at seq %d, want a question", m.Role, m.Seq)
 		}
 	}
@@ -217,7 +217,7 @@ func TestCondensingStopsAtATurnBoundary(t *testing.T) {
 func TestTheSummaryIsSentOnTheNextTurn(t *testing.T) {
 	notes := "The person asked about the roof and was told it is fine."
 	p := &recorder{notes: notes}
-	h := newHarness(t, p, runner.Options{HistoryLimits: session.Limits{Count: 100}})
+	h := newHarness(t, p, runner.Options{HistoryLimits: conversation.Limits{Count: 100}})
 
 	h.fill(t, 94)
 	first := h.submit(t, "and what about the gutters")
@@ -239,11 +239,11 @@ func TestTheSummaryIsSentOnTheNextTurn(t *testing.T) {
 	}
 }
 
-// A provider that will not condense costs the session nothing: the notes stay
+// A provider that will not condense costs the conversation nothing: the notes stay
 // as they were, and the conversation carries on.
-func TestACondensationThatFailsLeavesTheSessionAlone(t *testing.T) {
+func TestACondensationThatFailsLeavesTheConversationAlone(t *testing.T) {
 	p := &recorder{notes: ""}
-	h := newHarness(t, p, runner.Options{HistoryLimits: session.Limits{Count: 100}})
+	h := newHarness(t, p, runner.Options{HistoryLimits: conversation.Limits{Count: 100}})
 
 	h.fill(t, 94)
 	tk := h.submit(t, "and what about the gutters")
@@ -264,7 +264,7 @@ func TestACondensationThatFailsLeavesTheSessionAlone(t *testing.T) {
 // a race with the run itself.
 func (h *harness) submitModel(t *testing.T, prompt string, model chat.Model) *chat.Chat {
 	t.Helper()
-	tk, err := chat.New(h.session(t), chat.ChannelDirect, prompt)
+	tk, err := chat.New(h.conversation(t), chat.ChannelDirect, prompt)
 	if err != nil {
 		t.Fatalf("chat.New: %v", err)
 	}
@@ -327,7 +327,7 @@ func TestASmallerModelIsSentLessHistory(t *testing.T) {
 	h.fill(t, 60)
 
 	// Qwen 3 8B holds 32,768 tokens against Claude's 200,000, so the same
-	// session reaches the provider differently depending on which answers.
+	// conversation reaches the provider differently depending on which answers.
 	small := h.submitModel(t, "on the small one", chat.NewModel("ollama", "qwen3:8b"))
 	h.await(t, small.ID, chatDone...)
 

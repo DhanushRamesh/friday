@@ -166,13 +166,13 @@ class AssistantApi {
   Future<void> revokeClient(String clientId) =>
       _send('DELETE', '/v1/clients/$clientId', expectBody: false);
 
-  /// createSession : Starts a new thread. It becomes this client's active
+  /// createConversation : Starts a new thread. It becomes this client's active
   /// one unless [activate] says otherwise.
-  Future<Session> createSession({String? title, bool activate = true}) async =>
-      Session.fromJson(
+  Future<Conversation> createConversation({String? title, bool activate = true}) async =>
+      Conversation.fromJson(
         await _send(
           'POST',
-          '/v1/sessions',
+          '/v1/conversations',
           body: {
             if (title != null && title.isNotEmpty) 'title': title,
             'activate': activate,
@@ -180,60 +180,60 @@ class AssistantApi {
         ),
       );
 
-  /// listSessions : Returns sessions, most recently used first.
-  Future<List<Session>> listSessions({int? limit, bool archived = false}) async => parseList(
+  /// listConversations : Returns conversations, most recently used first.
+  Future<List<Conversation>> listConversations({int? limit, bool archived = false}) async => parseList(
     await _send(
       'GET',
-      '/v1/sessions',
+      '/v1/conversations',
       query: {
         if (limit != null) 'limit': '$limit',
         if (archived) 'archived': 'true',
       },
     ),
-    'sessions',
-    Session.fromJson,
+    'conversations',
+    Conversation.fromJson,
   );
 
-  /// session : Returns a session with its chats, oldest first.
-  Future<SessionDetail> session(String sessionId) async =>
-      SessionDetail.fromJson(await _send('GET', '/v1/sessions/$sessionId'));
+  /// conversation : Returns a conversation with its chats, oldest first.
+  Future<ConversationDetail> conversation(String conversationId) async =>
+      ConversationDetail.fromJson(await _send('GET', '/v1/conversations/$conversationId'));
 
-  /// activateSession : Moves this client into a session. Other clients of
+  /// activateConversation : Moves this client into a conversation. Other clients of
   /// the same user stay where they are.
-  Future<Session> activateSession(String sessionId) async =>
-      Session.fromJson(await _send('POST', '/v1/sessions/$sessionId/activate'));
+  Future<Conversation> activateConversation(String conversationId) async =>
+      Conversation.fromJson(await _send('POST', '/v1/conversations/$conversationId/activate'));
 
-  /// archiveSession : Puts a session away, or brings it back.
+  /// archiveConversation : Puts a conversation away, or brings it back.
   ///
-  /// Archiving the session this client is in leaves it nowhere to talk, so the
-  /// server starts a fresh one and returns it. Unarchiving returns the session
+  /// Archiving the conversation this client is in leaves it nowhere to talk, so the
+  /// server starts a fresh one and returns it. Unarchiving returns the conversation
   /// itself, since nothing moved.
-  Future<Session> archiveSession(String sessionId, {bool archived = true}) async {
+  Future<Conversation> archiveConversation(String conversationId, {bool archived = true}) async {
     final path = archived ? 'archive' : 'unarchive';
-    final json = await _send('POST', '/v1/sessions/$sessionId/$path');
-    return Session.fromJson(
+    final json = await _send('POST', '/v1/conversations/$conversationId/$path');
+    return Conversation.fromJson(
       archived ? json['active'] as Map<String, dynamic> : json,
     );
   }
 
-  /// deleteSession : Removes a session and everything said in it.
+  /// deleteConversation : Removes a conversation and everything said in it.
   ///
-  /// Nothing here can be undone. Returns the session this client is in
-  /// afterwards, which is a fresh one when the deleted session was the one it
+  /// Nothing here can be undone. Returns the conversation this client is in
+  /// afterwards, which is a fresh one when the deleted conversation was the one it
   /// was using.
-  Future<Session> deleteSession(String sessionId) async {
-    final json = await _send('DELETE', '/v1/sessions/$sessionId');
-    return Session.fromJson(json['active'] as Map<String, dynamic>);
+  Future<Conversation> deleteConversation(String conversationId) async {
+    final json = await _send('DELETE', '/v1/conversations/$conversationId');
+    return Conversation.fromJson(json['active'] as Map<String, dynamic>);
   }
 
-  /// renameSession : Changes what a session is called.
+  /// renameConversation : Changes what a conversation is called.
   ///
   /// An empty title clears the name rather than being refused, so a name
   /// given by mistake can be taken off without deleting the conversation.
-  Future<Session> renameSession(String sessionId, String title) async =>
-      Session.fromJson(await _send(
+  Future<Conversation> renameConversation(String conversationId, String title) async =>
+      Conversation.fromJson(await _send(
         'POST',
-        '/v1/sessions/$sessionId/rename',
+        '/v1/conversations/$conversationId/rename',
         body: {'title': title},
       ));
 
@@ -245,8 +245,8 @@ class AssistantApi {
   /// and detail when there was one.
   ///
   /// Sending a prompt supersedes whatever is still running in the same
-  /// session, so a correction cancels the question it corrects.
-  Stream<AnswerChunk> ask(String prompt, {String? sessionId}) async* {
+  /// conversation, so a correction cancels the question it corrects.
+  Stream<AnswerChunk> ask(String prompt, {String? conversationId}) async* {
     final token = _token;
     if (token == null) throw const NotAuthenticated();
 
@@ -264,7 +264,7 @@ class AssistantApi {
           'messages': [
             {'role': 'user', 'content': prompt},
           ],
-          if (sessionId != null && sessionId.isNotEmpty) 'session_id': sessionId,
+          if (conversationId != null && conversationId.isNotEmpty) 'conversation_id': conversationId,
         }),
       );
     } on Object catch (e) {
@@ -292,10 +292,10 @@ class AssistantApi {
     }
   }
 
-  /// session, so a correction cancels the question it corrects.
+  /// conversation, so a correction cancels the question it corrects.
   Future<Chat> createChat(
     String prompt, {
-    String? sessionId,
+    String? conversationId,
     Duration? wait,
   }) async => Chat.fromJson(
     await _send(
@@ -304,7 +304,7 @@ class AssistantApi {
       query: {if (wait != null) 'wait': _duration(wait)},
       body: {
         'prompt': prompt,
-        if (sessionId != null && sessionId.isNotEmpty) 'session_id': sessionId,
+        if (conversationId != null && conversationId.isNotEmpty) 'conversation_id': conversationId,
       },
       overrideTimeout: wait == null ? null : wait + _waitMargin,
     ),

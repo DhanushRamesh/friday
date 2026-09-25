@@ -15,31 +15,31 @@ import (
 
 // Where a prompt lands, and what happens to what was already running there,
 // is decided when a chat is created, so it is covered here rather than with
-// the session endpoints.
+// the conversation endpoints.
 
-// A chat created without naming a session lands in one, and the caller is
+// A chat created without naming a conversation lands in one, and the caller is
 // told which, so a follow-up can continue it.
-func TestCreatingAChatLandsInASession(t *testing.T) {
+func TestCreatingAChatLandsInAConversation(t *testing.T) {
 	e := apitest.New(t)
 
 	created := e.CreateIn(t, "", "first question", "")
 
-	if created.SessionID == "" {
-		t.Fatal("no session returned, so a follow-up has nothing to continue")
+	if created.ConversationID == "" {
+		t.Fatal("no conversation returned, so a follow-up has nothing to continue")
 	}
-	if !chat.ValidSessionID(created.SessionID) {
-		t.Errorf("session id = %q, want a valid identifier", created.SessionID)
+	if !chat.ValidConversationID(created.ConversationID) {
+		t.Errorf("conversation id = %q, want a valid identifier", created.ConversationID)
 	}
 }
 
-func TestChatsInTheSameSessionShareIt(t *testing.T) {
+func TestChatsInTheSameConversationShareIt(t *testing.T) {
 	e := apitest.New(t)
 
 	first := e.CreateIn(t, "", "first question", "?wait=5s")
-	second := e.CreateIn(t, first.SessionID, "second question", "?wait=5s")
+	second := e.CreateIn(t, first.ConversationID, "second question", "?wait=5s")
 
-	if second.SessionID != first.SessionID {
-		t.Errorf("session = %q, want %q", second.SessionID, first.SessionID)
+	if second.ConversationID != first.ConversationID {
+		t.Errorf("conversation = %q, want %q", second.ConversationID, first.ConversationID)
 	}
 }
 
@@ -50,7 +50,7 @@ func TestHistoryReachesTheProvider(t *testing.T) {
 	e := apitest.NewWith(t, apitest.Options{Provider: recorder})
 
 	first := e.CreateIn(t, "", "List three programming languages.", "?wait=5s")
-	e.CreateIn(t, first.SessionID, "No, make it four.", "?wait=5s")
+	e.CreateIn(t, first.ConversationID, "No, make it four.", "?wait=5s")
 
 	seen := recorder.LastHistory()
 	if len(seen) == 0 {
@@ -74,7 +74,7 @@ func TestThePromptIsNotAlsoInItsOwnHistory(t *testing.T) {
 	e := apitest.NewWith(t, apitest.Options{Provider: recorder})
 
 	first := e.CreateIn(t, "", "List three programming languages.", "?wait=5s")
-	e.CreateIn(t, first.SessionID, "No, make it four.", "?wait=5s")
+	e.CreateIn(t, first.ConversationID, "No, make it four.", "?wait=5s")
 
 	if got := recorder.LastPrompt(); got != "No, make it four." {
 		t.Fatalf("prompt = %q", got)
@@ -94,7 +94,7 @@ func TestHistoryCarriesBothSpeakers(t *testing.T) {
 	e := apitest.NewWith(t, apitest.Options{Provider: recorder})
 
 	first := e.CreateIn(t, "", "List three programming languages.", "?wait=5s")
-	e.CreateIn(t, first.SessionID, "No, make it four.", "?wait=5s")
+	e.CreateIn(t, first.ConversationID, "No, make it four.", "?wait=5s")
 
 	var roles []provider.Role
 	for _, turn := range recorder.LastHistory() {
@@ -109,25 +109,25 @@ func TestHistoryCarriesBothSpeakers(t *testing.T) {
 	}
 }
 
-// Naming a session sends one prompt there without moving the client, so a
+// Naming a conversation sends one prompt there without moving the client, so a
 // speaker can answer a question from another thread and stay where it was.
-func TestNamingASessionDoesNotMoveTheClient(t *testing.T) {
+func TestNamingAConversationDoesNotMoveTheClient(t *testing.T) {
 	e := apitest.New(t)
 	here := e.CreateIn(t, "", "a question here", "?wait=5s")
 
-	rec := e.Do(t, http.MethodPost, "/v1/sessions", `{"title":"elsewhere","activate":false}`)
-	var elsewhere views.Session
+	rec := e.Do(t, http.MethodPost, "/v1/conversations", `{"title":"elsewhere","activate":false}`)
+	var elsewhere views.Conversation
 	e.Decode(t, rec, &elsewhere)
 
 	sent := e.CreateIn(t, elsewhere.ID, "a question over there", "?wait=5s")
-	if sent.SessionID != elsewhere.ID {
-		t.Fatalf("prompt landed in %s, want the named %s", sent.SessionID, elsewhere.ID)
+	if sent.ConversationID != elsewhere.ID {
+		t.Fatalf("prompt landed in %s, want the named %s", sent.ConversationID, elsewhere.ID)
 	}
 
 	// The next unnamed prompt goes back to where the client actually is.
 	next := e.CreateIn(t, "", "and another here", "?wait=5s")
-	if next.SessionID != here.SessionID {
-		t.Errorf("client moved to %s, want it still in %s", next.SessionID, here.SessionID)
+	if next.ConversationID != here.ConversationID {
+		t.Errorf("client moved to %s, want it still in %s", next.ConversationID, here.ConversationID)
 	}
 }
 
@@ -140,7 +140,7 @@ func TestANewPromptSupersedesARunningChat(t *testing.T) {
 
 	first := e.Ask(t, "", "List three programming languages.")
 
-	e.CreateIn(t, first.SessionID, "No, make it four.", "")
+	e.CreateIn(t, first.ConversationID, "No, make it four.", "")
 
 	superseded := e.AwaitStatus(t, first.ID,
 		string(chat.StatusCancelled), string(chat.StatusCompleted), string(chat.StatusFailed))
@@ -149,37 +149,37 @@ func TestANewPromptSupersedesARunningChat(t *testing.T) {
 	}
 }
 
-// A prompt in one session must not disturb a chat running in another.
-func TestSupersedingIsScopedToOneSession(t *testing.T) {
+// A prompt in one conversation must not disturb a chat running in another.
+func TestSupersedingIsScopedToOneConversation(t *testing.T) {
 	e := apitest.NewWith(t, apitest.Options{
 		Provider: &provider.Stub{Updates: []string{"a", "b", "c", "d"}, Delay: 50 * time.Millisecond},
 	})
 
-	// A chat running in the session that is active to begin with.
+	// A chat running in the conversation that is active to begin with.
 	elsewhere := e.Ask(t, "", "a question over here")
 
-	// A second session, which becomes the active one.
-	rec := e.Do(t, http.MethodPost, "/v1/sessions", `{"title":"another"}`)
+	// A second conversation, which becomes the active one.
+	rec := e.Do(t, http.MethodPost, "/v1/conversations", `{"title":"another"}`)
 	if rec.Code != http.StatusCreated {
-		t.Fatalf("create session: status %d: %s", rec.Code, rec.Body)
+		t.Fatalf("create conversation: status %d: %s", rec.Code, rec.Body)
 	}
-	var second views.Session
+	var second views.Conversation
 	e.Decode(t, rec, &second)
-	if second.ID == elsewhere.SessionID {
-		t.Fatal("the new session is the old one, so this proves nothing")
+	if second.ID == elsewhere.ConversationID {
+		t.Fatal("the new conversation is the old one, so this proves nothing")
 	}
 
-	// A prompt now lands in the second session.
+	// A prompt now lands in the second conversation.
 	landed := e.CreateIn(t, "", "a question over there", "")
-	if landed.SessionID != second.ID {
-		t.Fatalf("prompt landed in %s, want the newly activated %s", landed.SessionID, second.ID)
+	if landed.ConversationID != second.ID {
+		t.Fatalf("prompt landed in %s, want the newly activated %s", landed.ConversationID, second.ID)
 	}
 
-	// The chat in the other session must be untouched.
+	// The chat in the other conversation must be untouched.
 	finished := e.AwaitStatus(t, elsewhere.ID,
 		string(chat.StatusCompleted), string(chat.StatusCancelled), string(chat.StatusFailed))
 	if finished.Status == string(chat.StatusCancelled) {
-		t.Error("a chat was cancelled by a prompt in a different session")
+		t.Error("a chat was cancelled by a prompt in a different conversation")
 	}
 }
 
@@ -191,7 +191,7 @@ func TestASupersededPromptStaysInHistory(t *testing.T) {
 
 	first := e.Ask(t, "", "List three programming languages.")
 
-	second := e.CreateIn(t, first.SessionID, "No, make it four.", "")
+	second := e.CreateIn(t, first.ConversationID, "No, make it four.", "")
 	e.AwaitStatus(t, second.ID,
 		string(chat.StatusCompleted), string(chat.StatusFailed), string(chat.StatusCancelled))
 
@@ -204,35 +204,35 @@ func TestASupersededPromptStaysInHistory(t *testing.T) {
 	}
 }
 
-func TestUnknownSessionIsRejected(t *testing.T) {
+func TestUnknownConversationIsRejected(t *testing.T) {
 	e := apitest.New(t)
 
-	for _, id := range []string{chat.NewSessionID(), "not-an-id"} {
+	for _, id := range []string{chat.NewConversationID(), "not-an-id"} {
 		body, _ := json.Marshal(map[string]any{
-			"model":      "assistant",
-			"messages":   []map[string]string{{"role": "user", "content": "hello"}},
-			"session_id": id,
+			"model":           "assistant",
+			"messages":        []map[string]string{{"role": "user", "content": "hello"}},
+			"conversation_id": id,
 		})
 		rec := e.Do(t, http.MethodPost, "/api/chat", string(body))
 		if rec.Code != http.StatusNotFound {
-			t.Errorf("session %q: status = %d, want 404", id, rec.Code)
+			t.Errorf("conversation %q: status = %d, want 404", id, rec.Code)
 		}
 	}
 }
 
-// A prompt must not be sent into another user's session.
-func TestAnotherUsersSessionCannotBeUsed(t *testing.T) {
+// A prompt must not be sent into another user's conversation.
+func TestAnotherUsersConversationCannotBeUsed(t *testing.T) {
 	e := apitest.New(t)
 
 	stranger, _ := chat.NewUser("stranger", "hash")
 	_ = e.Repo.CreateUser(t.Context(), stranger)
-	theirs := chat.NewSession(stranger.ID, "private")
-	_ = e.Repo.CreateSession(t.Context(), theirs)
+	theirs := chat.NewConversation(stranger.ID, "private")
+	_ = e.Repo.CreateConversation(t.Context(), theirs)
 
 	body, _ := json.Marshal(map[string]any{
-		"model":      "assistant",
-		"messages":   []map[string]string{{"role": "user", "content": "hello"}},
-		"session_id": theirs.ID,
+		"model":           "assistant",
+		"messages":        []map[string]string{{"role": "user", "content": "hello"}},
+		"conversation_id": theirs.ID,
 	})
 	rec := e.Do(t, http.MethodPost, "/api/chat", string(body))
 	if rec.Code != http.StatusNotFound {

@@ -25,7 +25,7 @@ func TestMigrateCreatesTheSchema(t *testing.T) {
 	db := migrated(t)
 	ctx := context.Background()
 
-	for _, table := range []string{"chats", "sessions", "messages"} {
+	for _, table := range []string{"chats", "conversations", "messages"} {
 		var count int
 		err := db.Raw(`SELECT COUNT(*) FROM information_schema.tables
 		               WHERE table_schema = DATABASE() AND table_name = ?`, table).
@@ -98,17 +98,17 @@ func TestTimestampColumnsKeepMilliseconds(t *testing.T) {
 	}
 }
 
-// Deleting a session must take its chats and its transcript with it, or they
+// Deleting a conversation must take its chats and its transcript with it, or they
 // accumulate with nothing to belong to. Archiving and deleting both rely on
 // this rather than removing the rows themselves.
-func TestDeletingASessionCascades(t *testing.T) {
+func TestDeletingAConversationCascades(t *testing.T) {
 	db := migrated(t)
 
 	const user = "usr_01TESTCASCADE00000000000"
 	const sess = "sess_01TESTCASCADE0000000000000"
 	const id = "chat_01TESTCASCADE0000000000000"
 	t.Cleanup(func() {
-		db.Exec(`DELETE FROM sessions WHERE id = ?`, sess)
+		db.Exec(`DELETE FROM conversations WHERE id = ?`, sess)
 		db.Exec(`DELETE FROM users WHERE id = ?`, user)
 	})
 
@@ -116,34 +116,34 @@ func TestDeletingASessionCascades(t *testing.T) {
 	                   VALUES (?, ?, 'x', NOW(3), NOW(3))`, user, user).Error; err != nil {
 		t.Fatalf("insert user: %v", err)
 	}
-	if err := db.Exec(`INSERT INTO sessions (id, user_id, created_at, updated_at)
+	if err := db.Exec(`INSERT INTO conversations (id, user_id, created_at, updated_at)
 	                   VALUES (?, ?, NOW(3), NOW(3))`, sess, user).Error; err != nil {
-		t.Fatalf("insert session: %v", err)
+		t.Fatalf("insert conversation: %v", err)
 	}
-	if err := db.Exec(`INSERT INTO chats (id, session_id, prompt, status, created_at, updated_at)
+	if err := db.Exec(`INSERT INTO chats (id, conversation_id, prompt, status, created_at, updated_at)
 	                   VALUES (?, ?, 'x', 'pending', NOW(3), NOW(3))`, id, sess).Error; err != nil {
 		t.Fatalf("insert chat: %v", err)
 	}
-	if err := db.Exec(`INSERT INTO messages (id, session_id, seq, kind, role, content, created_at)
+	if err := db.Exec(`INSERT INTO messages (id, conversation_id, seq, kind, role, content, created_at)
 	                   VALUES (?, ?, 1, 'chat', 'user', 'x', NOW(3))`,
 		"msg_01TESTCASCADE00000000000000"[:30], sess).Error; err != nil {
 		t.Fatalf("insert message: %v", err)
 	}
 
-	if err := db.Exec(`DELETE FROM sessions WHERE id = ?`, sess).Error; err != nil {
-		t.Fatalf("delete session: %v", err)
+	if err := db.Exec(`DELETE FROM conversations WHERE id = ?`, sess).Error; err != nil {
+		t.Fatalf("delete conversation: %v", err)
 	}
 
 	for _, q := range []string{
-		`SELECT COUNT(*) FROM chats WHERE session_id = ?`,
-		`SELECT COUNT(*) FROM messages WHERE session_id = ?`,
+		`SELECT COUNT(*) FROM chats WHERE conversation_id = ?`,
+		`SELECT COUNT(*) FROM messages WHERE conversation_id = ?`,
 	} {
 		var remaining int
 		if err := db.Raw(q, sess).Scan(&remaining).Error; err != nil {
 			t.Fatalf("count: %v", err)
 		}
 		if remaining != 0 {
-			t.Errorf("%d rows outlived the session: %s", remaining, q)
+			t.Errorf("%d rows outlived the conversation: %s", remaining, q)
 		}
 	}
 }

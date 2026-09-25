@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../tokens.dart';
 
-/// AppSessionTile : One session in the sidebar.
+/// AppConversationTile : One conversation in the sidebar.
 ///
-/// A session usually has no title — it is whatever was said in it — so an
+/// A conversation usually has no title — it is whatever was said in it — so an
 /// untitled one falls back to its first prompt rather than showing an
 /// identifier nobody can read.
-class AppSessionTile extends StatefulWidget {
-  const AppSessionTile({
+class AppConversationTile extends StatefulWidget {
+  const AppConversationTile({
     super.key,
     required this.title,
     required this.selected,
@@ -23,7 +23,7 @@ class AppSessionTile extends StatefulWidget {
 
   final String title;
 
-  /// selected : Whether this is the session being looked at.
+  /// selected : Whether this is the conversation being looked at.
   final bool selected;
 
   /// active : Whether this is where a prompt from this client would land.
@@ -33,7 +33,7 @@ class AppSessionTile extends StatefulWidget {
   final String? subtitle;
   final VoidCallback onTap;
 
-  /// archived : Whether this session has been put away, which decides
+  /// archived : Whether this conversation has been put away, which decides
   /// whether the menu offers to archive it or to bring it back.
   final bool archived;
 
@@ -44,10 +44,10 @@ class AppSessionTile extends StatefulWidget {
   final VoidCallback? onDelete;
 
   @override
-  State<AppSessionTile> createState() => _FSessionTileState();
+  State<AppConversationTile> createState() => _ConversationTileState();
 }
 
-class _FSessionTileState extends State<AppSessionTile> {
+class _ConversationTileState extends State<AppConversationTile> {
   bool _hovered = false;
 
   bool get _hasActions =>
@@ -84,7 +84,7 @@ class _FSessionTileState extends State<AppSessionTile> {
           child: Row(
             children: [
               // Marks where a prompt would land, which is not always the
-              // session on screen.
+              // conversation on screen.
               Container(
                 width: 5,
                 height: 5,
@@ -138,10 +138,10 @@ class _FSessionTileState extends State<AppSessionTile> {
   }
 }
 
-/// _TileMenu : Rename, archive and delete for one session.
+/// _TileMenu : Rename, archive and delete for one conversation.
 ///
-/// Shown on hover or while the session is selected, rather than always: a
-/// column of sessions each carrying visible buttons is a column of buttons
+/// Shown on hover or while the conversation is selected, rather than always: a
+/// column of conversations each carrying visible buttons is a column of buttons
 /// with names attached.
 class _TileMenu extends StatelessWidget {
   const _TileMenu({
@@ -165,7 +165,7 @@ class _TileMenu extends StatelessWidget {
       splashRadius: 14,
       color: colors.surfaceRaised,
       icon: Icon(Icons.more_horiz, size: 16, color: colors.textMuted),
-      // The tile underneath is what switches session, and a tap that lands on
+      // The tile underneath is what switches conversation, and a tap that lands on
       // it while aiming for the menu would navigate away instead.
       onSelected: (action) => action(),
       itemBuilder: (context) => [

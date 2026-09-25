@@ -7,40 +7,40 @@ import (
 	"strings"
 
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
 	"github.com/DhanushRamesh/personal-assistant/internal/provider"
-	"github.com/DhanushRamesh/personal-assistant/internal/session"
 )
 
 // errNoAnswer : Returned when a provider's stream ends without a result.
 var errNoAnswer = errors.New("runner: the provider said nothing")
 
-// condense : Folds the earliest part of a session into its running notes when
+// condense : Folds the earliest part of a conversation into its running notes when
 // the conversation has grown close to a ceiling.
 //
-// Every failure here is logged and dropped. The session is left as it was, so
+// Every failure here is logged and dropped. The conversation is left as it was, so
 // the next turn sends what it can and tries again; nothing the person asked
 // for depends on this succeeding.
 func (r *Runner) condense(ctx context.Context, t *chat.Chat) {
-	sessionID := t.SessionID
-	if sessionID == "" {
+	conversationID := t.ConversationID
+	if conversationID == "" {
 		return
 	}
 
 	limits := r.limitsFor(t.Model)
 
-	current, err := r.messages.Summary(ctx, sessionID)
+	current, err := r.messages.Summary(ctx, conversationID)
 	if err != nil {
-		r.logger.ErrorContext(ctx, "cannot read session summary", slog.Any("error", err))
+		r.logger.ErrorContext(ctx, "cannot read conversation summary", slog.Any("error", err))
 		return
 	}
 
-	said, err := r.messages.All(ctx, sessionID)
+	said, err := r.messages.All(ctx, conversationID)
 	if err != nil {
-		r.logger.ErrorContext(ctx, "cannot read session history", slog.Any("error", err))
+		r.logger.ErrorContext(ctx, "cannot read conversation history", slog.Any("error", err))
 		return
 	}
 
-	through, due := session.Due(said, current, limits)
+	through, due := conversation.Due(said, current, limits)
 	if !due {
 		return
 	}
@@ -53,30 +53,30 @@ func (r *Runner) condense(ctx context.Context, t *chat.Chat) {
 	askCtx, cancel := context.WithTimeout(ctx, r.condenseTimeout)
 	defer cancel()
 
-	notes, err := r.ask(askCtx, t.Model, session.CondensePrompt(current.Text, fold))
+	notes, err := r.ask(askCtx, t.Model, conversation.CondensePrompt(current.Text, fold))
 	if err != nil {
-		r.logger.WarnContext(ctx, "cannot condense the session",
-			slog.String("session_id", sessionID), slog.Any("error", err))
+		r.logger.WarnContext(ctx, "cannot condense the conversation",
+			slog.String("conversation_id", conversationID), slog.Any("error", err))
 		return
 	}
 
-	next := session.Summary{Text: notes, ThroughSeq: through}
-	if err := r.messages.SetSummary(ctx, sessionID, next); err != nil {
-		r.logger.ErrorContext(ctx, "cannot store the session summary",
-			slog.String("session_id", sessionID), slog.Any("error", err))
+	next := conversation.Summary{Text: notes, ThroughSeq: through}
+	if err := r.messages.SetSummary(ctx, conversationID, next); err != nil {
+		r.logger.ErrorContext(ctx, "cannot store the conversation summary",
+			slog.String("conversation_id", conversationID), slog.Any("error", err))
 		return
 	}
 
-	r.logger.InfoContext(ctx, "session condensed",
-		slog.String("session_id", sessionID),
+	r.logger.InfoContext(ctx, "conversation condensed",
+		slog.String("conversation_id", conversationID),
 		slog.Int("through_seq", through),
 		slog.Int("messages", len(fold)),
 		slog.Int("summary_bytes", len(notes)))
 }
 
 // between : The messages after seq and up to and including through.
-func between(messages []session.Message, after, through int) []session.Message {
-	out := make([]session.Message, 0, len(messages))
+func between(messages []conversation.Message, after, through int) []conversation.Message {
+	out := make([]conversation.Message, 0, len(messages))
 	for _, m := range messages {
 		if m.Seq > after && m.Seq <= through {
 			out = append(out, m)

@@ -50,13 +50,13 @@ func assertKeys(t *testing.T, v any, want ...string) {
 func TestChatPublishesItsFields(t *testing.T) {
 	now := time.Now().UTC().Truncate(chat.StoredPrecision)
 	tk := &chat.Chat{
-		ID: chat.NewID(), SessionID: chat.NewSessionID(), Prompt: "hello",
+		ID: chat.NewID(), ConversationID: chat.NewConversationID(), Prompt: "hello",
 		Status: chat.StatusCompleted, Response: "hi", CreatedAt: now, UpdatedAt: now,
 		StartedAt: &now, FinishedAt: &now,
 	}
 
 	assertKeys(t, views.OfChat(tk),
-		"id", "session_id", "prompt", "status", "response",
+		"id", "conversation_id", "prompt", "status", "response",
 		"created_at", "updated_at", "started_at", "finished_at")
 }
 
@@ -101,10 +101,10 @@ func TestClientNeverPublishesTheToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("chat.NewClient: %v", err)
 	}
-	client.ActiveSessionID = chat.NewSessionID()
+	client.ActiveConversationID = chat.NewConversationID()
 
 	assertKeys(t, views.OfClient(*client, true),
-		"id", "name", "channel", "current", "revoked", "active_session_id",
+		"id", "name", "channel", "current", "revoked", "active_conversation_id",
 		"created_at")
 
 	raw, _ := json.Marshal(views.OfClient(*client, true))
@@ -128,9 +128,9 @@ func TestClientAlwaysStatesWhetherRevoked(t *testing.T) {
 	}
 }
 
-func TestSessionPublishesItsFields(t *testing.T) {
-	session := chat.NewSession(chat.NewUserID(), "groceries")
+func TestConversationPublishesItsFields(t *testing.T) {
+	conversation := chat.NewConversation(chat.NewUserID(), "groceries")
 
-	assertKeys(t, views.OfSession(*session, true),
+	assertKeys(t, views.OfConversation(*conversation, true),
 		"id", "title", "active", "created_at", "updated_at")
 }

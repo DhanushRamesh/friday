@@ -30,8 +30,8 @@ func TestMeDescribesTheCaller(t *testing.T) {
 	if !out.Client.Current {
 		t.Error("the calling client is not marked current")
 	}
-	if out.Client.ActiveSessionID == "" {
-		t.Error("no active session reported, so a caller cannot tell where a prompt lands")
+	if out.Client.ActiveConversationID == "" {
+		t.Error("no active conversation reported, so a caller cannot tell where a prompt lands")
 	}
 }
 

@@ -32,9 +32,9 @@ func TestAnotherUsersChatIsHidden(t *testing.T) {
 
 	stranger, _ := chat.NewUser("stranger", "hash")
 	_ = e.Repo.CreateUser(t.Context(), stranger)
-	theirSession := chat.NewSession(stranger.ID, "private")
-	_ = e.Repo.CreateSession(t.Context(), theirSession)
-	theirChat, _ := chat.New(theirSession.ID, chat.ChannelDirect, "their private question")
+	theirConversation := chat.NewConversation(stranger.ID, "private")
+	_ = e.Repo.CreateConversation(t.Context(), theirConversation)
+	theirChat, _ := chat.New(theirConversation.ID, chat.ChannelDirect, "their private question")
 	_ = e.Repo.Create(t.Context(), theirChat)
 
 	for _, path := range []string{
@@ -80,9 +80,9 @@ func TestListIsScopedToTheUser(t *testing.T) {
 
 	stranger, _ := chat.NewUser("stranger", "hash")
 	_ = e.Repo.CreateUser(t.Context(), stranger)
-	theirSession := chat.NewSession(stranger.ID, "private")
-	_ = e.Repo.CreateSession(t.Context(), theirSession)
-	theirChat, _ := chat.New(theirSession.ID, chat.ChannelDirect, "their private question")
+	theirConversation := chat.NewConversation(stranger.ID, "private")
+	_ = e.Repo.CreateConversation(t.Context(), theirConversation)
+	theirChat, _ := chat.New(theirConversation.ID, chat.ChannelDirect, "their private question")
 	_ = e.Repo.Create(t.Context(), theirChat)
 
 	var list chats.ListResponse

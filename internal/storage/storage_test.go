@@ -122,7 +122,7 @@ func TestTimestampsAreUTC(t *testing.T) {
 		t.Fatalf("read session time_zone: %v", err)
 	}
 	if tz != "+00:00" {
-		t.Errorf("session time_zone = %q, want +00:00", tz)
+		t.Errorf("conversation time_zone = %q, want +00:00", tz)
 	}
 
 	var now time.Time

@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
 	"github.com/DhanushRamesh/personal-assistant/internal/events"
 	"github.com/DhanushRamesh/personal-assistant/internal/failure"
 	"github.com/DhanushRamesh/personal-assistant/internal/provider"
-	"github.com/DhanushRamesh/personal-assistant/internal/session"
 )
 
 // execute : Runs one chat from start to a terminal status.
@@ -45,7 +45,7 @@ func (r *Runner) execute(ctx, lifeCtx context.Context, t *chat.Chat) {
 	r.consume(runCtx, ctx, t)
 
 	// After the answer is recorded and announced, so that maintaining the
-	// session's memory is never in front of the person waiting for it. The
+	// conversation's memory is never in front of the person waiting for it. The
 	// slot is still held, which keeps this from competing with the next
 	// chat for the same provider.
 	r.condense(ctx, t)
@@ -114,36 +114,36 @@ func (r *Runner) consume(runCtx, ctx context.Context, t *chat.Chat) {
 // again as the prompt. Neither failure is worth abandoning the chat for: an
 // unrecorded question costs the next turn its context, and an unread history
 // leaves the prompt to make sense on its own, which it usually does.
-func (r *Runner) history(ctx context.Context, t *chat.Chat) session.Window {
-	if t.SessionID == "" {
-		return session.Window{}
+func (r *Runner) history(ctx context.Context, t *chat.Chat) conversation.Window {
+	if t.ConversationID == "" {
+		return conversation.Window{}
 	}
 
-	asked, err := r.messages.Append(ctx, session.Said(t.SessionID, t.Prompt, t.CreatedAt))
+	asked, err := r.messages.Append(ctx, conversation.Said(t.ConversationID, t.Prompt, t.CreatedAt))
 	if err != nil {
 		r.logger.ErrorContext(ctx, "cannot record the question", slog.Any("error", err))
 	}
 
-	said, err := r.messages.Before(ctx, t.SessionID, asked.Seq)
+	said, err := r.messages.Before(ctx, t.ConversationID, asked.Seq)
 	if err != nil {
-		r.logger.ErrorContext(ctx, "cannot read session history", slog.Any("error", err))
-		return session.Window{}
+		r.logger.ErrorContext(ctx, "cannot read conversation history", slog.Any("error", err))
+		return conversation.Window{}
 	}
 
-	// A session with no summary yet reads as the zero one, which Plan treats
+	// A conversation with no summary yet reads as the zero one, which Plan treats
 	// as nothing condensed. Failing to read it costs the turn its oldest
 	// context, not the turn itself.
-	summary, err := r.messages.Summary(ctx, t.SessionID)
+	summary, err := r.messages.Summary(ctx, t.ConversationID)
 	if err != nil {
-		r.logger.ErrorContext(ctx, "cannot read session summary", slog.Any("error", err))
+		r.logger.ErrorContext(ctx, "cannot read conversation summary", slog.Any("error", err))
 	}
 
-	return session.Plan(said, summary, r.limitsFor(t.Model))
+	return conversation.Plan(said, summary, r.limitsFor(t.Model))
 }
 
-// toProviderTurns : Converts a session's messages into the form a provider
+// toProviderTurns : Converts a conversation's messages into the form a provider
 // takes.
-func toProviderTurns(messages []session.Message) []provider.Turn {
+func toProviderTurns(messages []conversation.Message) []provider.Turn {
 	out := make([]provider.Turn, len(messages))
 	for i, m := range messages {
 		out[i] = provider.Turn{
@@ -155,13 +155,13 @@ func toProviderTurns(messages []session.Message) []provider.Turn {
 }
 
 // recordOutcome : Stores what the chat ended up saying, so the next turn in
-// the session can refer to it.
+// the conversation can refer to it.
 //
 // A failure is recorded too, and shown to the person, but is never given back
-// to a model: see session.Failure. A turn the person stopped is marked as
-// stopped, and that mark is given to a model: see session.Interruption.
+// to a model: see conversation.Failure. A turn the person stopped is marked as
+// stopped, and that mark is given to a model: see conversation.Interruption.
 func (r *Runner) recordOutcome(ctx context.Context, t *chat.Chat) {
-	if t.SessionID == "" {
+	if t.ConversationID == "" {
 		return
 	}
 
@@ -171,12 +171,12 @@ func (r *Runner) recordOutcome(ctx context.Context, t *chat.Chat) {
 		said = &now
 	}
 
-	var written []session.Message
+	var written []conversation.Message
 	switch {
 	case t.Response != "":
-		written = append(written, session.Answered(t.SessionID, t.Response, *said))
+		written = append(written, conversation.Answered(t.ConversationID, t.Response, *said))
 	case t.Error != "":
-		written = append(written, session.Failed(t.SessionID, t.Error, t.ErrorDetail, *said))
+		written = append(written, conversation.Failed(t.ConversationID, t.Error, t.ErrorDetail, *said))
 	}
 
 	// Whatever it managed to say, a turn the person stopped is marked as
@@ -184,7 +184,7 @@ func (r *Runner) recordOutcome(ctx context.Context, t *chat.Chat) {
 	// and once a turn can call tools some of it will have left effects
 	// behind that the next turn has to reason about.
 	if t.Status == chat.StatusCancelled {
-		written = append(written, session.Interrupted(t.SessionID, *said))
+		written = append(written, conversation.Interrupted(t.ConversationID, *said))
 	}
 
 	for _, m := range written {

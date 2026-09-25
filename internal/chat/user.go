@@ -37,7 +37,7 @@ var (
 
 // User : The person the assistant belongs to.
 //
-// Sessions belong to a user rather than to any one client, so an
+// Conversations belong to a user rather than to any one client, so an
 // exchange begun on a phone can be continued at a desk.
 type User struct {
 	// ID : The identifier, a UserIDPrefix followed by a ULID.

@@ -1,6 +1,6 @@
 // Package httpx : Writes and reads the HTTP bodies every module shares.
 //
-// It holds no state of the server's own and knows nothing about chats, sessions
+// It holds no state of the server's own and knows nothing about chats, conversations
 // or users. Its job is only to put the right bytes on the wire and to refuse
 // a request body that should not be read, so that each resource module is
 // left with its own logic.

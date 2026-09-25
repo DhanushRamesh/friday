@@ -12,7 +12,7 @@ library;
 export 'components/banner.dart';
 export 'components/button.dart';
 export 'components/composer.dart';
-export 'components/session_tile.dart';
+export 'components/conversation_tile.dart';
 export 'components/spinner.dart';
 export 'components/status.dart';
 export 'components/surface.dart';

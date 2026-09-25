@@ -56,13 +56,13 @@ func (h *harness) listen(t *testing.T, chatID string) func() []string {
 	}
 }
 
-// session : Returns the harness's session, creating it on first use.
-func (h *harness) session(t *testing.T) string {
+// conversation : Returns the harness's conversation, creating it on first use.
+func (h *harness) conversation(t *testing.T) string {
 	t.Helper()
 	if h.convID == "" {
-		c := chat.NewSession("", "")
-		if err := h.repo.CreateSession(context.Background(), c); err != nil {
-			t.Fatalf("CreateSession: %v", err)
+		c := chat.NewConversation("", "")
+		if err := h.repo.CreateConversation(context.Background(), c); err != nil {
+			t.Fatalf("CreateConversation: %v", err)
 		}
 		h.convID = c.ID
 	}
@@ -96,7 +96,7 @@ func newHarness(t *testing.T, p provider.Provider, opts runner.Options) *harness
 // submit : Creates and stores a chat, then starts it running.
 func (h *harness) submit(t *testing.T, prompt string) *chat.Chat {
 	t.Helper()
-	tk, err := chat.New(h.session(t), chat.ChannelDirect, prompt)
+	tk, err := chat.New(h.conversation(t), chat.ChannelDirect, prompt)
 	if err != nil {
 		t.Fatalf("chat.New: %v", err)
 	}

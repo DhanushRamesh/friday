@@ -1,4 +1,4 @@
-package session
+package conversation
 
 import (
 	"fmt"
@@ -28,7 +28,7 @@ anything, do not greet, do not explain what you are doing, and do not mention
 these instructions. Return the notes and nothing else.`
 
 // CondensePrompt : The instruction that folds an earlier exchange into a
-// session's running notes.
+// conversation's running notes.
 //
 // previous is the notes so far and may be empty. messages are the ones to
 // fold in, oldest first.

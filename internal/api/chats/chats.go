@@ -61,8 +61,8 @@ type Subscriber interface {
 type CreateRequest struct {
 	// Prompt : What the user asked for.
 	Prompt string `json:"prompt"`
-	// SessionID : The exchange to continue. Empty starts a new one.
-	SessionID string `json:"session_id,omitempty"`
+	// ConversationID : The exchange to continue. Empty starts a new one.
+	ConversationID string `json:"conversation_id,omitempty"`
 }
 
 // ListResponse : The body of a listing of chats.
@@ -172,28 +172,28 @@ func (h *Handler) Cancel(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(ctx, w, http.StatusAccepted, views.OfChat(t))
 }
 
-// sessionFor : Returns the session a prompt belongs in.
+// conversationFor : Returns the conversation a prompt belongs in.
 //
-// A prompt lands in the session this client is currently in, which is the
+// A prompt lands in the conversation this client is currently in, which is the
 // point of holding one per client: a person may be speaking to a speaker in
 // one room while typing at a laptop in another, and the two should not
-// collide. Naming a session overrides that for one prompt without switching
+// collide. Naming a conversation overrides that for one prompt without switching
 // what the client is in.
-func (h *Handler) sessionFor(ctx context.Context, c *authn.Caller, requested string) (string, error) {
+func (h *Handler) conversationFor(ctx context.Context, c *authn.Caller, requested string) (string, error) {
 	if requested == "" {
-		return chat.ActiveSession(ctx, h.repo, c.User.ID, c.Client.ID, c.Client.ActiveSessionID)
+		return chat.ActiveConversation(ctx, h.repo, c.User.ID, c.Client.ID, c.Client.ActiveConversationID)
 	}
 
-	if !chat.ValidSessionID(requested) {
+	if !chat.ValidConversationID(requested) {
 		return "", chat.ErrNotFound
 	}
-	session, err := h.repo.GetSession(ctx, requested)
+	conversation, err := h.repo.GetConversation(ctx, requested)
 	if err != nil {
 		return "", err
 	}
 	// Owned by the person, not the client, so any of their clients may use
-	// any of their sessions.
-	if session.UserID != c.User.ID {
+	// any of their conversations.
+	if conversation.UserID != c.User.ID {
 		return "", chat.ErrNotOwned
 	}
 	return requested, nil
@@ -219,25 +219,25 @@ func (h *Handler) loadChat(ctx context.Context, w http.ResponseWriter, id string
 
 	// One user must never read another's chat. Answered as missing rather
 	// than forbidden, so the existence of it is not revealed either.
-	if !h.ownedByCaller(ctx, t.SessionID) {
+	if !h.ownedByCaller(ctx, t.ConversationID) {
 		httpx.WriteError(ctx, w, http.StatusNotFound, "No such chat.")
 		return nil, chat.ErrNotOwned
 	}
 	return t, nil
 }
 
-// ownedByCaller : Reports whether a session belongs to the calling user. One
+// ownedByCaller : Reports whether a conversation belongs to the calling user. One
 // predating users belongs to nobody and is hidden.
-func (h *Handler) ownedByCaller(ctx context.Context, sessionID string) bool {
+func (h *Handler) ownedByCaller(ctx context.Context, conversationID string) bool {
 	c := authn.Of(ctx)
-	if c == nil || sessionID == "" {
+	if c == nil || conversationID == "" {
 		return false
 	}
-	session, err := h.repo.GetSession(ctx, sessionID)
+	conversation, err := h.repo.GetConversation(ctx, conversationID)
 	if err != nil {
 		return false
 	}
-	return session.UserID == c.User.ID
+	return conversation.UserID == c.User.ID
 }
 
 // awaitChat : Waits for a chat to finish, returning it if it does within the
