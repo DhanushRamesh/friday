@@ -359,6 +359,16 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// setClientChannel : Changes how a client's prompts are treated.
+  Future<void> setClientChannel(String clientId, String channel) async {
+    try {
+      _clients = await api.setClientChannel(clientId, channel);
+    } on Object catch (e) {
+      _error = _explain(e);
+    }
+    notifyListeners();
+  }
+
   /// revoke : Takes a client's token away. Revoking this one signs it out,
   /// because the token it is holding stops working the moment the call
   /// returns.

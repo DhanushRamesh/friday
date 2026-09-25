@@ -257,6 +257,42 @@ func (r *Repository) ListClients(ctx context.Context, userID string) ([]chat.Cli
 	return out, nil
 }
 
+// SetClientChannel : Changes how a client's prompts are treated.
+//
+// This exists because a client cannot always say what it is when it
+// registers. Home Assistant is handed a token and has no field to declare
+// itself with, so a satellite's client would otherwise be stuck as direct --
+// which is the answer that grants more, and the wrong one to be stuck on.
+func (r *Repository) SetClientChannel(ctx context.Context, userID, clientID string, channel chat.Channel) error {
+	if !channel.Valid() {
+		return fmt.Errorf("%w: %q", chat.ErrUnknownChannel, channel)
+	}
+
+	var row clientRow
+	err := r.db.WithContext(ctx).First(&row, "id = ?", clientID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return chat.ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("chat: reading client %s: %w", clientID, err)
+	}
+	if value(row.UserID) != userID {
+		return chat.ErrNotOwned
+	}
+
+	err = r.db.WithContext(ctx).
+		Model(&clientRow{}).
+		Where("id = ?", clientID).
+		Updates(map[string]any{
+			"channel":    string(channel),
+			"updated_at": time.Now().UTC().Truncate(chat.StoredPrecision),
+		}).Error
+	if err != nil {
+		return fmt.Errorf("chat: setting channel on %s: %w", clientID, err)
+	}
+	return nil
+}
+
 // RevokeClient : Stops a client authenticating.
 func (r *Repository) RevokeClient(ctx context.Context, userID, clientID string) error {
 	var row clientRow

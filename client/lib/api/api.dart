@@ -110,6 +110,22 @@ class AssistantApi {
   Future<List<Client>> listClients() async =>
       parseList(await _send('GET', '/v1/clients'), 'clients', Client.fromJson);
 
+  /// setClientChannel : Changes how a client's prompts are treated.
+  ///
+  /// A client says what it is when it registers, and some cannot: Home
+  /// Assistant is handed a token through a screen with no field for it. This
+  /// is how that is corrected.
+  Future<List<Client>> setClientChannel(String clientId, String channel) async =>
+      parseList(
+        await _send(
+          'POST',
+          '/v1/clients/$clientId/channel',
+          body: {'channel': channel},
+        ),
+        'clients',
+        Client.fromJson,
+      );
+
   /// revokeClient : Stops one of the user's clients authenticating. Any of
   /// them may revoke any other, which is how a lost phone is dealt with.
   Future<void> revokeClient(String clientId) =>

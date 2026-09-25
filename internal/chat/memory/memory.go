@@ -12,6 +12,7 @@ package memory
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -332,6 +333,27 @@ func (m *Repository) ListClients(_ context.Context, userID string) ([]chat.Clien
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID })
 	return out, nil
+}
+
+// SetClientChannel : Changes how a stored client's prompts are treated.
+func (m *Repository) SetClientChannel(_ context.Context, userID, clientID string, channel chat.Channel) error {
+	if !channel.Valid() {
+		return fmt.Errorf("%w: %q", chat.ErrUnknownChannel, channel)
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	d, ok := m.clients[clientID]
+	if !ok {
+		return chat.ErrNotFound
+	}
+	if d.UserID != userID {
+		return chat.ErrNotOwned
+	}
+	d.Channel = channel
+	m.clients[clientID] = d
+	return nil
 }
 
 // RevokeClient : Stops a client authenticating.

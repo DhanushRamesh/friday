@@ -112,6 +112,12 @@ type Repository interface {
 	// revoked ones so that a revocation is visible.
 	ListClients(ctx context.Context, userID string) ([]Client, error)
 
+	// SetClientChannel : Changes how a client's prompts are treated. It
+	// reports ErrNotFound if there is no such client, ErrNotOwned if it
+	// belongs to somebody else, and ErrUnknownChannel for a channel that is
+	// not one of the two.
+	SetClientChannel(ctx context.Context, userID, clientID string, channel Channel) error
+
 	// RevokeClient : Stops a client authenticating. It reports ErrNotFound if
 	// there is none, and ErrNotOwned if it belongs to another user. Revoking
 	// one already revoked changes nothing.

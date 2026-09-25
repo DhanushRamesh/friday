@@ -367,10 +367,16 @@ The chat carries a copy rather than a reference to the client, because the
 runner — which is what would enforce a tool set — is handed a chat and nothing
 else, and by then the request is over.
 
-Rows written before the columns existed default to `direct`. The voice
-satellite's was corrected by hand, not inferred from its name: a name is
-something a person can edit, and reading a permission out of one is the same
-mistake as reading it out of an endpoint.
+Some clients cannot declare themselves. Home Assistant is handed a token
+through a configuration screen with no field for it, so its client registers
+as `direct` — the answer that grants more — and stays wrong until somebody
+notices. `POST /v1/clients/{id}/channel` is how that is corrected, and the
+settings screen offers it beside Revoke.
+
+That is a gap worth naming rather than a solved problem: nothing in the Home
+Assistant setup says "this is voice", so reissuing that token starts it as
+direct again, silently. The listing shows each client's channel so the mistake
+is visible; correcting it is a click.
 
 ### One endpoint takes a prompt, and it is Ollama-shaped
 

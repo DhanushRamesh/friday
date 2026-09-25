@@ -45,6 +45,7 @@ func New(logger *slog.Logger, repo chat.Repository) *Handler {
 func (h *Handler) Mount(r chi.Router) {
 	r.Route("/v1/clients", func(r chi.Router) {
 		r.Get("/", h.List)
+		r.Post("/{id}/channel", h.SetChannel)
 		r.Delete("/{id}", h.Revoke)
 	})
 	r.Route("/v1/me", func(r chi.Router) {
@@ -80,6 +81,53 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		out[i] = views.OfClient(d, d.ID == c.Client.ID)
 	}
 	httpx.WriteJSON(ctx, w, http.StatusOK, ListResponse{Clients: out})
+}
+
+// ChannelRequest : The body of a request to change a client's channel.
+type ChannelRequest struct {
+	// Channel : "voice" or "direct".
+	Channel string `json:"channel"`
+}
+
+// SetChannel : Changes how a client's prompts are treated.
+//
+// A client says what it is when it registers, and some cannot. Home Assistant
+// is handed a token through a configuration screen with no field for it, so
+// its client registers as direct — the answer that grants more — and there
+// would otherwise be no way to correct that short of the database.
+func (h *Handler) SetChannel(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	c := authn.Of(ctx)
+	id := chi.URLParam(r, "id")
+
+	if !chat.ValidClientID(id) {
+		httpx.WriteError(ctx, w, http.StatusNotFound, "No such client.")
+		return
+	}
+
+	var req ChannelRequest
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		httpx.WriteError(ctx, w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	err := h.repo.SetClientChannel(ctx, c.User.ID, id, chat.Channel(req.Channel))
+	switch {
+	case errors.Is(err, chat.ErrNotFound), errors.Is(err, chat.ErrNotOwned):
+		httpx.WriteError(ctx, w, http.StatusNotFound, "No such client.")
+		return
+	case errors.Is(err, chat.ErrUnknownChannel):
+		httpx.WriteError(ctx, w, http.StatusBadRequest,
+			`The channel must be "voice" or "direct".`)
+		return
+	case err != nil:
+		h.Fail(ctx, w, "setting client channel", err)
+		return
+	}
+
+	h.Logger.InfoContext(ctx, "client channel changed",
+		slog.String("changed_client_id", id), slog.String("channel", req.Channel))
+	h.List(w, r)
 }
 
 // Revoke : Stops one of the caller's clients authenticating.

@@ -144,3 +144,57 @@ func TestClientListingIsScopedToTheUser(t *testing.T) {
 		}
 	}
 }
+
+// Home Assistant is handed a token through a screen with no field to declare
+// itself with, so its client registers as direct. Without a way to correct
+// that, every spoken prompt would be recorded as typed.
+func TestAClientsChannelCanBeCorrected(t *testing.T) {
+	e := apitest.New(t)
+	satellite := e.Login(t, "home assistant")
+
+	rec := e.Do(t, http.MethodPost,
+		"/v1/clients/"+satellite.Client.ID+"/channel", `{"channel":"voice"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+
+	var list clients.ListResponse
+	e.Decode(t, rec, &list)
+	var found bool
+	for _, c := range list.Clients {
+		if c.ID == satellite.Client.ID {
+			found = true
+			if c.Channel != string(chat.ChannelVoice) {
+				t.Errorf("channel = %q, want voice", c.Channel)
+			}
+		}
+	}
+	if !found {
+		t.Error("the client is missing from the listing it answered with")
+	}
+}
+
+func TestAnInventedChannelIsRefused(t *testing.T) {
+	e := apitest.New(t)
+
+	rec := e.Do(t, http.MethodPost,
+		"/v1/clients/"+e.Client.ID+"/channel", `{"channel":"shouting"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400: %s", rec.Code, rec.Body)
+	}
+}
+
+// Another user's client is answered as missing, as everywhere else.
+func TestAnotherUsersClientChannelCannotBeChanged(t *testing.T) {
+	e := apitest.New(t)
+	stranger, _ := chat.NewUser("stranger-chan", "hash")
+	_ = e.Repo.CreateUser(t.Context(), stranger)
+	theirClient, _ := chat.NewClient(stranger.ID, "theirs", "their-hash", chat.ChannelDirect)
+	_ = e.Repo.CreateClient(t.Context(), theirClient)
+
+	rec := e.Do(t, http.MethodPost,
+		"/v1/clients/"+theirClient.ID+"/channel", `{"channel":"voice"}`)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404: %s", rec.Code, rec.Body)
+	}
+}

@@ -150,6 +150,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               onRevoke: c.revoked
                                   ? null
                                   : () => _confirmRevoke(c),
+                              onChannel: c.revoked
+                                  ? null
+                                  : (channel) => state.setClientChannel(
+                                      c.id,
+                                      channel,
+                                    ),
                             ),
                         ],
                       ),
@@ -233,10 +239,17 @@ class _Row extends StatelessWidget {
 
 /// _ClientRow : One client, with the way to take its token away.
 class _ClientRow extends StatelessWidget {
-  const _ClientRow({required this.client, this.onRevoke});
+  const _ClientRow({required this.client, this.onRevoke, this.onChannel});
 
   final Client client;
   final VoidCallback? onRevoke;
+
+  /// onChannel : Called with "voice" or "direct".
+  ///
+  /// Offered because a client cannot always declare itself: Home Assistant is
+  /// handed a token through a screen with no field for it, so its client
+  /// registers as direct and has to be corrected here.
+  final ValueChanged<String>? onChannel;
 
   @override
   Widget build(BuildContext context) {
@@ -278,6 +291,13 @@ class _ClientRow extends StatelessWidget {
                     color: context.colors.textMuted,
                   ),
                 ),
+                if (onChannel != null) ...[
+                  const SizedBox(height: AppSpacing.xs),
+                  _ChannelChoice(
+                    channel: client.channel,
+                    onChanged: onChannel!,
+                  ),
+                ],
               ],
             ),
           ),
@@ -292,4 +312,44 @@ class _ClientRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// _ChannelChoice : Whether a client's prompts count as spoken or typed.
+///
+/// Shown as two words rather than a switch, because the two are not on and
+/// off: they say what the thing holding the token is, and which one is
+/// selected has to be readable at a glance in a list.
+class _ChannelChoice extends StatelessWidget {
+  const _ChannelChoice({required this.channel, required this.onChanged});
+
+  final String channel;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      for (final option in const ['voice', 'direct'])
+        Padding(
+          padding: const EdgeInsets.only(right: AppSpacing.sm),
+          child: InkWell(
+            onTap: channel == option ? null : () => onChanged(option),
+            borderRadius: BorderRadius.circular(AppRadius.xs),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.sm,
+                vertical: AppSpacing.xxs,
+              ),
+              child: Text(
+                option,
+                style: context.text.caption.copyWith(
+                  color: channel == option
+                      ? context.colors.accent
+                      : context.colors.textMuted,
+                ),
+              ),
+            ),
+          ),
+        ),
+    ],
+  );
 }

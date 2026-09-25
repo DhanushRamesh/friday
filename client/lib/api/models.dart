@@ -233,6 +233,7 @@ class Client {
     required this.id,
     required this.name,
     required this.current,
+    this.channel = '',
     required this.revoked,
     required this.activeSessionId,
     required this.createdAt,
@@ -244,6 +245,9 @@ class Client {
 
   /// current : Whether this is the client the request was made from.
   final bool current;
+
+  /// channel : How this client's prompts are treated, "voice" or "direct".
+  final String channel;
 
   final bool revoked;
   final DateTime? revokedAt;
@@ -258,6 +262,7 @@ class Client {
     id: json['id'] as String,
     name: json['name'] as String? ?? '',
     current: json['current'] as bool? ?? false,
+    channel: json['channel'] as String? ?? '',
     revoked: json['revoked'] as bool? ?? false,
     revokedAt: _time(json['revoked_at']),
     activeSessionId: json['active_session_id'] as String? ?? '',
