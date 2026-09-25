@@ -202,3 +202,36 @@ func TestEveryConstructedMessageIsValid(t *testing.T) {
 		}
 	}
 }
+
+// A position is not an identity. seq orders the conversation and would move
+// if anything were ever removed from the middle of one; the identifier names
+// the same message afterwards.
+func TestEveryMessageGetsItsOwnIdentifier(t *testing.T) {
+	at := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
+	seen := map[string]bool{}
+
+	for _, m := range []session.Message{
+		session.Said("ses_1", "one", at),
+		session.Said("ses_1", "one", at),
+		session.Answered("ses_1", "two", at),
+		session.Failed("ses_1", "three", "detail", at),
+		session.Interrupted("ses_1", at),
+	} {
+		if !strings.HasPrefix(m.ID, session.MessageIDPrefix) {
+			t.Errorf("id = %q, want the %s prefix", m.ID, session.MessageIDPrefix)
+		}
+		if seen[m.ID] {
+			t.Errorf("identifier handed out twice: %s", m.ID)
+		}
+		seen[m.ID] = true
+	}
+}
+
+func TestAMessageWithoutAnIdentifierIsRefused(t *testing.T) {
+	m := session.Said("ses_1", "hello", time.Now())
+	m.ID = ""
+
+	if err := m.Valid(); err == nil {
+		t.Error("a message with no identifier was accepted")
+	}
+}

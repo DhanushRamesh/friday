@@ -473,6 +473,25 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### A message has an identifier, and a position
+
+`(session_id, seq)` was the key. It is unique and stable while the table is
+only appended to, and stops being an identity the moment anything edits or
+removes a message part-way through a session: seq is a position, and positions
+move. Editing a turn and re-running from it is why this is wanted, and the
+reference has to survive it.
+
+So `id` names the message and `seq` orders it, unique within a session. The
+constructors set the identifier; `Append` fills one in when a message was built
+as a literal, before validating, so a caller does not have to know which fields
+the store supplies.
+
+Rows written before the column got a synthesised identifier rather than a real
+ULID, because SQL cannot make one. SHA2 is hexadecimal and every hex character
+is in the Crockford alphabet a ULID uses, so they are the right shape and
+stable per message; they are not sortable by time, and nothing relies on that
+because ordering is `seq`.
+
 ### A stopped turn is marked, not erased
 
 Saying "stop" cancels the turn. What stays behind is the question, whatever

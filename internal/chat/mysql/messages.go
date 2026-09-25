@@ -13,8 +13,9 @@ import (
 
 // sessionMessageRow : The messages table, as GORM sees it.
 type sessionMessageRow struct {
-	SessionID string    `gorm:"column:session_id;primaryKey"`
-	Seq       int       `gorm:"column:seq;primaryKey"`
+	ID        string    `gorm:"column:id;primaryKey"`
+	SessionID string    `gorm:"column:session_id"`
+	Seq       int       `gorm:"column:seq"`
 	Kind      string    `gorm:"column:kind"`
 	Role      string    `gorm:"column:role"`
 	Content   string    `gorm:"column:content"`
@@ -28,6 +29,7 @@ func (sessionMessageRow) TableName() string { return "messages" }
 // toMessage : Converts a stored row back into a message.
 func (r *sessionMessageRow) toMessage() session.Message {
 	return session.Message{
+		ID:        r.ID,
 		SessionID: r.SessionID,
 		Seq:       r.Seq,
 		Kind:      session.Kind(r.Kind),
@@ -47,11 +49,17 @@ const appendAttempts = 5
 
 // Append : Stores a message at the end of its session.
 func (r *Repository) Append(ctx context.Context, m session.Message) (session.Message, error) {
-	if err := m.Valid(); err != nil {
-		return session.Message{}, err
+	// Filled before validating, not after, so a caller building a message
+	// literally does not have to know which fields the store supplies. The
+	// constructors set both; this is for everything else.
+	if m.ID == "" {
+		m.ID = session.NewMessageID()
 	}
 	if m.At.IsZero() {
 		m.At = time.Now().UTC()
+	}
+	if err := m.Valid(); err != nil {
+		return session.Message{}, err
 	}
 
 	for attempt := 0; attempt < appendAttempts; attempt++ {
@@ -68,6 +76,7 @@ func (r *Repository) Append(ctx context.Context, m session.Message) (session.Mes
 
 		m.Seq = last + 1
 		row := &sessionMessageRow{
+			ID:        m.ID,
 			SessionID: m.SessionID,
 			Seq:       m.Seq,
 			Kind:      string(m.Kind),

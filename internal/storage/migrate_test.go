@@ -124,8 +124,9 @@ func TestDeletingASessionCascades(t *testing.T) {
 	                   VALUES (?, ?, 'x', 'pending', NOW(3), NOW(3))`, id, sess).Error; err != nil {
 		t.Fatalf("insert chat: %v", err)
 	}
-	if err := db.Exec(`INSERT INTO messages (session_id, seq, kind, role, content, created_at)
-	                   VALUES (?, 1, 'chat', 'user', 'x', NOW(3))`, sess).Error; err != nil {
+	if err := db.Exec(`INSERT INTO messages (id, session_id, seq, kind, role, content, created_at)
+	                   VALUES (?, ?, 1, 'chat', 'user', 'x', NOW(3))`,
+		"msg_01TESTCASCADE00000000000000"[:30], sess).Error; err != nil {
 		t.Fatalf("insert message: %v", err)
 	}
 

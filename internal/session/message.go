@@ -9,6 +9,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/oklog/ulid/v2"
 )
 
 // maxContentBytes : The longest a single message may be.
@@ -77,8 +79,20 @@ const (
 	Assistant Role = "assistant"
 )
 
+// MessageIDPrefix : Marks an identifier as belonging to a message.
+const MessageIDPrefix = "msg_"
+
+// NewMessageID : Returns a fresh message identifier.
+func NewMessageID() string { return MessageIDPrefix + ulid.Make().String() }
+
 // Message : One thing said in a session.
 type Message struct {
+	// ID : The identifier, a MessageIDPrefix followed by a ULID.
+	//
+	// Separate from the position because a position is not an identity: seq
+	// orders the conversation and moves if anything is ever removed from the
+	// middle of one, while this names the same message afterwards.
+	ID string
 	// SessionID : The conversation it belongs to.
 	SessionID string
 	// Seq : Position within the session, starting at 1. Assigned when the
@@ -100,6 +114,7 @@ type Message struct {
 // Said : A message from the person.
 func Said(sessionID, content string, at time.Time) Message {
 	return Message{
+		ID:        NewMessageID(),
 		SessionID: sessionID,
 		Kind:      Chat,
 		Role:      User,
@@ -111,6 +126,7 @@ func Said(sessionID, content string, at time.Time) Message {
 // Answered : A message from the server.
 func Answered(sessionID, content string, at time.Time) Message {
 	return Message{
+		ID:        NewMessageID(),
 		SessionID: sessionID,
 		Kind:      Chat,
 		Role:      Assistant,
@@ -127,6 +143,7 @@ func Answered(sessionID, content string, at time.Time) Message {
 // not as something to make up for.
 func Interrupted(sessionID string, at time.Time) Message {
 	return Message{
+		ID:        NewMessageID(),
 		SessionID: sessionID,
 		Kind:      Interruption,
 		Role:      Assistant,
@@ -141,6 +158,7 @@ func Interrupted(sessionID string, at time.Time) Message {
 // more is known than the sentence.
 func Failed(sessionID, content, detail string, at time.Time) Message {
 	return Message{
+		ID:        NewMessageID(),
 		SessionID: sessionID,
 		Kind:      Failure,
 		Detail:    strings.TrimSpace(detail),
@@ -153,6 +171,8 @@ func Failed(sessionID, content, detail string, at time.Time) Message {
 // Valid : Reports whether a message can be stored, and why not if it cannot.
 func (m Message) Valid() error {
 	switch {
+	case m.ID == "":
+		return errors.New("session: a message needs an identifier")
 	case m.SessionID == "":
 		return errors.New("session: a message needs a session")
 	case strings.TrimSpace(m.Content) == "":
