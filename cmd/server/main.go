@@ -165,6 +165,7 @@ func run() error {
 		Runner:         chatRunner,
 		Events:         bus,
 		Models:         reachableModels(cfg),
+		DefaultModel:   cfg.PlatformAI.Model,
 		RequestTimeout: cfg.Server.RequestTimeout,
 		// Development only: `flutter run` serves the UI from its own port so
 		// that hot reload works. In production the server serves it, so every

@@ -34,6 +34,10 @@ type MeResponse struct {
 // ModelsResponse : The models a client may be set to answer with.
 type ModelsResponse struct {
 	Models []views.Model `json:"models"`
+	// Default : The model answering a client that has chosen none, so that
+	// "server default" can be shown as the name of something rather than as
+	// a word standing for an answer nobody is told.
+	Default string `json:"default,omitempty"`
 }
 
 // ModelRequest : Choosing which model answers a client.
@@ -51,12 +55,20 @@ type Handler struct {
 	// models : What the configured provider can actually reach. Offering
 	// anything else would offer a model the server cannot call.
 	models []catalog.Model
+	// defaultModel : The identifier of the model answering a client that has
+	// chosen none.
+	defaultModel string
 }
 
-// New : Builds the handler from the store holding the clients and the models
-// the provider in use can reach.
-func New(logger *slog.Logger, repo chat.Repository, models []catalog.Model) *Handler {
-	return &Handler{Responder: httpx.Responder{Logger: logger}, repo: repo, models: models}
+// New : Builds the handler from the store holding the clients, the models the
+// provider in use can reach, and the one it falls back to.
+func New(logger *slog.Logger, repo chat.Repository, models []catalog.Model, defaultModel string) *Handler {
+	return &Handler{
+		Responder:    httpx.Responder{Logger: logger},
+		repo:         repo,
+		models:       models,
+		defaultModel: defaultModel,
+	}
 }
 
 // Mount : Registers the client endpoints on r, which must already require
@@ -205,7 +217,10 @@ func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
 	for _, m := range h.models {
 		out = append(out, views.OfModel(m))
 	}
-	httpx.WriteJSON(r.Context(), w, http.StatusOK, ModelsResponse{Models: out})
+	httpx.WriteJSON(r.Context(), w, http.StatusOK, ModelsResponse{
+		Models:  out,
+		Default: h.defaultModel,
+	})
 }
 
 // SetModel : Chooses which model answers a client's prompts.

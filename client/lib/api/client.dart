@@ -15,6 +15,7 @@ export 'models.dart'
         Client,
         Identity,
         LlmModel,
+        ModelCatalogue,
         LoginResult,
         Message,
         Conversation,

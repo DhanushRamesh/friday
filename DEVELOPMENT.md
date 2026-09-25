@@ -473,7 +473,38 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### Two endpoints, two shapes of failure
+
+A failure carries the exact error so that the model can be asked what went
+wrong and answer truthfully. That only works if the exact error survives, and
+for one of the two endpoints it did not.
+
+The chat endpoint nests its message, `{"error": {"message": ...}}`. The token
+endpoint puts a string where the other puts an object,
+`{"error": "Access Denied", "error_description": ...}`. Reading only the first
+shape made the unmarshal fail on the type, which was taken to mean there was
+no message, and the conversation recorded "token response was not usable"
+instead of "You have made too many requests continuously."
+
+One of those tells a person to wait and the other tells them nothing. Both
+shapes are read now.
+
 ### A vendor an endpoint speaks to is not a model it routes
+
+### The settings page says what it means
+
+"Server default" named nothing, so the listing carries the identifier of the
+model that answers when a client has chosen none, and the field reads as that
+model's name.
+
+The channel and the model are the same kind of choice — one of a short list,
+worth reading before picking — so they are the same control, each under a
+label. Two bare words side by side said neither what they were nor that they
+could be changed. A client cannot raise its own channel, so on the current
+client that field is locked with the reason in the menu rather than offered
+and then refused.
+
+"this one" becomes "you are signed in here".
 
 The model picker first offered every model whose vendor the endpoint reaches.
 That inference is wrong, and wrong in the direction that breaks things: this

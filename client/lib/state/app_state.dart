@@ -99,11 +99,12 @@ class AppState extends ChangeNotifier {
   List<Client> _clients = const [];
   List<Client> get clients => _clients;
 
-  List<LlmModel> _models = const [];
+  ModelCatalogue _catalogue = const ModelCatalogue();
 
-  /// models : What a client can be set to answer with. Empty until the
-  /// settings screen has read them.
-  List<LlmModel> get models => _models;
+  /// catalogue : What a client can be set to answer with, and which model
+  /// answers one that has chosen nothing. Empty until the settings screen
+  /// has read it.
+  ModelCatalogue get catalogue => _catalogue;
 
   bool _showRevoked = false;
 
@@ -419,9 +420,9 @@ class AppState extends ChangeNotifier {
     } on Object catch (e) {
       _error = _explain(e);
     }
-    if (_models.isEmpty) {
+    if (_catalogue.models.isEmpty) {
       try {
-        _models = await api.listModels();
+        _catalogue = await api.listModels();
       } on Object catch (e) {
         _error = _explain(e);
       }

@@ -481,3 +481,33 @@ class LlmModel {
   @override
   String toString() => 'LlmModel($vendor/$id)';
 }
+
+/// ModelCatalogue : What a client may be answered by, and what answers it when
+/// it has chosen nothing.
+class ModelCatalogue {
+  const ModelCatalogue({this.models = const [], this.defaultId = ''});
+
+  final List<LlmModel> models;
+
+  /// defaultId : The model answering a client that has chosen none. Empty
+  /// when the server did not say.
+  final String defaultId;
+
+  /// defaultName : What to call that model, falling back to its identifier
+  /// and then to nothing worth naming.
+  String get defaultName {
+    for (final m in models) {
+      if (m.id == defaultId) return m.name;
+    }
+    return defaultId;
+  }
+
+  /// fromJson : Parses the listing as the API returns it.
+  factory ModelCatalogue.fromJson(Map<String, dynamic> json) => ModelCatalogue(
+    models: [
+      for (final m in (json['models'] as List<dynamic>? ?? const []))
+        LlmModel.fromJson(m as Map<String, dynamic>),
+    ],
+    defaultId: json['default'] as String? ?? '',
+  );
+}

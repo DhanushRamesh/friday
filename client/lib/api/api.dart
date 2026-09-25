@@ -140,8 +140,8 @@ class AssistantApi {
   /// Only what the server's provider can reach, so a choice offered here is
   /// one that will work rather than one that fails the next time the person
   /// speaks.
-  Future<List<LlmModel>> listModels() async =>
-      parseList(await _send('GET', '/v1/models'), 'models', LlmModel.fromJson);
+  Future<ModelCatalogue> listModels() async =>
+      ModelCatalogue.fromJson(await _send('GET', '/v1/models'));
 
   /// setClientModel : Chooses which model answers a client's prompts.
   ///

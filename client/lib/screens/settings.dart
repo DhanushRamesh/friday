@@ -341,11 +341,11 @@ class _ClientsModule extends StatelessWidget {
     subtitle: state.showRevoked
         ? 'Kept so a revocation is visible rather than silently absent. None '
               'of these can sign in, and none can be brought back.'
-        : 'Everything holding a token for this account, including the voice '
-              'satellite. A client says what it is when it registers; Home '
-              'Assistant cannot, so its channel is set here. Each one can be '
-              'answered by a different model: a spoken answer has to arrive '
-              'quickly, while a browser can wait for a better one.',
+        : 'Everything holding a token for this account. How a client\'s '
+              'prompts arrive decides what the assistant may do about them, '
+              'and each one can be answered by a different model \u2014 a '
+              'spoken answer has to arrive quickly, while an app can wait for '
+              'a better one.',
     action: InkWell(
       onTap: () => state.setShowRevoked(!state.showRevoked),
       borderRadius: BorderRadius.circular(AppRadius.xs),
@@ -369,7 +369,7 @@ class _ClientsModule extends StatelessWidget {
               for (final c in state.clients)
                 _ClientRow(
                   client: c,
-                  models: state.models,
+                  catalogue: state.catalogue,
                   onRevoke: c.revoked ? null : () => onRevoke(c),
                   onChannel: c.revoked
                       ? null
@@ -473,7 +473,7 @@ class _Row extends StatelessWidget {
 class _ClientRow extends StatelessWidget {
   const _ClientRow({
     required this.client,
-    this.models = const [],
+    this.catalogue = const ModelCatalogue(),
     this.onRevoke,
     this.onChannel,
     this.onModel,
@@ -481,9 +481,9 @@ class _ClientRow extends StatelessWidget {
 
   final Client client;
 
-  /// models : What this client may be answered by. Only what the server's
-  /// provider can reach, so anything offered here will work.
-  final List<LlmModel> models;
+  /// catalogue : What this client may be answered by, and what answers it
+  /// when it has chosen nothing.
+  final ModelCatalogue catalogue;
 
   final VoidCallback? onRevoke;
 
@@ -500,191 +500,267 @@ class _ClientRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
     final name = client.name.isEmpty ? client.id : client.name;
+
+    // A client cannot raise its own channel, so the field is shown as a fact
+    // rather than as a control that refuses.
+    final ownChannel = client.current;
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: Row(
+      padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Flexible(child: Text(name, style: context.text.body)),
-                    if (client.current) ...[
-                      const SizedBox(width: AppSpacing.sm),
-                      Text(
-                        'this one',
-                        style: context.text.caption.copyWith(
-                          color: context.colors.accent,
-                        ),
+                    Row(
+                      children: [
+                        Flexible(child: Text(name, style: context.text.body)),
+                        if (client.current) ...[
+                          const SizedBox(width: AppSpacing.sm),
+                          _Tag(
+                            'you are signed in here',
+                            color: colors.accent,
+                          ),
+                        ],
+                        if (client.revoked) ...[
+                          const SizedBox(width: AppSpacing.sm),
+                          _Tag('revoked', color: colors.textMuted),
+                        ],
+                      ],
+                    ),
+                    Text(
+                      client.id,
+                      style: context.text.caption.copyWith(
+                        color: colors.textMuted,
                       ),
-                    ],
-                    if (client.revoked) ...[
-                      const SizedBox(width: AppSpacing.sm),
-                      Text(
-                        'revoked',
-                        style: context.text.caption.copyWith(
-                          color: context.colors.textMuted,
-                        ),
-                      ),
-                    ],
+                    ),
                   ],
                 ),
-                Text(
-                  client.id,
-                  style: context.text.caption.copyWith(
-                    color: context.colors.textMuted,
-                  ),
+              ),
+              if (onRevoke != null)
+                AppButton(
+                  label: 'Revoke',
+                  variant: AppButtonVariant.ghost,
+                  compact: true,
+                  onPressed: onRevoke,
                 ),
-                if (onChannel != null) ...[
-                  const SizedBox(height: AppSpacing.xs),
-                  _ChannelChoice(
-                    channel: client.channel,
-                    onChanged: onChannel!,
+            ],
+          ),
+          if (onChannel != null || onModel != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Wrap(
+              spacing: AppSpacing.xl,
+              runSpacing: AppSpacing.sm,
+              children: [
+                if (onChannel != null)
+                  _Field(
+                    label: 'Prompts arrive',
+                    child: _Select(
+                      value: _channelLabel(client.channel),
+                      hint: ownChannel
+                          ? 'A client cannot change its own. Use another one.'
+                          : null,
+                      options: [
+                        for (final entry in _channels.entries)
+                          _Option(
+                            label: entry.value,
+                            selected: client.channel == entry.key,
+                            onTap: ownChannel
+                                ? null
+                                : () => onChannel!(entry.key),
+                          ),
+                      ],
+                    ),
                   ),
-                ],
-                if (onModel != null && models.isNotEmpty) ...[
-                  const SizedBox(height: AppSpacing.xs),
-                  _ModelChoice(
-                    chosen: client.model,
-                    models: models,
-                    onChanged: onModel!,
+                if (onModel != null && catalogue.models.isNotEmpty)
+                  _Field(
+                    label: 'Answered by',
+                    child: _Select(
+                      value: _modelLabel(),
+                      options: [
+                        _Option(
+                          label: catalogue.defaultName.isEmpty
+                              ? 'Server default'
+                              : 'Server default \u00b7 ${catalogue.defaultName}',
+                          selected: client.model.isEmpty,
+                          onTap: () => onModel!(null),
+                        ),
+                        for (final m in catalogue.models)
+                          _Option(
+                            label: '${m.name}  \u00b7  '
+                                '${_thousands(m.contextTokens)} tokens',
+                            selected: m.id == client.model,
+                            onTap: () => onModel!(m),
+                          ),
+                      ],
+                    ),
                   ),
-                ],
               ],
             ),
-          ),
-          if (onRevoke != null)
-            AppButton(
-              label: 'Revoke',
-              variant: AppButtonVariant.ghost,
-              compact: true,
-              onPressed: onRevoke,
-            ),
+          ],
         ],
       ),
     );
   }
+
+  /// _modelLabel : What the model field reads as when closed.
+  ///
+  /// A client that has chosen nothing shows the model that will answer it
+  /// anyway, since "server default" on its own tells a person only that they
+  /// have not been told.
+  String _modelLabel() {
+    for (final m in catalogue.models) {
+      if (m.id == client.model) return m.name;
+    }
+    return catalogue.defaultName.isEmpty
+        ? 'Server default'
+        : '${catalogue.defaultName}  (server default)';
+  }
 }
 
-/// _ChannelChoice : Whether a client's prompts count as spoken or typed.
-///
-/// Shown as two words rather than a switch, because the two are not on and
-/// off: they say what the thing holding the token is, and which one is
-/// selected has to be readable at a glance in a list.
-class _ChannelChoice extends StatelessWidget {
-  const _ChannelChoice({required this.channel, required this.onChanged});
+/// _channels : How each channel is named to a person, in the order they are
+/// offered.
+const Map<String, String> _channels = {
+  'voice': 'Spoken, through the satellite',
+  'direct': 'Typed, through an app or the API',
+};
 
-  final String channel;
-  final ValueChanged<String> onChanged;
+/// _channelLabel : The short form, for the closed field.
+String _channelLabel(String channel) =>
+    switch (channel) { 'voice' => 'Spoken', 'direct' => 'Typed', _ => channel };
+
+/// _Tag : A short word beside a name, such as which client you are using.
+class _Tag extends StatelessWidget {
+  const _Tag(this.text, {required this.color});
+
+  final String text;
+  final Color color;
 
   @override
-  Widget build(BuildContext context) => Row(
+  Widget build(BuildContext context) =>
+      Text(text, style: context.text.caption.copyWith(color: color));
+}
+
+/// _Field : A labelled control, so a value is never a bare word whose meaning
+/// has to be guessed from its position.
+class _Field extends StatelessWidget {
+  const _Field({required this.label, required this.child});
+
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      for (final option in const ['voice', 'direct'])
-        Padding(
-          padding: const EdgeInsets.only(right: AppSpacing.sm),
-          child: InkWell(
-            onTap: channel == option ? null : () => onChanged(option),
-            borderRadius: BorderRadius.circular(AppRadius.xs),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.sm,
-                vertical: AppSpacing.xxs,
-              ),
-              child: Text(
-                option,
-                style: context.text.caption.copyWith(
-                  color: channel == option
-                      ? context.colors.accent
-                      : context.colors.textMuted,
-                ),
-              ),
-            ),
-          ),
-        ),
+      Text(
+        label,
+        style: context.text.caption.copyWith(color: context.colors.textMuted),
+      ),
+      const SizedBox(height: AppSpacing.xxs),
+      child,
     ],
   );
 }
 
-/// _ModelChoice : Which model answers a client.
+/// _Option : One entry in a _Select. A null onTap is an entry that cannot be
+/// chosen, which is how the already-selected one and a forbidden one are both
+/// shown.
+class _Option {
+  const _Option({required this.label, required this.selected, this.onTap});
+
+  final String label;
+  final bool selected;
+  final VoidCallback? onTap;
+}
+
+/// _Select : A value with a menu behind it.
 ///
-/// A menu rather than a row of words like the channel, because there are
-/// several and the list grows, while a channel is one of two and belongs on
-/// screen at all times.
-class _ModelChoice extends StatelessWidget {
-  const _ModelChoice({
-    required this.chosen,
-    required this.models,
-    required this.onChanged,
-  });
+/// The same control for the channel and for the model, because they are the
+/// same kind of thing: one of a short list, and the list is worth reading
+/// before choosing. Two words side by side said neither what they were nor
+/// that they could be changed.
+class _Select extends StatelessWidget {
+  const _Select({required this.value, required this.options, this.hint});
 
-  /// chosen : The identifier of the model answering this client, empty when
-  /// it has chosen none.
-  final String chosen;
+  final String value;
+  final List<_Option> options;
 
-  final List<LlmModel> models;
-  final ValueChanged<LlmModel?> onChanged;
-
-  /// _serverDefault : Stands for choosing nothing, which is a real choice and
-  /// so needs somewhere to be selected from.
-  static const String _serverDefault = '';
+  /// hint : Why the field cannot be changed, when it cannot.
+  final String? hint;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final label = models
-        .where((m) => m.id == chosen)
-        .map((m) => m.name)
-        .firstOrNull;
+    final locked = options.every((o) => o.onTap == null);
 
-    return PopupMenuButton<String>(
-      tooltip: 'Which model answers this client',
+    return PopupMenuButton<int>(
+      tooltip: hint ?? '',
+      enabled: !locked,
       position: PopupMenuPosition.under,
       color: colors.surface,
-      onSelected: (id) => onChanged(
-        id == _serverDefault
-            ? null
-            : models.firstWhere((m) => m.id == id),
-      ),
+      onSelected: (i) => options[i].onTap?.call(),
       itemBuilder: (context) => [
-        PopupMenuItem(
-          value: _serverDefault,
-          child: Text(
-            'Server default',
-            style: context.text.caption.copyWith(
-              color: chosen.isEmpty ? colors.accent : colors.textSecondary,
-            ),
-          ),
-        ),
-        for (final m in models)
+        for (var i = 0; i < options.length; i++)
           PopupMenuItem(
-            value: m.id,
+            value: i,
+            enabled: options[i].onTap != null,
             child: Text(
-              '${m.name}  ·  ${_thousands(m.contextTokens)} tokens',
+              options[i].label,
               style: context.text.caption.copyWith(
-                color: m.id == chosen ? colors.accent : colors.textSecondary,
+                color: options[i].selected
+                    ? colors.accent
+                    : colors.textSecondary,
               ),
             ),
           ),
-      ],
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            label ?? 'Server default',
-            style: context.text.caption.copyWith(
-              color: label == null ? colors.textMuted : colors.accent,
+        if (hint != null)
+          PopupMenuItem(
+            enabled: false,
+            child: Text(
+              hint!,
+              style: context.text.caption.copyWith(color: colors.textMuted),
             ),
           ),
-          Icon(Icons.arrow_drop_down, size: 16, color: colors.textMuted),
-        ],
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.xxs + 1,
+        ),
+        decoration: BoxDecoration(
+          border: Border.all(color: colors.border),
+          borderRadius: BorderRadius.circular(AppRadius.xs),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              value,
+              style: context.text.caption.copyWith(
+                color: locked ? colors.textMuted : colors.textPrimary,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.xxs),
+            Icon(
+              locked ? Icons.lock_outline : Icons.expand_more,
+              size: 14,
+              color: colors.textMuted,
+            ),
+          ],
+        ),
       ),
     );
   }
 }
+
 
 /// _thousands : A count with separators, so 200000 reads as a size rather
 /// than a string of noughts.

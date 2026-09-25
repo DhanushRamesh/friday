@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -666,5 +667,51 @@ func TestEveryRoutedModelIsCatalogued(t *testing.T) {
 func TestSomeModelsAreRouted(t *testing.T) {
 	if len(platformai.Models()) == 0 {
 		t.Error("no models are routed")
+	}
+}
+
+// The token endpoint's failures have to survive to the conversation. Its
+// body puts a string where the chat endpoint puts an object, and reading only
+// the one shape left "token response was not usable" in place of the
+// explanation.
+func TestATokenFailureKeepsWhatTheServiceSaid(t *testing.T) {
+	const throttled = "You have made too many requests continuously. Please try again after some time."
+
+	tokens := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"error_description":`+strconv.Quote(throttled)+
+			`,"error":"Access Denied","status":"failure"}`)
+	}))
+	defer tokens.Close()
+
+	p, err := platformai.New(platformai.Config{
+		ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh",
+		PortalID: "portal", TokenURL: tokens.URL, ChatURL: tokens.URL + "/chat",
+		Vendor: "anthropic", Model: "claude-sonnet-4-6",
+	}, discard())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	stream, err := p.Run(context.Background(), provider.Request{Prompt: "hello"})
+	if err != nil {
+		if !strings.Contains(err.Error(), throttled) {
+			t.Errorf("error = %q, want it to carry what the service said", err)
+		}
+		return
+	}
+
+	var final *provider.Message
+	for m := range stream {
+		if m.Kind == provider.KindError || m.Kind == provider.KindFinal {
+			msg := m
+			final = &msg
+		}
+	}
+	if final == nil || final.Kind != provider.KindError {
+		t.Fatalf("final = %+v, want a failure", final)
+	}
+	if !strings.Contains(final.Detail, throttled) {
+		t.Errorf("Detail = %q, want it to carry what the service said", final.Detail)
 	}
 }

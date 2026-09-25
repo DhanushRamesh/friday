@@ -286,15 +286,37 @@ func contentText(raw json.RawMessage) string {
 // errorMessage : Reads the message out of the service's error envelope, or
 // returns empty if the body is not one.
 func errorMessage(body []byte) string {
-	var envelope struct {
+	// The chat endpoint nests it: {"error": {"message": "..."}}.
+	var nested struct {
 		Error struct {
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	if json.Unmarshal(body, &envelope) != nil {
-		return ""
+	if json.Unmarshal(body, &nested) == nil {
+		if msg := strings.TrimSpace(nested.Error.Message); msg != "" {
+			return msg
+		}
 	}
-	return strings.TrimSpace(envelope.Error.Message)
+
+	// The token endpoint does not, and puts a string where the other puts an
+	// object: {"error": "Access Denied", "error_description": "..."}. Reading
+	// only the first shape threw away the one sentence worth having, leaving
+	// "token response was not usable" in its place -- which says nothing to
+	// the person reading it and nothing to a model asked what went wrong.
+	var flat struct {
+		Error       string `json:"error"`
+		Description string `json:"error_description"`
+	}
+	if json.Unmarshal(body, &flat) == nil {
+		if msg := strings.TrimSpace(flat.Description); msg != "" {
+			return msg
+		}
+		if msg := strings.TrimSpace(flat.Error); msg != "" {
+			return msg
+		}
+	}
+
+	return ""
 }
 
 // scrubURL : Removes the query string from a transport error.

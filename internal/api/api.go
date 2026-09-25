@@ -64,6 +64,9 @@ type Options struct {
 	// ones a client may be set to answer with. Empty offers none, so a
 	// client keeps whatever the server is configured with.
 	Models []catalog.Model
+	// DefaultModel : The identifier of the model answering a client that has
+	// chosen none, so a listing can name it.
+	DefaultModel string
 
 	// RequestTimeout : The per-request deadline. Zero selects
 	// DefaultRequestTimeout.
@@ -107,7 +110,7 @@ func New(opts Options) *Server {
 
 		health:        health.New(opts.Logger, opts.DB),
 		authn:         authn.New(opts.Logger, opts.Chats),
-		clients:       clients.New(opts.Logger, opts.Chats, opts.Models),
+		clients:       clients.New(opts.Logger, opts.Chats, opts.Models, opts.DefaultModel),
 		conversations: conversations.New(opts.Logger, opts.Chats),
 		chats:         chats.New(opts.Logger, opts.Chats, opts.Runner, opts.Events),
 		assist:        assist.New(opts.Logger, opts.Chats, opts.Runner, opts.Events),
