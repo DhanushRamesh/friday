@@ -7,12 +7,25 @@ import '../api/client.dart';
 import '../design/design.dart';
 import '../state/app_state.dart';
 
-/// SettingsScreen : Account, clients and the server address.
+/// SettingsModule : One page of settings, named down the side.
+enum SettingsModule {
+  account('Account', Icons.person_outline),
+  clients('Clients', Icons.devices_other_outlined),
+  server('Server', Icons.dns_outlined);
+
+  const SettingsModule(this.title, this.icon);
+
+  final String title;
+  final IconData icon;
+}
+
+/// SettingsScreen : The settings, one module at a time.
 ///
-/// The server address is shown rather than edited. It is fixed when the app
-/// is built — the web bundle is served by the assistant itself, so its own
-/// origin is the answer — and a box that looked editable would suggest
-/// otherwise.
+/// Separate pages rather than one scrolling list: clients is the only part
+/// that is a list of things to act on, and putting it under the account
+/// fields meant scrolling past them to reach it. Down a side it can also
+/// grow — sessions and voice belong here eventually — without the page
+/// getting longer.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, required this.state});
 
@@ -23,6 +36,8 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  SettingsModule _module = SettingsModule.account;
+
   @override
   void initState() {
     super.initState();
@@ -67,105 +82,286 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final state = widget.state;
+    final compact = context.isCompact;
 
     return AnimatedBuilder(
       animation: state,
       builder: (context, _) {
-        final identity = state.identity;
         return Scaffold(
           backgroundColor: context.colors.background,
           appBar: AppBar(
             backgroundColor: context.colors.background,
             surfaceTintColor: Colors.transparent,
             elevation: 0,
-            title: Text('Settings', style: context.text.subtitle),
+            title: Text(
+              compact ? _module.title : 'Settings',
+              style: context.text.subtitle,
+            ),
             iconTheme: IconThemeData(color: context.colors.textPrimary),
           ),
-          body: ListView(
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            children: [
-              if (state.error != null) ...[
-                AppBanner(
-                  message: state.error!,
-                  actionLabel: 'Dismiss',
-                  onAction: state.dismissError,
-                ),
-                const SizedBox(height: AppSpacing.lg),
-              ],
-              _Section(
-                title: 'Account',
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _Row(
-                      label: 'Signed in as',
-                      value: identity?.user.username ?? '—',
+          body: SafeArea(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (!compact) ...[
+                  SizedBox(
+                    width: 200,
+                    child: _ModuleList(
+                      selected: _module,
+                      onPick: (m) => setState(() => _module = m),
                     ),
-                    _Row(
-                      label: 'This client',
-                      value: identity == null || identity.client.name.isEmpty
-                          ? '—'
-                          : identity.client.name,
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
-                    AppButton(
-                      label: 'Sign out',
-                      variant: AppButtonVariant.secondary,
-                      icon: Icons.logout,
-                      onPressed: () async {
-                        await state.signOut();
-                        if (context.mounted) Navigator.of(context).pop();
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              _Section(
-                title: 'Server',
-                child: _Row(
-                  label: 'Address',
-                  value: state.api.baseUrl.toString(),
-                  monospace: true,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              _Section(
-                title: 'Clients',
-                subtitle:
-                    'Everything holding a token for this account, including '
-                    'the voice satellite.',
-                child: state.clients.isEmpty
-                    ? Text(
-                        'Nothing to show.',
-                        style: context.text.caption.copyWith(
-                          color: context.colors.textMuted,
+                  ),
+                  const AppDivider(vertical: true),
+                ],
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    children: [
+                      if (state.error != null) ...[
+                        AppBanner(
+                          message: state.error!,
+                          actionLabel: 'Dismiss',
+                          onAction: state.dismissError,
                         ),
-                      )
-                    : Column(
-                        children: [
-                          for (final c in state.clients)
-                            _ClientRow(
-                              client: c,
-                              onRevoke: c.revoked
-                                  ? null
-                                  : () => _confirmRevoke(c),
-                              onChannel: c.revoked
-                                  ? null
-                                  : (channel) => state.setClientChannel(
-                                      c.id,
-                                      channel,
-                                    ),
-                            ),
-                        ],
-                      ),
-              ),
-            ],
+                        const SizedBox(height: AppSpacing.lg),
+                      ],
+                      // On a narrow screen the modules are a row of chips
+                      // above the page: a column beside it would leave
+                      // neither enough width to read.
+                      if (compact) ...[
+                        _ModuleChips(
+                          selected: _module,
+                          onPick: (m) => setState(() => _module = m),
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                      ],
+                      switch (_module) {
+                        SettingsModule.account => _AccountModule(state: state),
+                        SettingsModule.clients => _ClientsModule(
+                          state: state,
+                          onRevoke: _confirmRevoke,
+                        ),
+                        SettingsModule.server => _ServerModule(state: state),
+                      },
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },
     );
   }
+}
+
+/// _ModuleList : The modules down the side.
+class _ModuleList extends StatelessWidget {
+  const _ModuleList({required this.selected, required this.onPick});
+
+  final SettingsModule selected;
+  final ValueChanged<SettingsModule> onPick;
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+    color: context.colors.surfaceSunken,
+    child: ListView(
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      children: [
+        for (final m in SettingsModule.values)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.xxs),
+            child: _ModuleTile(
+              module: m,
+              selected: m == selected,
+              onTap: () => onPick(m),
+            ),
+          ),
+      ],
+    ),
+  );
+}
+
+/// _ModuleTile : One name down the side.
+class _ModuleTile extends StatelessWidget {
+  const _ModuleTile({
+    required this.module,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final SettingsModule module;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm + 2,
+        ),
+        decoration: BoxDecoration(
+          color: selected ? colors.accentSoft : Colors.transparent,
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              module.icon,
+              size: 16,
+              color: selected ? colors.accent : colors.textMuted,
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Text(
+              module.title,
+              style: context.text.body.copyWith(
+                color: selected ? colors.textPrimary : colors.textSecondary,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// _ModuleChips : The modules as a row, for a screen too narrow for a column.
+class _ModuleChips extends StatelessWidget {
+  const _ModuleChips({required this.selected, required this.onPick});
+
+  final SettingsModule selected;
+  final ValueChanged<SettingsModule> onPick;
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+    spacing: AppSpacing.sm,
+    children: [
+      for (final m in SettingsModule.values)
+        InkWell(
+          onTap: () => onPick(m),
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.md,
+              vertical: AppSpacing.xs,
+            ),
+            decoration: BoxDecoration(
+              color: m == selected
+                  ? context.colors.accentSoft
+                  : context.colors.surfaceRaised,
+              borderRadius: BorderRadius.circular(AppRadius.pill),
+            ),
+            child: Text(
+              m.title,
+              style: context.text.caption.copyWith(
+                color: m == selected
+                    ? context.colors.accent
+                    : context.colors.textSecondary,
+              ),
+            ),
+          ),
+        ),
+    ],
+  );
+}
+
+/// _AccountModule : Who is signed in, and the way out.
+class _AccountModule extends StatelessWidget {
+  const _AccountModule({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final identity = state.identity;
+    return _Section(
+      title: 'Account',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _Row(label: 'Signed in as', value: identity?.user.username ?? '—'),
+          _Row(
+            label: 'This client',
+            value: identity == null || identity.client.name.isEmpty
+                ? '—'
+                : identity.client.name,
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          AppButton(
+            label: 'Sign out',
+            variant: AppButtonVariant.secondary,
+            icon: Icons.logout,
+            onPressed: () async {
+              await state.signOut();
+              if (context.mounted) Navigator.of(context).pop();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// _ServerModule : Where the assistant is.
+class _ServerModule extends StatelessWidget {
+  const _ServerModule({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) => _Section(
+    title: 'Server',
+    subtitle:
+        'Fixed when the app is built. The web bundle is meant to be served '
+        'by the assistant itself, so its own origin is the answer.',
+    child: _Row(
+      label: 'Address',
+      value: state.api.baseUrl.toString(),
+      monospace: true,
+    ),
+  );
+}
+
+/// _ClientsModule : Everything holding a token, and what each one is.
+class _ClientsModule extends StatelessWidget {
+  const _ClientsModule({required this.state, required this.onRevoke});
+
+  final AppState state;
+  final ValueChanged<Client> onRevoke;
+
+  @override
+  Widget build(BuildContext context) => _Section(
+    title: 'Clients',
+    subtitle:
+        'Everything holding a token for this account, including the voice '
+        'satellite. A client says what it is when it registers; Home '
+        'Assistant cannot, so its channel is set here.',
+    child: state.clients.isEmpty
+        ? Text(
+            'Nothing to show.',
+            style: context.text.caption.copyWith(
+              color: context.colors.textMuted,
+            ),
+          )
+        : Column(
+            children: [
+              for (final c in state.clients)
+                _ClientRow(
+                  client: c,
+                  onRevoke: c.revoked ? null : () => onRevoke(c),
+                  onChannel: c.revoked
+                      ? null
+                      : (channel) => state.setClientChannel(c.id, channel),
+                ),
+            ],
+          ),
+  );
 }
 
 /// _Section : A titled card, so the page reads as a few groups rather than
