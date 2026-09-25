@@ -14,6 +14,7 @@ export 'models.dart'
     show
         Client,
         Identity,
+        LlmModel,
         LoginResult,
         Message,
         Session,

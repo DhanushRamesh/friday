@@ -234,6 +234,8 @@ class Client {
     required this.name,
     required this.current,
     this.channel = '',
+    this.vendor = '',
+    this.model = '',
     required this.revoked,
     required this.activeSessionId,
     required this.createdAt,
@@ -249,6 +251,11 @@ class Client {
   /// channel : How this client's prompts are treated, "voice" or "direct".
   final String channel;
 
+  /// vendor, model : Which model answers this client. Both empty when it has
+  /// chosen none and the server's configured one answers.
+  final String vendor;
+  final String model;
+
   final bool revoked;
   final DateTime? revokedAt;
 
@@ -263,6 +270,8 @@ class Client {
     name: json['name'] as String? ?? '',
     current: json['current'] as bool? ?? false,
     channel: json['channel'] as String? ?? '',
+    vendor: json['vendor'] as String? ?? '',
+    model: json['model'] as String? ?? '',
     revoked: json['revoked'] as bool? ?? false,
     revokedAt: _time(json['revoked_at']),
     activeSessionId: json['active_session_id'] as String? ?? '',
@@ -436,3 +445,39 @@ List<T> parseList<T>(
   String field,
   T Function(Map<String, dynamic>) parse,
 ) => _list(json[field], parse);
+
+/// LlmModel : A model a client can be set to answer with.
+///
+/// Named so as not to collide with the word this file uses for everything it
+/// parses. It is a model in the other sense.
+class LlmModel {
+  const LlmModel({
+    required this.id,
+    required this.name,
+    required this.vendor,
+    required this.contextTokens,
+    required this.supportsTools,
+  });
+
+  final String id;
+  final String name;
+  final String vendor;
+
+  /// contextTokens : How much the model can be given at once. Shown so the
+  /// choice between a large model and a fast one is an informed one.
+  final int contextTokens;
+
+  final bool supportsTools;
+
+  /// fromJson : Parses a model as the API returns it.
+  factory LlmModel.fromJson(Map<String, dynamic> json) => LlmModel(
+    id: json['id'] as String? ?? '',
+    name: json['name'] as String? ?? '',
+    vendor: json['vendor'] as String? ?? '',
+    contextTokens: json['context_tokens'] as int? ?? 0,
+    supportsTools: json['supports_tools'] as bool? ?? false,
+  );
+
+  @override
+  String toString() => 'LlmModel($vendor/$id)';
+}

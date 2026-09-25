@@ -135,6 +135,32 @@ class AssistantApi {
         Client.fromJson,
       );
 
+  /// listModels : Returns the models a client can be set to answer with.
+  ///
+  /// Only what the server's provider can reach, so a choice offered here is
+  /// one that will work rather than one that fails the next time the person
+  /// speaks.
+  Future<List<LlmModel>> listModels() async =>
+      parseList(await _send('GET', '/v1/models'), 'models', LlmModel.fromJson);
+
+  /// setClientModel : Chooses which model answers a client's prompts.
+  ///
+  /// An empty [model] clears the choice, putting the client back on whatever
+  /// the server is configured with.
+  Future<List<Client>> setClientModel(
+    String clientId,
+    String vendor,
+    String model,
+  ) async => parseList(
+    await _send(
+      'POST',
+      '/v1/clients/$clientId/model',
+      body: {'vendor': vendor, 'model': model},
+    ),
+    'clients',
+    Client.fromJson,
+  );
+
   /// revokeClient : Stops one of the user's clients authenticating. Any of
   /// them may revoke any other, which is how a lost phone is dealt with.
   Future<void> revokeClient(String clientId) =>

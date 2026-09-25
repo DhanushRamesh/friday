@@ -343,7 +343,9 @@ class _ClientsModule extends StatelessWidget {
               'of these can sign in, and none can be brought back.'
         : 'Everything holding a token for this account, including the voice '
               'satellite. A client says what it is when it registers; Home '
-              'Assistant cannot, so its channel is set here.',
+              'Assistant cannot, so its channel is set here. Each one can be '
+              'answered by a different model: a spoken answer has to arrive '
+              'quickly, while a browser can wait for a better one.',
     action: InkWell(
       onTap: () => state.setShowRevoked(!state.showRevoked),
       borderRadius: BorderRadius.circular(AppRadius.xs),
@@ -367,10 +369,18 @@ class _ClientsModule extends StatelessWidget {
               for (final c in state.clients)
                 _ClientRow(
                   client: c,
+                  models: state.models,
                   onRevoke: c.revoked ? null : () => onRevoke(c),
                   onChannel: c.revoked
                       ? null
                       : (channel) => state.setClientChannel(c.id, channel),
+                  onModel: c.revoked
+                      ? null
+                      : (model) => state.setClientModel(
+                          c.id,
+                          model?.vendor ?? '',
+                          model?.id ?? '',
+                        ),
                 ),
             ],
           ),
@@ -461,9 +471,20 @@ class _Row extends StatelessWidget {
 
 /// _ClientRow : One client, with the way to take its token away.
 class _ClientRow extends StatelessWidget {
-  const _ClientRow({required this.client, this.onRevoke, this.onChannel});
+  const _ClientRow({
+    required this.client,
+    this.models = const [],
+    this.onRevoke,
+    this.onChannel,
+    this.onModel,
+  });
 
   final Client client;
+
+  /// models : What this client may be answered by. Only what the server's
+  /// provider can reach, so anything offered here will work.
+  final List<LlmModel> models;
+
   final VoidCallback? onRevoke;
 
   /// onChannel : Called with "voice" or "direct".
@@ -472,6 +493,10 @@ class _ClientRow extends StatelessWidget {
   /// handed a token through a screen with no field for it, so its client
   /// registers as direct and has to be corrected here.
   final ValueChanged<String>? onChannel;
+
+  /// onModel : Called with the model to answer this client, or null to put it
+  /// back on the server's.
+  final ValueChanged<LlmModel?>? onModel;
 
   @override
   Widget build(BuildContext context) {
@@ -518,6 +543,14 @@ class _ClientRow extends StatelessWidget {
                   _ChannelChoice(
                     channel: client.channel,
                     onChanged: onChannel!,
+                  ),
+                ],
+                if (onModel != null && models.isNotEmpty) ...[
+                  const SizedBox(height: AppSpacing.xs),
+                  _ModelChoice(
+                    chosen: client.model,
+                    models: models,
+                    onChanged: onModel!,
                   ),
                 ],
               ],
@@ -574,4 +607,93 @@ class _ChannelChoice extends StatelessWidget {
         ),
     ],
   );
+}
+
+/// _ModelChoice : Which model answers a client.
+///
+/// A menu rather than a row of words like the channel, because there are
+/// several and the list grows, while a channel is one of two and belongs on
+/// screen at all times.
+class _ModelChoice extends StatelessWidget {
+  const _ModelChoice({
+    required this.chosen,
+    required this.models,
+    required this.onChanged,
+  });
+
+  /// chosen : The identifier of the model answering this client, empty when
+  /// it has chosen none.
+  final String chosen;
+
+  final List<LlmModel> models;
+  final ValueChanged<LlmModel?> onChanged;
+
+  /// _serverDefault : Stands for choosing nothing, which is a real choice and
+  /// so needs somewhere to be selected from.
+  static const String _serverDefault = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final label = models
+        .where((m) => m.id == chosen)
+        .map((m) => m.name)
+        .firstOrNull;
+
+    return PopupMenuButton<String>(
+      tooltip: 'Which model answers this client',
+      position: PopupMenuPosition.under,
+      color: colors.surface,
+      onSelected: (id) => onChanged(
+        id == _serverDefault
+            ? null
+            : models.firstWhere((m) => m.id == id),
+      ),
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: _serverDefault,
+          child: Text(
+            'Server default',
+            style: context.text.caption.copyWith(
+              color: chosen.isEmpty ? colors.accent : colors.textSecondary,
+            ),
+          ),
+        ),
+        for (final m in models)
+          PopupMenuItem(
+            value: m.id,
+            child: Text(
+              '${m.name}  ·  ${_thousands(m.contextTokens)} tokens',
+              style: context.text.caption.copyWith(
+                color: m.id == chosen ? colors.accent : colors.textSecondary,
+              ),
+            ),
+          ),
+      ],
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label ?? 'Server default',
+            style: context.text.caption.copyWith(
+              color: label == null ? colors.textMuted : colors.accent,
+            ),
+          ),
+          Icon(Icons.arrow_drop_down, size: 16, color: colors.textMuted),
+        ],
+      ),
+    );
+  }
+}
+
+/// _thousands : A count with separators, so 200000 reads as a size rather
+/// than a string of noughts.
+String _thousands(int n) {
+  final digits = n.toString();
+  final out = StringBuffer();
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 == 0) out.write(',');
+    out.write(digits[i]);
+  }
+  return out.toString();
 }

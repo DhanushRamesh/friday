@@ -99,6 +99,12 @@ class AppState extends ChangeNotifier {
   List<Client> _clients = const [];
   List<Client> get clients => _clients;
 
+  List<LlmModel> _models = const [];
+
+  /// models : What a client can be set to answer with. Empty until the
+  /// settings screen has read them.
+  List<LlmModel> get models => _models;
+
   bool _showRevoked = false;
 
   /// showRevoked : Whether the clients list is showing what has been revoked
@@ -404,11 +410,21 @@ class AppState extends ChangeNotifier {
   }
 
   /// loadClients : Reads the clients holding a token, for the settings screen.
+  ///
+  /// The models are read alongside them, since a client is shown with the one
+  /// answering it and there is nothing to choose from without the list.
   Future<void> loadClients() async {
     try {
       _clients = await api.listClients(revoked: _showRevoked);
     } on Object catch (e) {
       _error = _explain(e);
+    }
+    if (_models.isEmpty) {
+      try {
+        _models = await api.listModels();
+      } on Object catch (e) {
+        _error = _explain(e);
+      }
     }
     notifyListeners();
   }
@@ -417,6 +433,21 @@ class AppState extends ChangeNotifier {
   Future<void> setClientChannel(String clientId, String channel) async {
     try {
       _clients = await api.setClientChannel(clientId, channel);
+    } on Object catch (e) {
+      _error = _explain(e);
+    }
+    notifyListeners();
+  }
+
+  /// setClientModel : Chooses which model answers a client's prompts. An
+  /// empty [model] puts it back on the server's.
+  Future<void> setClientModel(
+    String clientId,
+    String vendor,
+    String model,
+  ) async {
+    try {
+      _clients = await api.setClientModel(clientId, vendor, model);
     } on Object catch (e) {
       _error = _explain(e);
     }
