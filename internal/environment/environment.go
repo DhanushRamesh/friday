@@ -108,6 +108,13 @@ type Request struct {
 	// excluding this prompt. Without it a correction such as "no, make it
 	// four" reaches the model with nothing to make four.
 	History []Turn
+	// SystemPrompt : How the assistant is told to answer. Empty leaves it to
+	// whatever the environment is configured with.
+	//
+	// Carried per request rather than fixed when the environment is built,
+	// because the manner is chosen in the settings and has to take effect
+	// without a restart.
+	SystemPrompt string
 	// Vendor, Model : Which model to ask. Empty leaves it to whatever the
 	// provider is configured with, which is what a caller with no preference
 	// sends.

@@ -511,3 +511,50 @@ class ModelCatalogue {
     defaultId: json['default'] as String? ?? '',
   );
 }
+
+/// PersonaOption : A manner the assistant can answer in.
+class PersonaOption {
+  const PersonaOption({
+    required this.id,
+    required this.name,
+    required this.summary,
+  });
+
+  final String id;
+  final String name;
+  final String summary;
+
+  /// fromJson : Parses a persona as the API returns it.
+  factory PersonaOption.fromJson(Map<String, dynamic> json) => PersonaOption(
+    id: json['id'] as String? ?? '',
+    name: json['name'] as String? ?? '',
+    summary: json['summary'] as String? ?? '',
+  );
+}
+
+/// Personas : The manners on offer and the one in use.
+class Personas {
+  const Personas({this.options = const [], this.current = ''});
+
+  final List<PersonaOption> options;
+
+  /// current : The identifier of the manner in use.
+  final String current;
+
+  /// currentName : What to call it, falling back to nothing worth naming.
+  String get currentName {
+    for (final p in options) {
+      if (p.id == current) return p.name;
+    }
+    return current;
+  }
+
+  /// fromJson : Parses the listing as the API returns it.
+  factory Personas.fromJson(Map<String, dynamic> json) => Personas(
+    options: [
+      for (final p in (json['personas'] as List<dynamic>? ?? const []))
+        PersonaOption.fromJson(p as Map<String, dynamic>),
+    ],
+    current: json['current'] as String? ?? '',
+  );
+}

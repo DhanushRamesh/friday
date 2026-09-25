@@ -16,6 +16,8 @@ export 'models.dart'
         Identity,
         LlmModel,
         ModelCatalogue,
+        Personas,
+        PersonaOption,
         LoginResult,
         Message,
         Conversation,

@@ -135,6 +135,14 @@ type Repository interface {
 	// zero Model clears the choice, leaving the server's configured one.
 	SetClientModel(ctx context.Context, userID, clientID string, model Model) error
 
+	// Setting : Reads a setting belonging to the assistant itself, rather
+	// than to a user, a client or a conversation. One never written yields
+	// the empty string and no error.
+	Setting(ctx context.Context, name string) (string, error)
+
+	// SetSetting : Writes one, replacing whatever was there.
+	SetSetting(ctx context.Context, name, value string) error
+
 	// RevokeClient : Stops a client authenticating. It reports ErrNotFound if
 	// there is none, and ErrNotOwned if it belongs to another user. Revoking
 	// one already revoked changes nothing.

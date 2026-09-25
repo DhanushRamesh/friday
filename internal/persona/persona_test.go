@@ -64,13 +64,48 @@ func TestEveryPersonaIsForbiddenToEndOnAQuestion(t *testing.T) {
 }
 
 // The assistant answers to the name it is configured with, not to the name of
-// the persona.
+// the persona: the owner chooses what it is called and the same binary has to
+// serve whatever that is.
 func TestThePromptUsesTheConfiguredName(t *testing.T) {
-	if got := persona.Prompt("friday", "Alfred"); !strings.Contains(got, "You are Alfred,") {
-		t.Errorf("prompt does not introduce the assistant as Alfred: %q", got)
+	for name, want := range map[string]string{
+		"Jarvis":  "You are Jarvis, a personal assistant.",
+		"Friday":  "You are Friday, a personal assistant.",
+		"  Ada  ": "You are Ada, a personal assistant.",
+	} {
+		if got := persona.Prompt("friday", name); !strings.HasPrefix(got, want) {
+			t.Errorf("Prompt(friday, %q) = %q, want it to start %q", name, got, want)
+		}
 	}
+
+	// Nameless is a working assistant, not a broken one: it simply never
+	// says what it is called.
 	if got := persona.Prompt("jarvis", ""); !strings.HasPrefix(got, "You are a personal assistant.") {
 		t.Errorf("an unnamed assistant reads as %q", got)
+	}
+}
+
+// Whatever the manner, the instructions that keep a reply speakable survive.
+func TestEveryPromptStaysSpeakable(t *testing.T) {
+	for _, p := range persona.All() {
+		prompt := persona.Prompt(p.ID, "Jarvis")
+		for _, must := range []string{"read aloud", "Do not use markdown"} {
+			if !strings.Contains(prompt, must) {
+				t.Errorf("%s lost %q", p.ID, must)
+			}
+		}
+	}
+}
+
+// A nameless assistant answering plainly must not name itself. The name is
+// configuration, and one written into the prompt would be wrong the moment it
+// changed. A manner may name a character it is told never to mention, which
+// is the opposite of hardcoding one.
+func TestNoAssistantNameIsHardcoded(t *testing.T) {
+	plain := persona.Prompt(persona.Default, "")
+	for _, forbidden := range []string{"FRIDAY", "Friday", "JARVIS", "Jarvis"} {
+		if strings.Contains(plain, forbidden) {
+			t.Errorf("%q is hardcoded in %q", forbidden, plain)
+		}
 	}
 }
 

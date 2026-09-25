@@ -225,3 +225,13 @@ func utc(t *time.Time) *time.Time {
 	u := t.UTC()
 	return &u
 }
+
+// settingRow : The settings table, as GORM sees it.
+type settingRow struct {
+	Name      string    `gorm:"column:name;primaryKey"`
+	Value     string    `gorm:"column:value"`
+	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime:false"`
+}
+
+// TableName : Names the table this row maps to.
+func (settingRow) TableName() string { return "settings" }

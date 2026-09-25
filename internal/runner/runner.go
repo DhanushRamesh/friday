@@ -19,6 +19,7 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/events"
 	"github.com/DhanushRamesh/personal-assistant/internal/llm"
 	"github.com/DhanushRamesh/personal-assistant/internal/logging"
+	"github.com/DhanushRamesh/personal-assistant/internal/persona"
 )
 
 const (
@@ -81,6 +82,13 @@ type Options struct {
 	// CondenseTimeout : How long condensing an old conversation may take.
 	// Zero selects DefaultCondenseTimeout.
 	CondenseTimeout time.Duration
+	// AssistantName : What the assistant calls itself when it introduces
+	// itself. Empty leaves it nameless.
+	AssistantName string
+	// Persona : The manner it answers in, read afresh on every prompt so a
+	// change takes effect without a restart. Nil leaves it answering
+	// plainly.
+	Persona *persona.Setting
 }
 
 // Runner : Executes chats in the background.
@@ -95,6 +103,8 @@ type Runner struct {
 	chatTimeout     time.Duration
 	historyLimits   conversation.Limits
 	condenseTimeout time.Duration
+	assistantName   string
+	persona         *persona.Setting
 
 	// slots : Limits how many chats run at once. A chat holds one for the
 	// whole of its run.
@@ -154,6 +164,8 @@ func New(opts Options) (*Runner, error) {
 		chatTimeout:     opts.ChatTimeout,
 		historyLimits:   opts.HistoryLimits,
 		condenseTimeout: opts.CondenseTimeout,
+		assistantName:   opts.AssistantName,
+		persona:         opts.Persona,
 		slots:           make(chan struct{}, opts.MaxConcurrent),
 		base:            base,
 		stopBase:        stop,
@@ -250,6 +262,18 @@ func (r *Runner) Shutdown(ctx context.Context) error {
 		r.stopBase()
 		return fmt.Errorf("runner: chats did not finish before shutdown: %w", ctx.Err())
 	}
+}
+
+// promptFor : How the assistant is told to answer this chat.
+//
+// Read afresh rather than stamped onto the chat when it was accepted, so a
+// manner chosen in the settings takes effect on the next prompt.
+func (r *Runner) prompt() string {
+	id := persona.Default
+	if r.persona != nil {
+		id = r.persona.Current()
+	}
+	return persona.Prompt(id, r.assistantName)
 }
 
 // limitsFor : The ceilings a chat's history is held under.

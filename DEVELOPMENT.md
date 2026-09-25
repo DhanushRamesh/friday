@@ -473,6 +473,28 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### The manner is held in memory and stored beside it
+
+It is read on every prompt, so it lives in memory; it is expected to still be
+chosen tomorrow, so it is written to a table. The in-memory copy is a cache of
+a stored choice, not the choice itself.
+
+A table of name and value rather than a column. There is no row the manner
+belongs to: not the user's, since the same assistant answers whoever asks, and
+not the client's, since it is the same assistant at every one of them. Which
+model answers is the opposite case and stays on the client, because a spoken
+answer has to arrive before the satellite gives up waiting.
+
+Configuration gives the manner to start in the first time; once something has
+been chosen the stored choice wins. A database that will not answer at startup
+is not a reason to refuse to start, so the configured manner is used and
+logged.
+
+The write happens after the change is applied, not before. What answers is the
+copy in memory, and a failed write should not leave the assistant speaking in
+a manner nobody chose — it costs the choice its permanence and nothing else,
+so it is logged rather than returned.
+
 ### A manner is behaviour, not adjectives
 
 The personas are written from what the films show rather than from the words

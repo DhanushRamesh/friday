@@ -161,6 +161,19 @@ class AssistantApi {
     Client.fromJson,
   );
 
+  /// listPersonas : Returns the manners the assistant can answer in, and the
+  /// one it is answering in now.
+  Future<Personas> listPersonas() async =>
+      Personas.fromJson(await _send('GET', '/v1/personas'));
+
+  /// setPersona : Chooses the manner the assistant answers in.
+  ///
+  /// It takes effect on the next prompt. The server holds it in memory, so it
+  /// returns to whatever is configured when the server restarts.
+  Future<Personas> setPersona(String id) async => Personas.fromJson(
+    await _send('POST', '/v1/personas', body: {'persona': id}),
+  );
+
   /// revokeClient : Stops one of the user's clients authenticating. Any of
   /// them may revoke any other, which is how a lost phone is dealt with.
   Future<void> revokeClient(String clientId) =>

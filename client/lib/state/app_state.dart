@@ -99,6 +99,12 @@ class AppState extends ChangeNotifier {
   List<Client> _clients = const [];
   List<Client> get clients => _clients;
 
+  Personas _personas = const Personas();
+
+  /// personas : The manners the assistant can answer in, and the one it is
+  /// answering in. Empty until the settings screen has read them.
+  Personas get personas => _personas;
+
   ModelCatalogue _catalogue = const ModelCatalogue();
 
   /// catalogue : What a client can be set to answer with, and which model
@@ -427,6 +433,13 @@ class AppState extends ChangeNotifier {
         _error = _explain(e);
       }
     }
+    if (_personas.options.isEmpty) {
+      try {
+        _personas = await api.listPersonas();
+      } on Object catch (e) {
+        _error = _explain(e);
+      }
+    }
     notifyListeners();
   }
 
@@ -449,6 +462,16 @@ class AppState extends ChangeNotifier {
   ) async {
     try {
       _clients = await api.setClientModel(clientId, vendor, model);
+    } on Object catch (e) {
+      _error = _explain(e);
+    }
+    notifyListeners();
+  }
+
+  /// setPersona : Chooses the manner the assistant answers in.
+  Future<void> setPersona(String id) async {
+    try {
+      _personas = await api.setPersona(id);
     } on Object catch (e) {
       _error = _explain(e);
     }

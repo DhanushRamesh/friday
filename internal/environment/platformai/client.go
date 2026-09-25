@@ -205,10 +205,15 @@ func (p *Environment) attemptChat(ctx context.Context, ask environment.Request) 
 		vendor, model = ask.Vendor, ask.Model
 	}
 
+	prompt := p.cfg.SystemPrompt
+	if ask.SystemPrompt != "" {
+		prompt = ask.SystemPrompt
+	}
+
 	body, err := json.Marshal(chatRequest{
 		Vendor:   vendor,
 		Model:    model,
-		Context:  withSummary(p.cfg.SystemPrompt, ask.Summary),
+		Context:  withSummary(prompt, ask.Summary),
 		Messages: messages,
 	})
 	if err != nil {

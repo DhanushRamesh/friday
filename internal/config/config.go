@@ -101,7 +101,7 @@ const (
 	ProviderPlatformAI ProviderName = "platformai"
 )
 
-// Assistant : What the assistant is called.
+// Assistant : What the assistant is called and how it answers.
 //
 // The name lives here rather than in the code because it is the owner's
 // choice, not the server's: the same binary should serve whatever the
@@ -112,6 +112,10 @@ type Assistant struct {
 	// it nameless, which is a working assistant that simply never says what
 	// it is called.
 	Name string
+	// Persona : The manner it starts in, as a persona identifier. The
+	// setting can be changed while the server runs and returns here when it
+	// restarts, so this is what a lasting choice is written into.
+	Persona string
 }
 
 // Provider : Chooses which engine answers chats.
@@ -293,7 +297,8 @@ func Load(path string, lookup Lookup) (Config, error) {
 			AutoMigrate:     l.boolean("database", "auto_migrate", true),
 		},
 		Assistant: Assistant{
-			Name: l.str("assistant", "name", ""),
+			Name:    l.str("assistant", "name", ""),
+			Persona: l.str("assistant", "persona", ""),
 		},
 		Provider: Provider{
 			Name: ProviderName(l.str("provider", "name", string(ProviderStub))),

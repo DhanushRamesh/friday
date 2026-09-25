@@ -604,49 +604,14 @@ func TestACodeIsNotReadAloud(t *testing.T) {
 	}
 }
 
-// The assistant's name is the owner's choice, not the server's: the same
-// binary has to serve whatever it is called today without being rebuilt.
-func TestSystemPromptCarriesTheConfiguredName(t *testing.T) {
-	for name, want := range map[string]string{
-		"Jarvis":  "You are Jarvis, a personal assistant.",
-		"Friday":  "You are Friday, a personal assistant.",
-		"  Ada  ": "You are Ada, a personal assistant.",
-	} {
-		got := platformai.SystemPromptFor(name)
-		if !strings.HasPrefix(got, want) {
-			t.Errorf("SystemPromptFor(%q) = %q, want it to start %q", name, got, want)
-		}
-	}
-
-	// Nameless is a working assistant, not a broken one: it simply never
-	// says what it is called.
-	unnamed := platformai.SystemPromptFor("   ")
-	if !strings.HasPrefix(unnamed, "You are a personal assistant.") {
-		t.Errorf("an empty name gave %q", unnamed)
-	}
-
-	// Whatever the name, the instructions that keep replies speakable must
-	// survive: no markdown, and no closing question, which Home Assistant
-	// reads as "keep the microphone open".
-	for _, prompt := range []string{platformai.SystemPromptFor("Jarvis"), unnamed} {
-		for _, must := range []string{"read aloud", "Do not use markdown", "Do not end with a question"} {
-			if !strings.Contains(prompt, must) {
-				t.Errorf("prompt %q lost %q", prompt, must)
-			}
-		}
-	}
-}
-
-// Nothing the server says aloud may name the assistant: the name is
+// Nothing the adapter says aloud may name the assistant: the name is
 // configuration, and a hardcoded one would be wrong the moment it changes.
+// What the assistant says about itself now lives in internal/persona, which
+// holds the same rule.
 func TestNoAssistantNameIsHardcodedInSpokenText(t *testing.T) {
-	for _, s := range []string{
-		platformai.DefaultSystemPrompt,
-	} {
-		for _, forbidden := range []string{"FRIDAY", "Friday", "JARVIS", "Jarvis"} {
-			if strings.Contains(s, forbidden) {
-				t.Errorf("%q is hardcoded in %q", forbidden, s)
-			}
+	for _, forbidden := range []string{"FRIDAY", "Friday", "JARVIS", "Jarvis"} {
+		if strings.Contains(platformai.DefaultSystemPrompt, forbidden) {
+			t.Errorf("%q is hardcoded in %q", forbidden, platformai.DefaultSystemPrompt)
 		}
 	}
 }

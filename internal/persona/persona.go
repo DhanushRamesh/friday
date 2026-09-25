@@ -5,7 +5,10 @@
 // appended after the manner and contradict it where the two disagree.
 package persona
 
-import "strings"
+import (
+	"strings"
+	"sync"
+)
 
 // spokenRules : How every reply is shaped, whichever persona is answering.
 //
@@ -36,6 +39,9 @@ type Persona struct {
 
 // Default : The persona used when none is chosen.
 const Default = "plain"
+
+// SettingName : What the chosen manner is stored under.
+const SettingName = "persona"
 
 // registry : Every persona, in the order they are offered.
 var registry = []Persona{
@@ -132,4 +138,59 @@ func Prompt(id, name string) string {
 
 	b.WriteString(spokenRules)
 	return b.String()
+}
+
+// Setting : The manner currently in use, held in memory.
+//
+// In memory because it is read on every prompt and a database round trip for
+// a single word on each one buys nothing. What persists is written beside it
+// under SettingName, loaded back at startup, so this is a cache of a stored
+// choice rather than the choice itself.
+//
+// Safe for concurrent use: it is read on every prompt and written from the
+// settings screen.
+type Setting struct {
+	mu sync.RWMutex
+	id string
+}
+
+// NewSetting : A setting starting at the given persona, falling back to
+// Default when it names none that exists.
+func NewSetting(id string) *Setting {
+	s := &Setting{}
+	s.Set(id)
+	return s
+}
+
+// Current : The persona in use.
+func (s *Setting) Current() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.id
+}
+
+// Set : Changes the manner, reporting whether the identifier named one.
+//
+// An unknown identifier leaves the setting alone rather than clearing it: a
+// bad value in a request should not quietly reset what was working.
+func (s *Setting) Set(id string) bool {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		id = Default
+	}
+
+	p, ok := Find(id)
+	if !ok {
+		s.mu.Lock()
+		if s.id == "" {
+			s.id = Default
+		}
+		s.mu.Unlock()
+		return false
+	}
+
+	s.mu.Lock()
+	s.id = p.ID
+	s.mu.Unlock()
+	return true
 }

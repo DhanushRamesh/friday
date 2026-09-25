@@ -584,3 +584,58 @@ func TestAChatRemembersItsModel(t *testing.T) {
 		t.Errorf("Model = %+v, want %+v", got.Model, t2.Model)
 	}
 }
+
+// A setting nobody has written is empty rather than an error: every one has a
+// default, and not having chosen is the ordinary case.
+func TestAnUnwrittenSettingIsEmpty(t *testing.T) {
+	r := newRepository(t)
+
+	got, err := r.Setting(context.Background(), "nothing-has-set-this")
+	if err != nil {
+		t.Fatalf("Setting: %v", err)
+	}
+	if got != "" {
+		t.Errorf("Setting = %q, want empty", got)
+	}
+}
+
+// A setting has to survive the round trip, which is the whole reason it is
+// stored rather than held in memory.
+func TestASettingSurvivesStorage(t *testing.T) {
+	r := newRepository(t)
+	ctx := context.Background()
+	name := "persona-" + chat.NewUserID()[5:15]
+
+	if err := r.SetSetting(ctx, name, "jarvis"); err != nil {
+		t.Fatalf("SetSetting: %v", err)
+	}
+
+	got, err := r.Setting(ctx, name)
+	if err != nil {
+		t.Fatalf("Setting: %v", err)
+	}
+	if got != "jarvis" {
+		t.Errorf("Setting = %q, want jarvis", got)
+	}
+}
+
+// Choosing again replaces the choice rather than failing on the key or
+// leaving the first one in place.
+func TestASettingIsReplaced(t *testing.T) {
+	r := newRepository(t)
+	ctx := context.Background()
+	name := "persona-" + chat.NewUserID()[5:15]
+
+	for _, want := range []string{"jarvis", "friday", "plain"} {
+		if err := r.SetSetting(ctx, name, want); err != nil {
+			t.Fatalf("SetSetting(%q): %v", want, err)
+		}
+		got, err := r.Setting(ctx, name)
+		if err != nil {
+			t.Fatalf("Setting: %v", err)
+		}
+		if got != want {
+			t.Errorf("Setting = %q, want %q", got, want)
+		}
+	}
+}

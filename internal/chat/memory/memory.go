@@ -32,7 +32,9 @@ type Repository struct {
 	said          map[string][]conversation.Message
 	appendSaidErr error
 	// summaries : Each conversation's condensed earlier conversation.
-	summaries     map[string]conversation.Summary
+	summaries map[string]conversation.Summary
+	// settings : What belongs to the assistant rather than to any user.
+	settings      map[string]string
 	conversations map[string]chat.Conversation
 	clients       map[string]chat.Client
 	users         map[string]chat.User
@@ -55,6 +57,7 @@ func New() *Repository {
 		chats:         map[string]*chat.Chat{},
 		said:          map[string][]conversation.Message{},
 		summaries:     map[string]conversation.Summary{},
+		settings:      map[string]string{},
 		conversations: map[string]chat.Conversation{},
 		clients:       map[string]chat.Client{},
 		users:         map[string]chat.User{},
@@ -381,6 +384,21 @@ func (m *Repository) SetClientChannel(_ context.Context, userID, clientID string
 }
 
 // SetClientModel : Chooses which model answers a client's prompts.
+// Setting : Reads a setting belonging to the assistant itself.
+func (m *Repository) Setting(_ context.Context, name string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.settings[name], nil
+}
+
+// SetSetting : Writes one, replacing whatever was there.
+func (m *Repository) SetSetting(_ context.Context, name, value string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.settings[name] = value
+	return nil
+}
+
 func (m *Repository) SetClientModel(_ context.Context, userID, clientID string, model chat.Model) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

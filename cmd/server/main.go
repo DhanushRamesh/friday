@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/DhanushRamesh/personal-assistant/internal/api"
+	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	chatmysql "github.com/DhanushRamesh/personal-assistant/internal/chat/mysql"
 	"github.com/DhanushRamesh/personal-assistant/internal/config"
 	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
@@ -22,6 +23,7 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/events"
 	"github.com/DhanushRamesh/personal-assistant/internal/llm"
 	"github.com/DhanushRamesh/personal-assistant/internal/logging"
+	"github.com/DhanushRamesh/personal-assistant/internal/persona"
 	"github.com/DhanushRamesh/personal-assistant/internal/runner"
 	"github.com/DhanushRamesh/personal-assistant/internal/storage"
 )
@@ -141,6 +143,12 @@ func run() error {
 	}
 	logger.Info("provider selected", slog.String("provider", answerer.Name()))
 
+	// One manner, shared by the runner that speaks in it and the API that
+	// changes it. Held in memory because it is read on every prompt, and
+	// started from what was last chosen, falling back to configuration when
+	// nothing has been.
+	manner := persona.NewSetting(startingPersona(context.Background(), chats, cfg, logger.Logger))
+
 	chatRunner, err := runner.New(runner.Options{
 		Repository:    chats,
 		Messages:      chats,
@@ -148,6 +156,8 @@ func run() error {
 		Logger:        logger.Logger,
 		Publisher:     bus,
 		HistoryLimits: historyLimits(cfg, logger.Logger),
+		AssistantName: cfg.Assistant.Name,
+		Persona:       manner,
 	})
 	if err != nil {
 		return err
@@ -166,6 +176,7 @@ func run() error {
 		Events:         bus,
 		Models:         reachableModels(cfg),
 		DefaultModel:   cfg.PlatformAI.Model,
+		Persona:        manner,
 		RequestTimeout: cfg.Server.RequestTimeout,
 		// Development only: `flutter run` serves the UI from its own port so
 		// that hot reload works. In production the server serves it, so every
@@ -199,7 +210,7 @@ func buildProvider(cfg config.Config, logger *slog.Logger) (environment.Environm
 			RedirectURI:        cfg.PlatformAI.RedirectURI,
 			Vendor:             cfg.PlatformAI.Vendor,
 			Model:              cfg.PlatformAI.Model,
-			SystemPrompt:       platformai.SystemPromptFor(cfg.Assistant.Name),
+			SystemPrompt:       persona.Prompt(cfg.Assistant.Persona, cfg.Assistant.Name),
 			Timeout:            cfg.PlatformAI.Timeout,
 			InsecureSkipVerify: cfg.PlatformAI.InsecureSkipVerify,
 		}, logger)
@@ -233,7 +244,25 @@ func reachableModels(cfg config.Config) []llm.Model {
 	return out
 }
 
-// historyLimits : The ceilings the conversation sent to the provider is held
+// startingPersona : The manner to begin in.
+//
+// What was last chosen, or configuration when nothing has been. A database
+// that will not answer is not a reason to refuse to start: the configured
+// manner is a working assistant, and the next choice will store itself.
+func startingPersona(ctx context.Context, repo chat.Repository, cfg config.Config, logger *slog.Logger) string {
+	stored, err := repo.Setting(ctx, persona.SettingName)
+	if err != nil {
+		logger.Warn("cannot read the stored manner, using the configured one",
+			slog.Any("error", err))
+		return cfg.Assistant.Persona
+	}
+	if stored == "" {
+		return cfg.Assistant.Persona
+	}
+	return stored
+}
+
+// historyLimits : The ceilings the conversation sent to the environment is held
 // under, for the provider configuration selects.
 //
 // Each comes from whatever knows it: the message count from the service, the

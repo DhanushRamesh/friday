@@ -28,6 +28,7 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/api/middleware"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	"github.com/DhanushRamesh/personal-assistant/internal/llm"
+	"github.com/DhanushRamesh/personal-assistant/internal/persona"
 )
 
 // DefaultRequestTimeout : The per-request deadline applied when Options does
@@ -67,6 +68,9 @@ type Options struct {
 	// DefaultModel : The identifier of the model answering a client that has
 	// chosen none, so a listing can name it.
 	DefaultModel string
+	// Persona : The manner the assistant answers in, shared with the runner
+	// so that choosing one here is answered in by the next prompt.
+	Persona *persona.Setting
 
 	// RequestTimeout : The per-request deadline. Zero selects
 	// DefaultRequestTimeout.
@@ -110,7 +114,7 @@ func New(opts Options) *Server {
 
 		health:        health.New(opts.Logger, opts.DB),
 		authn:         authn.New(opts.Logger, opts.Chats),
-		clients:       clients.New(opts.Logger, opts.Chats, opts.Models, opts.DefaultModel),
+		clients:       clients.New(opts.Logger, opts.Chats, opts.Models, opts.DefaultModel, opts.Persona),
 		conversations: conversations.New(opts.Logger, opts.Chats),
 		chats:         chats.New(opts.Logger, opts.Chats, opts.Runner, opts.Events),
 		assist:        assist.New(opts.Logger, opts.Chats, opts.Runner, opts.Events),

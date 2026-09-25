@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	"github.com/DhanushRamesh/personal-assistant/internal/storage"
@@ -328,6 +329,45 @@ func (r *Repository) SetClientChannel(ctx context.Context, userID, clientID stri
 		}).Error
 	if err != nil {
 		return fmt.Errorf("chat: setting channel on %s: %w", clientID, err)
+	}
+	return nil
+}
+
+// Setting : Reads a setting belonging to the assistant itself.
+//
+// A setting nobody has written is the empty string rather than an error:
+// every one of these has a default, and not having chosen yet is the ordinary
+// case rather than a fault.
+func (r *Repository) Setting(ctx context.Context, name string) (string, error) {
+	var row settingRow
+	err := r.db.WithContext(ctx).First(&row, "name = ?", name).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("chat: reading setting %s: %w", name, err)
+	}
+	return row.Value, nil
+}
+
+// SetSetting : Writes a setting, replacing whatever was there.
+func (r *Repository) SetSetting(ctx context.Context, name, value string) error {
+	row := settingRow{
+		Name:      name,
+		Value:     value,
+		UpdatedAt: time.Now().UTC().Truncate(chat.StoredPrecision),
+	}
+
+	// Written whether or not it is already there, since a setting has no
+	// lifecycle worth distinguishing a first choice from a later one.
+	err := r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "name"}},
+			DoUpdates: clause.AssignmentColumns([]string{"value", "updated_at"}),
+		}).
+		Create(&row).Error
+	if err != nil {
+		return fmt.Errorf("chat: writing setting %s: %w", name, err)
 	}
 	return nil
 }

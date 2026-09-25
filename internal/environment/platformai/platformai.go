@@ -36,26 +36,14 @@ const (
 	// of the places, so the history sent alongside it is one shorter.
 	MaxMessages = 100
 
-	// promptBody : How the model is told to answer, after it has been told
-	// what it is.
+	// DefaultSystemPrompt : What the model is told when a caller gives
+	// nothing.
 	//
-	// It asks for speech rather than prose because replies are read aloud:
-	// headings, bullet lists and code fences are noise when heard.
-	//
-	// The last sentence is not only about tone. Home Assistant decides whether
-	// to reopen the microphone by looking at the final character of the reply,
-	// and treats a question mark as an invitation to keep listening. A closing
-	// "is there anything else?" therefore leaves the microphone open and the
-	// wake word unnecessary, which is the opposite of how this is meant to be
-	// spoken to.
-	promptBody = "Your replies are read aloud, so answer in plain spoken sentences. " +
-		"Do not use markdown, headings, bullet points or code blocks. " +
-		"Be brief and direct: say the answer first, then only the detail that matters. " +
-		"Do not end with a question or an offer of further help; " +
-		"stop once the answer is given."
-
-	// DefaultSystemPrompt : How an unnamed assistant is told to answer.
-	DefaultSystemPrompt = "You are a personal assistant. " + promptBody
+	// A bare fallback. What the assistant says about itself, and how a reply
+	// is worded, is composed in internal/persona and arrives with each
+	// request, because the manner is chosen while the server runs. None of
+	// that belongs to an endpoint adapter.
+	DefaultSystemPrompt = "You are a personal assistant."
 )
 
 // Default endpoints.
@@ -97,20 +85,6 @@ func Models() []ModelRef {
 		{"openai", "gpt-4.1-mini"},
 		{"openai", "gpt-4.1-nano"},
 	}
-}
-
-// SystemPromptFor : Returns the instructions for an assistant called name.
-//
-// The name is configuration rather than a constant: the owner chooses what
-// the assistant is called, and the same binary has to serve whatever that is
-// without being rebuilt. An empty name gives a working assistant that simply
-// never says what it is called.
-func SystemPromptFor(name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return DefaultSystemPrompt
-	}
-	return "You are " + name + ", a personal assistant. " + promptBody
 }
 
 // Config : What the provider needs in order to reach the service.

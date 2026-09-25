@@ -64,6 +64,8 @@ func (r *Runner) consume(runCtx, ctx context.Context, t *chat.Chat) {
 		Summary: window.Summary,
 		Vendor:  t.Model.Vendor,
 		Model:   t.Model.ID,
+
+		SystemPrompt: r.prompt(),
 	})
 	if err != nil {
 		r.logger.ErrorContext(ctx, "provider would not start", slog.Any("error", err))

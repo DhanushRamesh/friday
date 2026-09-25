@@ -13,6 +13,7 @@ import (
 
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	"github.com/DhanushRamesh/personal-assistant/internal/llm"
+	"github.com/DhanushRamesh/personal-assistant/internal/persona"
 )
 
 // Chat : A chat as the API returns it.
@@ -189,4 +190,16 @@ func OfModel(m llm.Model) Model {
 		ContextTokens: m.ContextTokens,
 		SupportsTools: m.SupportsTools,
 	}
+}
+
+// Persona : A manner the assistant can answer in.
+type Persona struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Summary string `json:"summary"`
+}
+
+// OfPersona : Renders a persona for the API.
+func OfPersona(p persona.Persona) Persona {
+	return Persona{ID: p.ID, Name: p.Name, Summary: p.Summary}
 }

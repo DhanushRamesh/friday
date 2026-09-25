@@ -292,6 +292,31 @@ class _AccountModule extends StatelessWidget {
                 ? '—'
                 : identity.client.name,
           ),
+          if (state.personas.options.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.lg),
+            _Field(
+              label: 'Manner',
+              child: _Select(
+                value: state.personas.currentName,
+                options: [
+                  for (final p in state.personas.options)
+                    _Option(
+                      label: '${p.name}  ·  ${p.summary}',
+                      selected: p.id == state.personas.current,
+                      onTap: () => state.setPersona(p.id),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              'How the assistant speaks, everywhere. It takes effect on the '
+              'next thing you ask, and is remembered across restarts.',
+              style: context.text.caption.copyWith(
+                color: context.colors.textMuted,
+              ),
+            ),
+          ],
           const SizedBox(height: AppSpacing.lg),
           AppButton(
             label: 'Sign out',

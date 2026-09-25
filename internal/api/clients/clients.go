@@ -18,6 +18,7 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/api/views"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	"github.com/DhanushRamesh/personal-assistant/internal/llm"
+	"github.com/DhanushRamesh/personal-assistant/internal/persona"
 )
 
 // ListResponse : The body of a listing of clients.
@@ -48,6 +49,18 @@ type ModelRequest struct {
 	Model  string `json:"model"`
 }
 
+// PersonasResponse : The manners the assistant can answer in, and the one it
+// is answering in now.
+type PersonasResponse struct {
+	Personas []views.Persona `json:"personas"`
+	Current  string          `json:"current"`
+}
+
+// PersonaRequest : Choosing the manner the assistant answers in.
+type PersonaRequest struct {
+	Persona string `json:"persona"`
+}
+
 // Handler : Serves the client endpoints.
 type Handler struct {
 	httpx.Responder
@@ -58,16 +71,26 @@ type Handler struct {
 	// defaultModel : The identifier of the model answering a client that has
 	// chosen none.
 	defaultModel string
+	// persona : The manner in use. Held in memory and shared with the
+	// runner, so a change here is answered in by the next prompt.
+	persona *persona.Setting
 }
 
 // New : Builds the handler from the store holding the clients, the models the
 // provider in use can reach, and the one it falls back to.
-func New(logger *slog.Logger, repo chat.Repository, models []llm.Model, defaultModel string) *Handler {
+func New(
+	logger *slog.Logger,
+	repo chat.Repository,
+	models []llm.Model,
+	defaultModel string,
+	manner *persona.Setting,
+) *Handler {
 	return &Handler{
 		Responder:    httpx.Responder{Logger: logger},
 		repo:         repo,
 		models:       models,
 		defaultModel: defaultModel,
+		persona:      manner,
 	}
 }
 
@@ -82,6 +105,10 @@ func (h *Handler) Mount(r chi.Router) {
 	})
 	r.Route("/v1/models", func(r chi.Router) {
 		r.Get("/", h.Models)
+	})
+	r.Route("/v1/personas", func(r chi.Router) {
+		r.Get("/", h.Personas)
+		r.Post("/", h.SetPersona)
 	})
 	r.Route("/v1/me", func(r chi.Router) {
 		r.Get("/", h.Me)
@@ -278,4 +305,55 @@ func (h *Handler) offers(m chat.Model) bool {
 		}
 	}
 	return false
+}
+
+// Personas : Lists the manners the assistant can answer in.
+func (h *Handler) Personas(w http.ResponseWriter, r *http.Request) {
+	out := make([]views.Persona, 0)
+	for _, p := range persona.All() {
+		out = append(out, views.OfPersona(p))
+	}
+	httpx.WriteJSON(r.Context(), w, http.StatusOK, PersonasResponse{
+		Personas: out,
+		Current:  h.current(),
+	})
+}
+
+// SetPersona : Chooses the manner the assistant answers in.
+//
+// It takes effect on the next prompt, and is stored so that it survives a
+// restart.
+func (h *Handler) SetPersona(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req PersonaRequest
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		httpx.WriteError(ctx, w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if h.persona == nil || !h.persona.Set(req.Persona) {
+		httpx.WriteError(ctx, w, http.StatusBadRequest,
+			"That is not a manner this assistant knows.")
+		return
+	}
+
+	// Stored after it is applied, not before: the manner in memory is what
+	// answers, and a write that fails should not leave the assistant
+	// speaking in a manner nobody chose. A failure here costs the choice its
+	// permanence and nothing else, so it is logged rather than returned.
+	if err := h.repo.SetSetting(ctx, persona.SettingName, h.persona.Current()); err != nil {
+		h.Logger.ErrorContext(ctx, "cannot store the chosen manner",
+			slog.String("persona", h.persona.Current()), slog.Any("error", err))
+	}
+
+	h.Personas(w, r)
+}
+
+// current : The manner in use, or the default when none is configured.
+func (h *Handler) current() string {
+	if h.persona == nil {
+		return persona.Default
+	}
+	return h.persona.Current()
 }
