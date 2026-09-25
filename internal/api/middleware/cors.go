@@ -8,16 +8,13 @@ import (
 
 // corsMaxAge : How long a browser may remember the answer to a preflight.
 //
-// Every stream carries a Last-Event-ID header, which is not one of the
-// handful browsers allow without asking first, so without this every
-// reconnection would cost two round trips instead of one.
+// Authorization is not one of the handful of headers a browser will send
+// cross-origin without asking first, so without this every call would cost
+// two round trips instead of one.
 const corsMaxAge = "600"
 
 // corsHeaders : The request headers a client is allowed to send.
-//
-// Last-Event-ID is the one that matters: it is how a dropped stream resumes
-// without repeating what the user already heard.
-const corsHeaders = "Authorization, Content-Type, Accept, Last-Event-ID"
+const corsHeaders = "Authorization, Content-Type, Accept"
 
 // corsMethods : The methods the API uses.
 const corsMethods = "GET, POST, DELETE, OPTIONS"

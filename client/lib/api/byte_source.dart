@@ -1,14 +1,12 @@
 /// Opening a response whose body is read as it arrives.
 ///
-/// This exists because the browser's EventSource cannot carry an
-/// Authorization header, and the assistant's stream requires one. Putting the token
-/// in the query string instead would write a credential into proxy logs and
-/// browser history, so the web implementation uses fetch, which does take
-/// headers and does expose the body as it arrives. The native
-/// implementation reads a streamed HTTP response.
+/// A prompt is answered as the words are produced, so the response has to be
+/// read while it is still arriving rather than after it ends. The web
+/// implementation uses fetch, which exposes the body as it comes and takes an
+/// Authorization header; the native one reads a streamed HTTP response.
 ///
-/// Both produce the same thing — bytes as they arrive — so the event parsing
-/// above them is written once.
+/// Both produce the same thing — bytes as they arrive — so the parsing above
+/// them is written once.
 library;
 
 import 'byte_source_stub.dart'
@@ -38,6 +36,11 @@ abstract interface class ByteSource {
   /// open : Issues a GET and returns as soon as the headers arrive, before
   /// the body has been read.
   Future<StreamedResponse> open(Uri url, Map<String, String> headers);
+
+  /// post : The same, with a body. This is how a prompt is sent: the one
+  /// endpoint that takes one answers as the words are produced, so the
+  /// response has to be read while it is still arriving.
+  Future<StreamedResponse> post(Uri url, Map<String, String> headers, String body);
 
   /// close : Releases whatever the implementation holds. A source is not
   /// usable afterwards.

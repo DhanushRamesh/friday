@@ -13,17 +13,15 @@ export 'errors.dart';
 export 'models.dart'
     show
         Client,
-        EventKind,
         Identity,
         LoginResult,
         Message,
         Session,
         SessionDetail,
+        AnswerChunk,
         Chat,
-        ChatEvent,
         ChatStatus,
         ChatSummary,
         User;
 export 'server_url.dart';
-export 'sse.dart' show parseEvents;
 export 'token_store.dart';

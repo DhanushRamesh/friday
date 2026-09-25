@@ -67,7 +67,7 @@ func (r *Runner) consume(runCtx, ctx context.Context, t *chat.Chat) {
 	for msg := range stream {
 		switch msg.Kind {
 		case provider.KindUpdate:
-			r.record(ctx, t.ID, msg)
+			r.announce(t.ID, msg)
 		case provider.KindFinal, provider.KindError:
 			// Keep a copy: the loop must run to completion so the provider's
 			// goroutine is not left blocked on a send.
@@ -235,20 +235,16 @@ func (r *Runner) finishWith(ctx context.Context, t *chat.Chat, transition func()
 	r.announceOutcome(t)
 }
 
-// record : Stores one transient message and announces it.
+// announce : Reports where a chat has got to, without storing it.
 //
-// A message that cannot be stored does not fail the chat: the answer still
-// matters, and losing a line of progress is not worth discarding it for. It is
-// still announced, so a listener hears it even when the record of it was lost.
-func (r *Runner) record(ctx context.Context, chatID string, msg provider.Message) {
-	stored, err := r.repo.AppendMessage(ctx, chatID, string(msg.Kind), msg.Text)
-	if err != nil {
-		r.logger.ErrorContext(ctx, "cannot store message", slog.Any("error", err))
-	}
+// Progress is transient by nature: it is worth hearing while the answer is
+// being produced and worth nothing afterwards. It used to be written to a
+// table so a dropped stream could replay it, and that table went with the
+// stream.
+func (r *Runner) announce(chatID string, msg provider.Message) {
 	r.publish(events.Event{
 		ChatID: chatID,
 		Kind:   events.KindUpdate,
-		Seq:    stored.Seq,
 		Text:   msg.Text,
 		At:     msg.At,
 	})

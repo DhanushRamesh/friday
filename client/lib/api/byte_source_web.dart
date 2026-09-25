@@ -51,6 +51,37 @@ class WebByteSource implements ByteSource {
     );
   }
 
+  @override
+  Future<StreamedResponse> post(
+    Uri url,
+    Map<String, String> headers,
+    String body,
+  ) async {
+    final jsHeaders = web.Headers();
+    headers.forEach((name, value) => jsHeaders.append(name, value));
+
+    final controller = web.AbortController();
+    _inFlight = controller;
+
+    final response = await web.window
+        .fetch(
+          url.toString().toJS,
+          web.RequestInit(
+            method: 'POST',
+            headers: jsHeaders,
+            body: body.toJS,
+            signal: controller.signal,
+          ),
+        )
+        .toDart;
+
+    return StreamedResponse(
+      statusCode: response.status,
+      body: _read(response),
+      contentType: response.headers.get('content-type'),
+    );
+  }
+
   /// _read : Yields each chunk the body produces, until it ends or the
   /// listener stops caring.
   Stream<List<int>> _read(web.Response response) async* {

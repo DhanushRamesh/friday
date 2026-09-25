@@ -24,9 +24,8 @@ import (
 //
 // The zero value is unusable; call New.
 type Repository struct {
-	mu       sync.Mutex
-	chats    map[string]*chat.Chat
-	messages map[string][]chat.Message
+	mu    sync.Mutex
+	chats map[string]*chat.Chat
 
 	// said : Each session's conversation, in the order it was said.
 	said          map[string][]session.Message
@@ -51,7 +50,6 @@ type Repository struct {
 func New() *Repository {
 	return &Repository{
 		chats:    map[string]*chat.Chat{},
-		messages: map[string][]chat.Message{},
 		said:     map[string][]session.Message{},
 		sessions: map[string]chat.Session{},
 		clients:  map[string]chat.Client{},
@@ -130,34 +128,6 @@ func (m *Repository) List(_ context.Context, f chat.Filter) ([]chat.Summary, err
 		out = out[:f.Limit]
 	}
 	return out, nil
-}
-
-// AppendMessage : Records a message against a chat.
-func (m *Repository) AppendMessage(_ context.Context, chatID, kind, text string) (chat.Message, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.appendErr != nil {
-		return chat.Message{}, m.appendErr
-	}
-	if _, ok := m.chats[chatID]; !ok {
-		return chat.Message{}, chat.ErrNotFound
-	}
-	msg := chat.Message{
-		ChatID:    chatID,
-		Seq:       len(m.messages[chatID]) + 1,
-		Kind:      kind,
-		Text:      text,
-		CreatedAt: time.Now().UTC(),
-	}
-	m.messages[chatID] = append(m.messages[chatID], msg)
-	return msg, nil
-}
-
-// Messages : Returns a chat's messages in order.
-func (m *Repository) Messages(_ context.Context, chatID string) ([]chat.Message, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return append([]chat.Message(nil), m.messages[chatID]...), nil
 }
 
 // FailRunning : Marks running chats as failed.
@@ -269,7 +239,6 @@ func (m *Repository) DeleteSession(_ context.Context, userID, sessionID string) 
 	for id, t := range m.chats {
 		if t.SessionID == sessionID {
 			delete(m.chats, id)
-			delete(m.messages, id)
 		}
 	}
 	delete(m.said, sessionID)
@@ -464,15 +433,4 @@ func (m *Repository) FailRunningReason() string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.failRunningReason
-}
-
-// Texts : Returns the text of a chat's messages, in the order they arrived.
-func (m *Repository) Texts(chatID string) []string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	texts := make([]string, 0, len(m.messages[chatID]))
-	for _, msg := range m.messages[chatID] {
-		texts = append(texts, msg.Text)
-	}
-	return texts
 }

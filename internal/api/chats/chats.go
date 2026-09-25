@@ -70,11 +70,6 @@ type ListResponse struct {
 	Chats []views.Summary `json:"chats"`
 }
 
-// MessagesResponse : Everything a chat said while it ran.
-type MessagesResponse struct {
-	Messages []views.Message `json:"messages"`
-}
-
 // Handler : Serves the chat endpoints.
 type Handler struct {
 	httpx.Responder
@@ -97,94 +92,14 @@ func New(logger *slog.Logger, repo chat.Repository, runner Runner, bus Subscribe
 // Mount : Registers the chat endpoints on r, which must already require
 // authentication.
 func (h *Handler) Mount(r chi.Router) {
+	// Reading and stopping only. A prompt is submitted at /api/chat, which
+	// is the single way in whatever is asking.
 	r.Route("/v1/chats", func(r chi.Router) {
-		r.Post("/", h.Create)
 		r.Get("/", h.List)
 		r.Get("/{id}", h.Get)
-		r.Get("/{id}/messages", h.Messages)
-		r.Get("/{id}/stream", h.Stream)
 		r.Post("/{id}/cancel", h.Cancel)
 	})
 }
-
-// Create : Accepts a prompt, stores it as a chat and starts it running.
-//
-// It answers 202 at once. Given a wait parameter it holds the connection
-// until the chat finishes or the wait elapses, answering 200 with the
-// finished chat if it lands in time.
-func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	var req CreateRequest
-	if err := httpx.DecodeJSON(w, r, &req); err != nil {
-		httpx.WriteError(ctx, w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	wait, err := parseWait(r.URL.Query().Get("wait"))
-	if err != nil {
-		httpx.WriteError(ctx, w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	caller := authn.Of(ctx)
-	sessionID, err := h.sessionFor(ctx, caller, req.SessionID)
-	if err != nil {
-		if errors.Is(err, chat.ErrNotFound) || errors.Is(err, chat.ErrNotOwned) {
-			httpx.WriteError(ctx, w, http.StatusNotFound, "No such session.")
-			return
-		}
-		h.Fail(ctx, w, "resolving session", err)
-		return
-	}
-
-	// Speaking again supersedes whatever is still running in this session.
-	// Someone who talks over an answer wants the new thing, not both, and two
-	// answers cannot be listened to at once.
-	h.supersede(ctx, sessionID)
-
-	// From the caller, as on the other endpoint. Which endpoint was used
-	// says nothing about whether there was a way to confirm before acting.
-	t, err := chat.New(sessionID, caller.Client.Channel, req.Prompt)
-	switch {
-	case errors.Is(err, chat.ErrEmptyPrompt):
-		httpx.WriteError(ctx, w, http.StatusBadRequest, "A prompt is required.")
-		return
-	case errors.Is(err, chat.ErrPromptTooLong):
-		httpx.WriteError(ctx, w, http.StatusBadRequest, "That prompt is too long.")
-		return
-	case err != nil:
-		h.Fail(ctx, w, "creating chat", err)
-		return
-	}
-
-	if err := h.repo.Create(ctx, t); err != nil {
-		h.Fail(ctx, w, "storing chat", err)
-		return
-	}
-	if err := h.runner.Submit(t); err != nil {
-		// The chat is stored but will never run, so say so rather than
-		// leaving it pending for ever.
-		h.Logger.ErrorContext(ctx, "cannot submit chat", slog.Any("error", err))
-		if failErr := t.Fail("That could not be started."); failErr == nil {
-			_ = h.repo.Update(ctx, t)
-		}
-		httpx.WriteError(ctx, w, http.StatusServiceUnavailable, "Not accepting work at the moment.")
-		return
-	}
-
-	h.Logger.InfoContext(ctx, "chat accepted", slog.String("chat_id", t.ID))
-
-	if wait > 0 {
-		if finished := h.awaitChat(ctx, t.ID, wait); finished != nil {
-			httpx.WriteJSON(ctx, w, http.StatusOK, views.OfChat(finished))
-			return
-		}
-	}
-	httpx.WriteJSON(ctx, w, http.StatusAccepted, views.OfChat(t))
-}
-
-// Get : Returns one chat, including its response once it has one.
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -223,25 +138,6 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.WriteJSON(ctx, w, http.StatusOK, ListResponse{Chats: views.OfSummaries(summaries)})
 }
-
-// Messages : Returns everything a chat said while it ran.
-func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	id := chi.URLParam(r, "id")
-
-	if t, _ := h.loadChat(ctx, w, id); t == nil {
-		return
-	}
-
-	messages, err := h.repo.Messages(ctx, id)
-	if err != nil {
-		h.Fail(ctx, w, "reading chat messages", err)
-		return
-	}
-	httpx.WriteJSON(ctx, w, http.StatusOK, MessagesResponse{Messages: views.OfMessages(messages)})
-}
-
-// Cancel : Stops a chat that has not finished.
 func (h *Handler) Cancel(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
@@ -301,36 +197,6 @@ func (h *Handler) sessionFor(ctx context.Context, c *authn.Caller, requested str
 		return "", chat.ErrNotOwned
 	}
 	return requested, nil
-}
-
-// supersede : Stops whatever is still running in a session.
-//
-// Speaking again means the previous answer is no longer wanted, and two
-// cannot be listened to at once. A failure here is logged rather than
-// refused: the new prompt matters more than tidying the old one, and a chat
-// left running still reaches a terminal status on its own.
-func (h *Handler) supersede(ctx context.Context, sessionID string) {
-	unfinished, err := h.repo.Unfinished(ctx, sessionID)
-	if err != nil {
-		h.Logger.ErrorContext(ctx, "cannot find chats to supersede", slog.Any("error", err))
-		return
-	}
-
-	for _, id := range unfinished {
-		if h.runner.Cancel(id) {
-			h.Logger.InfoContext(ctx, "superseded by a new prompt", slog.String("chat_id", id))
-			continue
-		}
-		// Nothing is working on it, which happens to a chat left behind by a
-		// process that stopped. Stop it here instead.
-		t, err := h.repo.Get(ctx, id)
-		if err != nil || t.Status.IsTerminal() {
-			continue
-		}
-		if err := t.Cancel(); err == nil {
-			_ = h.repo.Update(ctx, t)
-		}
-	}
 }
 
 // loadChat : Reads a chat, writing the response itself when it cannot. It

@@ -96,28 +96,6 @@ func OfSummaries(summaries []chat.Summary) []Summary {
 	return out
 }
 
-// Message : One message recorded during a chat's run.
-type Message struct {
-	Seq       int       `json:"seq"`
-	Kind      string    `json:"kind"`
-	Text      string    `json:"text"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-// OfMessages : Renders a chat's messages for the API.
-func OfMessages(messages []chat.Message) []Message {
-	out := make([]Message, len(messages))
-	for i, m := range messages {
-		out[i] = Message{
-			Seq:       m.Seq,
-			Kind:      m.Kind,
-			Text:      m.Text,
-			CreatedAt: m.CreatedAt,
-		}
-	}
-	return out
-}
-
 // User : A user as the API returns it. The password hash is never included.
 type User struct {
 	ID        string    `json:"id"`

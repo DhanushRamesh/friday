@@ -127,56 +127,6 @@ func (r *Repository) List(ctx context.Context, f chat.Filter) ([]chat.Summary, e
 	return summaries, nil
 }
 
-// AppendMessage : Records a message against a chat, assigning it the next
-// position in that chat's stream.
-//
-// The position is computed in the insert rather than read first and written
-// after, so two appends cannot settle on the same number. Were they to race,
-// the primary key on (chat_id, seq) rejects the second.
-func (r *Repository) AppendMessage(ctx context.Context, chatID, kind, text string) (chat.Message, error) {
-	now := time.Now().UTC().Truncate(chat.StoredPrecision)
-
-	err := r.db.WithContext(ctx).Exec(
-		"INSERT INTO chat_updates (chat_id, seq, kind, `text`, created_at) "+
-			"SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ? FROM chat_updates WHERE chat_id = ?",
-		chatID, kind, text, now, chatID,
-	).Error
-	if err != nil {
-		// The foreign key rejects a message for a chat that does not exist.
-		if errors.Is(err, gorm.ErrForeignKeyViolated) {
-			return chat.Message{}, chat.ErrNotFound
-		}
-		return chat.Message{}, fmt.Errorf("chat: appending message to %s: %w", chatID, err)
-	}
-
-	var row messageRow
-	if err := r.db.WithContext(ctx).
-		Where("chat_id = ?", chatID).
-		Order("seq DESC").
-		First(&row).Error; err != nil {
-		return chat.Message{}, fmt.Errorf("chat: reading back message for %s: %w", chatID, err)
-	}
-	return row.toMessage(), nil
-}
-
-// Messages : Returns a chat's messages in the order they were produced.
-func (r *Repository) Messages(ctx context.Context, chatID string) ([]chat.Message, error) {
-	var rows []messageRow
-	err := r.db.WithContext(ctx).
-		Where("chat_id = ?", chatID).
-		Order("seq ASC").
-		Find(&rows).Error
-	if err != nil {
-		return nil, fmt.Errorf("chat: reading messages for %s: %w", chatID, err)
-	}
-
-	messages := make([]chat.Message, len(rows))
-	for i := range rows {
-		messages[i] = rows[i].toMessage()
-	}
-	return messages, nil
-}
-
 // FailRunning : Marks every chat still recorded as running as failed.
 func (r *Repository) FailRunning(ctx context.Context, reason string) (int64, error) {
 	now := time.Now().UTC().Truncate(chat.StoredPrecision)

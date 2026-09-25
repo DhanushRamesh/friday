@@ -97,6 +97,15 @@ type ChatRequest struct {
 	Model string `json:"model"`
 	// Messages : The conversation so far, oldest first.
 	Messages []Message `json:"messages"`
+	// SessionID : Which session to talk in. Empty joins the one this client
+	// is active in, which is what Home Assistant does since it knows
+	// nothing about sessions.
+	//
+	// Not part of Ollama's shape. It is added rather than kept on a second
+	// endpoint because a caller that does know which conversation it means
+	// should not have to switch the client's active session first and race
+	// anything else using the same token.
+	SessionID string `json:"session_id,omitempty"`
 }
 
 // ChatChunk : One piece of an answer.
@@ -104,11 +113,18 @@ type ChatRequest struct {
 // A chunk carrying text has Done false; the last chunk carries no text and
 // has Done true. This is what tells the caller the answer is complete.
 type ChatChunk struct {
-	Model      string    `json:"model"`
-	CreatedAt  time.Time `json:"created_at"`
-	Message    Message   `json:"message"`
-	Done       bool      `json:"done"`
-	DoneReason string    `json:"done_reason,omitempty"`
+	Model     string    `json:"model"`
+	CreatedAt time.Time `json:"created_at"`
+	Message   Message   `json:"message"`
+	// ErrorCode, ErrorDetail : Set on the final chunk when the chat failed.
+	//
+	// Beyond Ollama's shape, and omitted when empty, so a client that does
+	// not know about them sees exactly what it saw before. What is said
+	// aloud stays in Message.Content; these are for a screen.
+	ErrorCode   string `json:"error_code,omitempty"`
+	ErrorDetail string `json:"error_detail,omitempty"`
+	Done        bool   `json:"done"`
+	DoneReason  string `json:"done_reason,omitempty"`
 }
 
 // ModelsResponse : The body of a model listing.
@@ -218,7 +234,17 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	caller := authn.Of(ctx)
-	sessionID, err := chat.ActiveSession(ctx, h.repo, caller.User.ID, caller.Client.ID, caller.Client.ActiveSessionID)
+	// A named session is used when the caller knows one and it is theirs;
+	// anything else falls back to whichever this client is active in.
+	asked := req.SessionID
+	if asked != "" && !h.ownedByCaller(ctx, caller, asked) {
+		httpx.WriteError(ctx, w, http.StatusNotFound, "No such session.")
+		return
+	}
+	if asked == "" {
+		asked = caller.Client.ActiveSessionID
+	}
+	sessionID, err := chat.ActiveSession(ctx, h.repo, caller.User.ID, caller.Client.ID, asked)
 	if err != nil {
 		h.Fail(ctx, w, "resolving session", err)
 		return
@@ -228,6 +254,10 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 	// format, and a format says nothing about how the words were produced:
 	// anything able to speak it can call it, and one day something typed
 	// will.
+	// Speaking again means the previous answer is no longer wanted, and two
+	// cannot be listened to at once.
+	h.supersede(ctx, sessionID)
+
 	t, err := chat.New(sessionID, caller.Client.Channel, prompt)
 	switch {
 	case errors.Is(err, chat.ErrEmptyPrompt):
@@ -320,7 +350,17 @@ func (h *Handler) follow(
 				if text := settled(strings.TrimSpace(ev.Text)); text != "" {
 					writeChunk(w, flusher, chunk(text, false, ""))
 				}
-				writeChunk(w, flusher, chunk("", true, reasonFor(ev.Kind)))
+				last := chunk("", true, reasonFor(ev.Kind))
+				// Only a screen can use these, and only a failure has them.
+				// Home Assistant ignores fields it does not know, so the
+				// spoken answer is unchanged by their being here.
+				if ev.Kind == events.KindError {
+					if failed, err := h.repo.Get(ctx, chatID); err == nil {
+						last.ErrorCode = failed.ErrorCode
+						last.ErrorDetail = failed.ErrorDetail
+					}
+				}
+				writeChunk(w, flusher, last)
 				return
 			}
 
@@ -398,4 +438,46 @@ func lastQuestion(messages []Message) string {
 		}
 	}
 	return ""
+}
+
+// supersede : Stops whatever is still running in a session.
+//
+// Speaking again means the previous answer is no longer wanted, and two
+// cannot be listened to at once. A failure here is logged rather than
+// refused: the new prompt matters more than tidying the old one, and a chat
+// left running still reaches a terminal status on its own.
+func (h *Handler) supersede(ctx context.Context, sessionID string) {
+	unfinished, err := h.repo.Unfinished(ctx, sessionID)
+	if err != nil {
+		h.Logger.ErrorContext(ctx, "cannot find chats to supersede", slog.Any("error", err))
+		return
+	}
+
+	for _, id := range unfinished {
+		if h.runner.Cancel(id) {
+			h.Logger.InfoContext(ctx, "superseded by a new prompt", slog.String("chat_id", id))
+			continue
+		}
+		// Nothing is working on it, which happens to a chat left behind by a
+		// process that stopped. Stop it here instead.
+		t, err := h.repo.Get(ctx, id)
+		if err != nil || t.Status.IsTerminal() {
+			continue
+		}
+		if err := t.Cancel(); err == nil {
+			_ = h.repo.Update(ctx, t)
+		}
+	}
+}
+
+// ownedByCaller : Whether a session exists and belongs to the caller.
+//
+// A session that is somebody else's is answered as missing, as everywhere
+// else: saying it exists tells one user about another's.
+func (h *Handler) ownedByCaller(ctx context.Context, c *authn.Caller, sessionID string) bool {
+	if !chat.ValidSessionID(sessionID) {
+		return false
+	}
+	session, err := h.repo.GetSession(ctx, sessionID)
+	return err == nil && session.UserID == c.User.ID
 }

@@ -106,7 +106,6 @@ class AppState extends ChangeNotifier {
   String? _error;
   String? get error => _error;
 
-  StreamSubscription<ChatEvent>? _stream;
 
   /// start : Restores a kept token and loads what the screens need, returning
   /// whether there was a usable session.
@@ -152,8 +151,6 @@ class AppState extends ChangeNotifier {
 
   /// signOut : Forgets the token and everything it was showing.
   Future<void> signOut() async {
-    await _stream?.cancel();
-    _stream = null;
     await api.logout();
     _identity = null;
     _sessions = const [];
@@ -205,34 +202,29 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// send : Asks something, and follows the answer as it arrives.
+  /// send : Asks something, and reads the answer as it arrives.
   Future<void> send(String prompt) async {
     final text = prompt.trim();
     if (text.isEmpty || _sending) return;
 
     _sending = true;
     _error = null;
+    // Shown at once with an empty answer, so the question appears the moment
+    // it is asked rather than when the first word comes back.
+    _turns = [
+      ..._turns,
+      Turn(chatId: '', prompt: text, answer: '', status: ChatStatus.pending),
+    ];
     notifyListeners();
 
     try {
-      final chat = await api.createChat(text, sessionId: _sessionId);
-      _sessionId ??= chat.sessionId;
-      _turns = [
-        ..._turns,
-        Turn(
-          chatId: chat.id,
-          prompt: text,
-          answer: '',
-          status: chat.status,
-        ),
-      ];
-      notifyListeners();
-      await _follow(chat.id);
-      // The title is the first prompt, so a new session only gets a name
-      // once something has been asked in it.
-      await _loadSessions();
+      await _follow(text, _sessionId);
+      // The session is named after its first prompt, so a new one only gets
+      // a name once something has been asked in it.
+      _sessions = await api.listSessions(archived: _showArchived);
     } on Object catch (e) {
       _error = _explain(e);
+      _replaceLast((t) => t.copyWith(status: ChatStatus.failed));
     } finally {
       _sending = false;
       notifyListeners();
@@ -240,11 +232,16 @@ class AppState extends ChangeNotifier {
   }
 
   /// cancel : Stops the turn that is still running, if there is one.
+  ///
+  /// The chat is found rather than remembered: the endpoint answers in
+  /// Ollama's shape, which carries no identifier, so the only way to name
+  /// what is running is to ask which chat is.
   Future<void> cancel() async {
-    final running = _turns.where((t) => t.isRunning).toList();
-    if (running.isEmpty) return;
+    if (!_turns.any((t) => t.isRunning)) return;
     try {
-      await api.cancelChat(running.last.chatId);
+      final recent = await api.listChats(limit: 1);
+      if (recent.isEmpty || recent.first.status.isTerminal) return;
+      await api.cancelChat(recent.first.id);
     } on Object catch (e) {
       _error = _explain(e);
       notifyListeners();
@@ -388,57 +385,36 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
-    _stream?.cancel();
+    api.close();
     super.dispose();
   }
 
-  /// _follow : Reads a chat's stream into the last turn until it ends.
+  /// _follow : Reads the answer into the last turn until the stream ends.
   ///
-  /// Updates replace rather than append: the server sends the answer so far,
-  /// not the piece that is new, so concatenating would repeat everything.
-  Future<void> _follow(String chatId) async {
-    await _stream?.cancel();
-    final done = Completer<void>();
+  /// Chunks add to what is there rather than replacing it: the endpoint sends
+  /// the piece that is new, not the answer so far.
+  Future<void> _follow(String prompt, String? sessionId) async {
+    var answer = '';
+    await for (final piece in api.ask(prompt, sessionId: sessionId)) {
+      if (piece.text.isNotEmpty) {
+        answer += piece.text;
+        _replaceLast((t) => t.copyWith(answer: answer, status: ChatStatus.running));
+      }
+      if (!piece.done) continue;
 
-    _stream = api.streamChat(chatId).listen(
-      (event) {
-        switch (event.kind) {
-          case EventKind.update:
-            _replace(chatId, (t) => t.copyWith(
-              answer: event.text,
-              status: ChatStatus.running,
-            ));
-          case EventKind.finalAnswer:
-            _replace(chatId, (t) => t.copyWith(
-              answer: event.text,
-              status: ChatStatus.completed,
-            ));
-          case EventKind.error:
-            _replace(chatId, (t) => t.copyWith(
-              status: ChatStatus.failed,
-              error: event.text,
-              detail: event.detail,
-            ));
-          case EventKind.cancelled:
-            _replace(chatId, (t) => t.copyWith(status: ChatStatus.cancelled));
-          case EventKind.unknown:
-            break;
-        }
-      },
-      onError: (Object e) {
-        _replace(chatId, (t) => t.copyWith(
-          status: ChatStatus.failed,
-          error: _explain(e),
-        ));
-        if (!done.isCompleted) done.complete();
-      },
-      onDone: () {
-        if (!done.isCompleted) done.complete();
-      },
-      cancelOnError: true,
-    );
-
-    await done.future;
+      switch (piece.doneReason) {
+        case 'error':
+          _replaceLast((t) => t.copyWith(
+            status: ChatStatus.failed,
+            error: answer.isEmpty ? 'The service could not complete the request.' : answer,
+            detail: piece.errorDetail,
+          ));
+        case 'cancelled':
+          _replaceLast((t) => t.copyWith(status: ChatStatus.cancelled));
+        default:
+          _replaceLast((t) => t.copyWith(status: ChatStatus.completed));
+      }
+    }
   }
 
   /// _open : Loads a session's turns and shows them.
@@ -500,10 +476,16 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _replace(String chatId, Turn Function(Turn) change) {
-    _turns = [
-      for (final t in _turns) if (t.chatId == chatId) change(t) else t,
-    ];
+  /// _replaceLast : Rewrites the turn currently being answered.
+  ///
+  /// By position rather than by identifier: the endpoint answers in Ollama's
+  /// shape, which carries no chat id, and the turn being written is always
+  /// the one just added.
+  void _replaceLast(Turn Function(Turn) change) {
+    if (_turns.isEmpty) return;
+    final out = [..._turns];
+    out[out.length - 1] = change(out.last);
+    _turns = out;
     notifyListeners();
   }
 

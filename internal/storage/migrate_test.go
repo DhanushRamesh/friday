@@ -25,7 +25,7 @@ func TestMigrateCreatesTheSchema(t *testing.T) {
 	db := migrated(t)
 	ctx := context.Background()
 
-	for _, table := range []string{"chats", "chat_updates"} {
+	for _, table := range []string{"chats", "sessions", "messages"} {
 		var count int
 		err := db.Raw(`SELECT COUNT(*) FROM information_schema.tables
 		               WHERE table_schema = DATABASE() AND table_name = ?`, table).
@@ -98,50 +98,55 @@ func TestTimestampColumnsKeepMilliseconds(t *testing.T) {
 	}
 }
 
-// Deleting a chat must take its messages with it, or they accumulate with no
-// chat to belong to.
-func TestDeletingAChatRemovesItsMessages(t *testing.T) {
+// Deleting a session must take its chats and its transcript with it, or they
+// accumulate with nothing to belong to. Archiving and deleting both rely on
+// this rather than removing the rows themselves.
+func TestDeletingASessionCascades(t *testing.T) {
 	db := migrated(t)
 
+	const user = "usr_01TESTCASCADE00000000000"
+	const sess = "sess_01TESTCASCADE0000000000000"
 	const id = "chat_01TESTCASCADE0000000000000"
-	t.Cleanup(func() { db.Exec(`DELETE FROM chats WHERE id = ?`, id) })
+	t.Cleanup(func() {
+		db.Exec(`DELETE FROM sessions WHERE id = ?`, sess)
+		db.Exec(`DELETE FROM users WHERE id = ?`, user)
+	})
 
-	if err := db.Exec(`INSERT INTO chats (id, prompt, status, created_at, updated_at)
-	                   VALUES (?, 'x', 'pending', NOW(3), NOW(3))`, id).Error; err != nil {
+	if err := db.Exec(`INSERT INTO users (id, username, password_hash, created_at, updated_at)
+	                   VALUES (?, ?, 'x', NOW(3), NOW(3))`, user, user).Error; err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+	if err := db.Exec(`INSERT INTO sessions (id, user_id, created_at, updated_at)
+	                   VALUES (?, ?, NOW(3), NOW(3))`, sess, user).Error; err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+	if err := db.Exec(`INSERT INTO chats (id, session_id, prompt, status, created_at, updated_at)
+	                   VALUES (?, ?, 'x', 'pending', NOW(3), NOW(3))`, id, sess).Error; err != nil {
 		t.Fatalf("insert chat: %v", err)
 	}
-	if err := db.Exec("INSERT INTO chat_updates (chat_id, seq, kind, `text`, created_at)\n"+
-		"VALUES (?, 1, 'update', 'working', NOW(3))", id).Error; err != nil {
+	if err := db.Exec(`INSERT INTO messages (session_id, seq, kind, role, content, created_at)
+	                   VALUES (?, 1, 'chat', 'user', 'x', NOW(3))`, sess).Error; err != nil {
 		t.Fatalf("insert message: %v", err)
 	}
 
-	if err := db.Exec(`DELETE FROM chats WHERE id = ?`, id).Error; err != nil {
-		t.Fatalf("delete chat: %v", err)
+	if err := db.Exec(`DELETE FROM sessions WHERE id = ?`, sess).Error; err != nil {
+		t.Fatalf("delete session: %v", err)
 	}
 
-	var remaining int
-	if err := db.Raw(`SELECT COUNT(*) FROM chat_updates WHERE chat_id = ?`, id).Scan(&remaining).Error; err != nil {
-		t.Fatalf("count messages: %v", err)
-	}
-	if remaining != 0 {
-		t.Errorf("%d messages left behind after the chat was deleted", remaining)
-	}
-}
-
-// A message cannot belong to a chat that does not exist.
-func TestMessageRequiresAnExistingChat(t *testing.T) {
-	db := migrated(t)
-
-	err := db.Exec("INSERT INTO chat_updates (chat_id, seq, kind, `text`, created_at)\n" +
-		"VALUES ('chat_01NOSUCHCHAT00000000000000', 1, 'update', 'orphan', NOW(3))").Error
-	if err == nil {
-		db.Exec(`DELETE FROM chat_updates WHERE chat_id = 'chat_01NOSUCHCHAT00000000000000'`)
-		t.Fatal("inserting a message for a missing chat succeeded, want a foreign key error")
+	for _, q := range []string{
+		`SELECT COUNT(*) FROM chats WHERE session_id = ?`,
+		`SELECT COUNT(*) FROM messages WHERE session_id = ?`,
+	} {
+		var remaining int
+		if err := db.Raw(q, sess).Scan(&remaining).Error; err != nil {
+			t.Fatalf("count: %v", err)
+		}
+		if remaining != 0 {
+			t.Errorf("%d rows outlived the session: %s", remaining, q)
+		}
 	}
 }
 
-// goose prefixes its own messages and ends them with a newline; neither should
-// reach the log as written.
 func TestGooseOutputIsLoggedCleanly(t *testing.T) {
 	buf := &bytes.Buffer{}
 	logger := slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))

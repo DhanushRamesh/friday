@@ -138,8 +138,7 @@ func TestANewPromptSupersedesARunningChat(t *testing.T) {
 		Provider: &provider.Stub{Updates: []string{"a", "b", "c", "d"}, Delay: 50 * time.Millisecond},
 	})
 
-	first := e.CreateIn(t, "", "List three programming languages.", "")
-	e.AwaitStatus(t, first.ID, string(chat.StatusRunning))
+	first := e.Ask(t, "", "List three programming languages.")
 
 	e.CreateIn(t, first.SessionID, "No, make it four.", "")
 
@@ -157,8 +156,7 @@ func TestSupersedingIsScopedToOneSession(t *testing.T) {
 	})
 
 	// A chat running in the session that is active to begin with.
-	elsewhere := e.CreateIn(t, "", "a question over here", "")
-	e.AwaitStatus(t, elsewhere.ID, string(chat.StatusRunning))
+	elsewhere := e.Ask(t, "", "a question over here")
 
 	// A second session, which becomes the active one.
 	rec := e.Do(t, http.MethodPost, "/v1/sessions", `{"title":"another"}`)
@@ -191,8 +189,7 @@ func TestASupersededPromptStaysInHistory(t *testing.T) {
 	recorder := &apitest.RecordingProvider{Delay: 60 * time.Millisecond}
 	e := apitest.NewWith(t, apitest.Options{Provider: recorder})
 
-	first := e.CreateIn(t, "", "List three programming languages.", "")
-	e.AwaitStatus(t, first.ID, string(chat.StatusRunning))
+	first := e.Ask(t, "", "List three programming languages.")
 
 	second := e.CreateIn(t, first.SessionID, "No, make it four.", "")
 	e.AwaitStatus(t, second.ID,
@@ -211,8 +208,12 @@ func TestUnknownSessionIsRejected(t *testing.T) {
 	e := apitest.New(t)
 
 	for _, id := range []string{chat.NewSessionID(), "not-an-id"} {
-		body, _ := json.Marshal(map[string]string{"prompt": "hello", "session_id": id})
-		rec := e.Do(t, http.MethodPost, "/v1/chats", string(body))
+		body, _ := json.Marshal(map[string]any{
+			"model":      "assistant",
+			"messages":   []map[string]string{{"role": "user", "content": "hello"}},
+			"session_id": id,
+		})
+		rec := e.Do(t, http.MethodPost, "/api/chat", string(body))
 		if rec.Code != http.StatusNotFound {
 			t.Errorf("session %q: status = %d, want 404", id, rec.Code)
 		}
@@ -228,8 +229,12 @@ func TestAnotherUsersSessionCannotBeUsed(t *testing.T) {
 	theirs := chat.NewSession(stranger.ID, "private")
 	_ = e.Repo.CreateSession(t.Context(), theirs)
 
-	body, _ := json.Marshal(map[string]string{"prompt": "hello", "session_id": theirs.ID})
-	rec := e.Do(t, http.MethodPost, "/v1/chats", string(body))
+	body, _ := json.Marshal(map[string]any{
+		"model":      "assistant",
+		"messages":   []map[string]string{{"role": "user", "content": "hello"}},
+		"session_id": theirs.ID,
+	})
+	rec := e.Do(t, http.MethodPost, "/api/chat", string(body))
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", rec.Code)
 	}

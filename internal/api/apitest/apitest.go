@@ -357,37 +357,90 @@ func Records(t *testing.T, buf *bytes.Buffer) []map[string]any {
 	return out
 }
 
-// CreateChat : Submits a prompt and returns the created chat. The path
-// carries any query, such as a wait.
-func (e *Env) CreateChat(t *testing.T, path, prompt string) views.Chat {
-	t.Helper()
-	body, _ := json.Marshal(map[string]string{"prompt": prompt})
-	rec := e.Do(t, http.MethodPost, path, string(body))
-	if rec.Code != http.StatusAccepted && rec.Code != http.StatusOK {
-		t.Fatalf("create: status %d: %s", rec.Code, rec.Body)
-	}
-	var view views.Chat
-	e.Decode(t, rec, &view)
-	return view
-}
-
 // CreateIn : Submits a prompt continuing the named session, or the active one
 // when sessionID is empty.
 func (e *Env) CreateIn(t *testing.T, sessionID, prompt, query string) views.Chat {
 	t.Helper()
-	body := map[string]string{"prompt": prompt}
+	body := map[string]any{
+		"model":    "assistant",
+		"messages": []map[string]string{{"role": "user", "content": prompt}},
+	}
 	if sessionID != "" {
 		body["session_id"] = sessionID
 	}
 	encoded, _ := json.Marshal(body)
 
-	rec := e.Do(t, http.MethodPost, "/v1/chats"+query, string(encoded))
-	if rec.Code != http.StatusAccepted && rec.Code != http.StatusOK {
+	// /api/chat is the one way in, and it answers with the chat's words
+	// rather than the chat, so the chat is read back afterwards. The test
+	// wants the record; the endpoint's job is to be Ollama-shaped.
+	rec := e.Do(t, http.MethodPost, "/api/chat", string(encoded))
+	if rec.Code != http.StatusOK {
 		t.Fatalf("create: status %d: %s", rec.Code, rec.Body)
 	}
+
+	listing := e.Do(t, http.MethodGet, "/v1/chats?limit=1", "")
+	var list struct {
+		Chats []views.Summary `json:"chats"`
+	}
+	e.Decode(t, listing, &list)
+	if len(list.Chats) == 0 {
+		t.Fatal("nothing was recorded for the prompt just sent")
+	}
+
+	one := e.Do(t, http.MethodGet, "/v1/chats/"+list.Chats[0].ID, "")
 	var view views.Chat
-	e.Decode(t, rec, &view)
+	e.Decode(t, one, &view)
 	return view
+}
+
+// Ask : Sends a prompt without waiting for the answer, and returns the chat
+// once it has started.
+//
+// /api/chat answers only when the chat is over, so a test that wants a chat
+// still running has to send on another goroutine and then look for it. That
+// is what a client does too: it holds the response open and reads as the
+// answer arrives.
+func (e *Env) Ask(t *testing.T, sessionID, prompt string) views.Summary {
+	t.Helper()
+	body := map[string]any{
+		"model":    "assistant",
+		"messages": []map[string]string{{"role": "user", "content": prompt}},
+	}
+	if sessionID != "" {
+		body["session_id"] = sessionID
+	}
+	encoded, _ := json.Marshal(body)
+	go func() { _ = e.Serve(e.request(http.MethodPost, "/api/chat", string(encoded), "Bearer "+e.Token)) }()
+
+	return e.AwaitAny(t, "running", "pending")
+}
+
+// AwaitAny : Waits for any chat to reach one of the given statuses and
+// returns it.
+//
+// For the case where a prompt was sent on another goroutine, so its
+// identifier is not in hand: /api/chat answers only once the chat is over,
+// and a test that wants to interrupt one cannot wait for that.
+func (e *Env) AwaitAny(t *testing.T, want ...string) views.Summary {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		rec := e.Do(t, http.MethodGet, "/v1/chats?limit=1", "")
+		var list struct {
+			Chats []views.Summary `json:"chats"`
+		}
+		e.Decode(t, rec, &list)
+		for _, c := range list.Chats {
+			for _, w := range want {
+				if c.Status == w {
+					return c
+				}
+			}
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	t.Fatalf("no chat reached any of %v", want)
+	return views.Summary{}
 }
 
 // AwaitStatus : Polls a chat until it reaches one of the given statuses.

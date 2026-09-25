@@ -20,24 +20,6 @@ var (
 	ErrNotOwned = errors.New("chat: belongs to another user")
 )
 
-// Message : One thing recorded during a chat's run.
-//
-// Only transient messages are stored here. A chat's result lives in its
-// Response and a failure in its Error, so a large answer is held once rather
-// than twice.
-type Message struct {
-	// ChatID : The chat the message belongs to.
-	ChatID string
-	// Seq : Position within the chat's stream, starting at 1.
-	Seq int
-	// Kind : What sort of message this is, holding a provider.Kind value.
-	Kind string
-	// Text : What was said, written to be spoken aloud.
-	Text string
-	// CreatedAt : When it was recorded.
-	CreatedAt time.Time
-}
-
 // SessionSummary : A session with the chats belonging to it.
 type SessionSummary struct {
 	Session Session
@@ -105,14 +87,6 @@ type Repository interface {
 	// List : Returns chats in reverse order of creation, newest first,
 	// without their responses.
 	List(ctx context.Context, f Filter) ([]Summary, error)
-
-	// AppendMessage : Records a message against a chat, assigning it the next
-	// position in that chat's stream. It reports ErrNotFound if the chat does
-	// not exist.
-	AppendMessage(ctx context.Context, chatID, kind, text string) (Message, error)
-
-	// Messages : Returns a chat's messages in the order they were produced.
-	Messages(ctx context.Context, chatID string) ([]Message, error)
 
 	// CreateUser : Stores a new user. It reports ErrUsernameTaken if the
 	// username is already in use.

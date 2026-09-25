@@ -126,13 +126,14 @@ func TestPreflightIsAnsweredWithoutReachingTheHandler(t *testing.T) {
 	}
 }
 
-// Every stream carries Last-Event-ID, which browsers do not allow by
-// default. Without it in this list, a resumed stream is refused.
+// Authorization is not one of the headers a browser sends cross-origin
+// without asking. Without it in this list, every authenticated call is
+// refused before it is made.
 func TestPreflightAllowsTheHeadersTheClientSends(t *testing.T) {
 	rec, _ := serve(t, true, preflight("http://localhost:5000", http.MethodGet))
 
 	allowed := rec.Header().Get("Access-Control-Allow-Headers")
-	for _, header := range []string{"Authorization", "Content-Type", "Last-Event-ID"} {
+	for _, header := range []string{"Authorization", "Content-Type"} {
 		if !strings.Contains(allowed, header) {
 			t.Errorf("Allow-Headers = %q, missing %s", allowed, header)
 		}

@@ -363,50 +363,51 @@ class LoginResult {
   String toString() => 'LoginResult(${user.username}, ${client.id})';
 }
 
-/// ChatEvent : One event as it arrives on the stream.
-class ChatEvent {
-  const ChatEvent({
-    required this.kind,
-    required this.seq,
+/// AnswerChunk : One line of the answer, as the Ollama-shaped endpoint sends
+/// it.
+///
+/// Newline-delimited JSON: each line carries a piece of what to say, and the
+/// last carries [done] together with the failure's code and detail when there
+/// was one.
+
+class AnswerChunk {
+  const AnswerChunk({
     required this.text,
-    this.code = '',
-    this.detail = '',
-    required this.at,
+    required this.done,
+    this.doneReason = '',
+    this.errorCode = '',
+    this.errorDetail = '',
   });
 
-  final EventKind kind;
-
-  /// seq : Its position in the chat's messages, or zero for an event that is
-  /// not a stored message. Only a non-zero value is worth resuming from.
-  final int seq;
-
-  /// text : What to say.
+  /// text : What to add to the answer so far. Empty on the last line.
   final String text;
 
-  /// code : For an error, which kind of failure it was. Empty otherwise.
-  final String code;
+  /// done : Whether this is the last line.
+  final bool done;
 
-  /// detail : For an error, exactly what the service said. Empty otherwise,
-  /// and never the thing shown without being asked for.
-  final String detail;
+  /// doneReason : Why it ended — "stop", "error" or "cancelled".
+  final String doneReason;
 
-  final DateTime at;
+  /// errorCode, errorDetail : Set on the last line when the chat failed.
+  /// Beyond Ollama's shape, and only a screen can use them.
+  final String errorCode;
+  final String errorDetail;
 
-  /// isTerminal : Whether this event ends the stream.
-  bool get isTerminal => kind.isTerminal;
+  bool get failed => doneReason == 'error';
 
-  /// fromJson : Parses the JSON carried in an event's data field.
-  factory ChatEvent.fromJson(Map<String, dynamic> json) => ChatEvent(
-    kind: EventKind.parse(json['kind'] as String?),
-    seq: json['seq'] as int? ?? 0,
-    text: json['text'] as String? ?? '',
-    code: json['code'] as String? ?? '',
-    detail: json['detail'] as String? ?? '',
-    at: _time(json['at']) ?? DateTime.now().toUtc(),
-  );
+  factory AnswerChunk.fromJson(Map<String, dynamic> json) {
+    final message = json['message'] as Map<String, dynamic>?;
+    return AnswerChunk(
+      text: (message?['content'] as String?) ?? '',
+      done: json['done'] as bool? ?? false,
+      doneReason: json['done_reason'] as String? ?? '',
+      errorCode: json['error_code'] as String? ?? '',
+      errorDetail: json['error_detail'] as String? ?? '',
+    );
+  }
 
   @override
-  String toString() => 'ChatEvent(${kind.wire}, $seq)';
+  String toString() => 'AnswerChunk(done: $done)';
 }
 
 /// _time : Parses an RFC 3339 timestamp, returning null when absent.

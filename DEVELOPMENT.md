@@ -372,6 +372,46 @@ satellite's was corrected by hand, not inferred from its name: a name is
 something a person can edit, and reading a permission out of one is the same
 mistake as reading it out of an endpoint.
 
+### One endpoint takes a prompt, and it is Ollama-shaped
+
+`POST /api/chat`. Nothing else accepts one. `/v1/chats` reads and cancels;
+sessions, clients and identity are unchanged.
+
+There were two, and the second existed only because the first was thought of
+as the voice one. It is not: Ollama's shape is a wire format, and the web
+client speaks it as happily as Home Assistant does. Two ways in meant two
+places to keep the superseding rule, the session rule and the channel rule in
+step, and they had already drifted once.
+
+Two things the `/v1` shape carried that Ollama's does not, both added rather
+than lost:
+
+- `session_id` on the request. Home Assistant omits it and lands in whichever
+  session the client is active in; anything that knows which conversation it
+  means says so, rather than having to switch the client's active session
+  first and race whatever else holds the same token.
+- `error_code` and `error_detail` on the final chunk. Omitted when empty, so a
+  caller that does not know about them sees exactly what it saw before. What
+  is said aloud stays in the message; these are for a screen.
+
+**The endpoint is synchronous.** It answers when the chat is over, so there is
+no submitting and polling. A client holds the response open and reads the
+answer as it is produced, and stops by abandoning it. Anything that needs to
+interrupt from elsewhere still uses `POST /v1/chats/{id}/cancel`.
+
+### There is no server-sent-events stream, and no chat_updates
+
+Both went together. The stream existed so a client could rejoin an answer it
+had started; `chat_updates` existed so the stream could replay what a dropped
+connection had missed. With one synchronous endpoint there is nothing to
+rejoin: the answer arrives on the same response that asked for it.
+
+Progress is still produced and still published — the runner announces it and
+the endpoint writes it out as it comes. It is simply not stored. Where a chat
+had got to is worth hearing while it runs and worth nothing afterwards, and
+the answer itself was never in that table: it is on the chat, and the
+conversation is in `messages`.
+
 ### A failure is said one way and recorded another
 
 Two audiences want different things from the same failure. Somebody waiting

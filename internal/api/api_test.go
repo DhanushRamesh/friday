@@ -19,7 +19,7 @@ func TestEveryEndpointButLoginRequiresAToken(t *testing.T) {
 	e := apitest.New(t)
 
 	for _, p := range []struct{ method, path string }{
-		{http.MethodPost, "/v1/chats"},
+		{http.MethodPost, "/api/chat"},
 		{http.MethodGet, "/v1/chats"},
 		{http.MethodGet, "/v1/chats/" + apitest.SomeChatID},
 		{http.MethodGet, "/v1/chats/" + apitest.SomeChatID + "/messages"},
@@ -82,7 +82,7 @@ func TestSecretsAreNotLogged(t *testing.T) {
 func TestCrossOriginIsOffUnlessAskedFor(t *testing.T) {
 	e := apitest.New(t)
 
-	rec := e.Preflight(t, http.MethodPost, "/v1/chats", "http://localhost:5000")
+	rec := e.Preflight(t, http.MethodPost, "/api/chat", "http://localhost:5000")
 	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
 		t.Errorf("Allow-Origin = %q, want nothing by default", got)
 	}
@@ -91,7 +91,7 @@ func TestCrossOriginIsOffUnlessAskedFor(t *testing.T) {
 func TestCrossOriginAnswersAPreflightWhenEnabled(t *testing.T) {
 	e := apitest.NewWith(t, apitest.Options{AllowCrossOrigin: true})
 
-	rec := e.Preflight(t, http.MethodPost, "/v1/chats", "http://localhost:5000")
+	rec := e.Preflight(t, http.MethodPost, "/api/chat", "http://localhost:5000")
 
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want 204: %s", rec.Code, rec.Body)
@@ -101,7 +101,7 @@ func TestCrossOriginAnswersAPreflightWhenEnabled(t *testing.T) {
 	}
 	// The preflight carries no token, so it must be answered before
 	// authentication rather than refused by it.
-	if !strings.Contains(rec.Header().Get("Access-Control-Allow-Headers"), "Last-Event-ID") {
-		t.Error("a resumed stream would be refused: Last-Event-ID is not allowed")
+	if !strings.Contains(rec.Header().Get("Access-Control-Allow-Headers"), "Authorization") {
+		t.Error("every authenticated call would be refused: Authorization is not allowed")
 	}
 }

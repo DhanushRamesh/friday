@@ -134,22 +134,3 @@ func TestSessionPublishesItsFields(t *testing.T) {
 	assertKeys(t, views.OfSession(*session, true),
 		"id", "title", "active", "created_at", "updated_at")
 }
-
-func TestMessagesKeepTheirOrderAndSequence(t *testing.T) {
-	now := time.Now().UTC()
-	got := views.OfMessages([]chat.Message{
-		{Seq: 1, Kind: "update", Text: "first", CreatedAt: now},
-		{Seq: 2, Kind: "final", Text: "second", CreatedAt: now},
-	})
-
-	if len(got) != 2 {
-		t.Fatalf("got %d messages, want 2", len(got))
-	}
-	if got[0].Seq != 1 || got[0].Text != "first" {
-		t.Errorf("first message = %+v", got[0])
-	}
-	if got[1].Seq != 2 || got[1].Text != "second" {
-		t.Errorf("second message = %+v", got[1])
-	}
-	assertKeys(t, got[0], "seq", "kind", "text", "created_at")
-}

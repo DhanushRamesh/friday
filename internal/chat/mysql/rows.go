@@ -135,18 +135,6 @@ func (r *sessionRow) toSession() chat.Session {
 	}
 }
 
-// messageRow : The chat_updates table, as GORM sees it.
-type messageRow struct {
-	ChatID    string    `gorm:"column:chat_id;primaryKey"`
-	Seq       int       `gorm:"column:seq;primaryKey"`
-	Kind      string    `gorm:"column:kind"`
-	Text      string    `gorm:"column:text"`
-	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime:false"`
-}
-
-// TableName : Names the table this row maps to.
-func (messageRow) TableName() string { return "chat_updates" }
-
 // toRow : Converts a chat into the row that stores it.
 //
 // An empty response or error becomes NULL rather than an empty string, so
@@ -202,17 +190,6 @@ func (r *summaryRow) toSummary() chat.Summary {
 		UpdatedAt:  r.UpdatedAt.UTC(),
 		StartedAt:  utc(r.StartedAt),
 		FinishedAt: utc(r.FinishedAt),
-	}
-}
-
-// toMessage : Converts a stored row into a message.
-func (r *messageRow) toMessage() chat.Message {
-	return chat.Message{
-		ChatID:    r.ChatID,
-		Seq:       r.Seq,
-		Kind:      r.Kind,
-		Text:      r.Text,
-		CreatedAt: r.CreatedAt.UTC(),
 	}
 }
 

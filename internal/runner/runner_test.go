@@ -6,11 +6,13 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat/memory"
+	"github.com/DhanushRamesh/personal-assistant/internal/events"
 	"github.com/DhanushRamesh/personal-assistant/internal/provider"
 	"github.com/DhanushRamesh/personal-assistant/internal/runner"
 )
@@ -22,7 +24,36 @@ func discard() *slog.Logger { return slog.New(slog.NewJSONHandler(io.Discard, ni
 type harness struct {
 	runner *runner.Runner
 	repo   *memory.Repository
+	bus    *events.Bus
 	convID string
+}
+
+// listen : Collects the progress a chat announces, as a client would hear it.
+//
+// Returns a function giving what has arrived so far, since the updates come
+// on another goroutine and the test reads them once the chat has finished.
+func (h *harness) listen(t *testing.T, chatID string) func() []string {
+	t.Helper()
+	ch, stop := h.bus.Subscribe(chatID)
+	t.Cleanup(stop)
+
+	var mu sync.Mutex
+	var got []string
+	go func() {
+		for ev := range ch {
+			if ev.Kind != events.KindUpdate {
+				continue
+			}
+			mu.Lock()
+			got = append(got, ev.Text)
+			mu.Unlock()
+		}
+	}()
+	return func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), got...)
+	}
 }
 
 // session : Returns the harness's session, creating it on first use.
@@ -43,8 +74,10 @@ func newHarness(t *testing.T, p provider.Provider, opts runner.Options) *harness
 	t.Helper()
 
 	repo := memory.New()
+	bus := events.NewBus(discard())
 	opts.Repository = repo
 	opts.Messages = repo
+	opts.Publisher = bus
 	opts.Provider = p
 	opts.Logger = discard()
 
@@ -57,7 +90,7 @@ func newHarness(t *testing.T, p provider.Provider, opts runner.Options) *harness
 		defer cancel()
 		_ = r.Shutdown(ctx)
 	})
-	return &harness{runner: r, repo: repo}
+	return &harness{runner: r, repo: repo, bus: bus}
 }
 
 // submit : Creates and stores a chat, then starts it running.
@@ -99,11 +132,12 @@ func (h *harness) await(t *testing.T, id string, want ...chat.Status) *chat.Chat
 	return nil
 }
 
-func TestRunToCompletionStoresMessagesAndResult(t *testing.T) {
+func TestRunToCompletionAnnouncesProgressAndStoresTheResult(t *testing.T) {
 	updates := []string{"Let me take a look.", "Still working on it."}
 	h := newHarness(t, &provider.Stub{Updates: updates}, runner.Options{})
 
 	tk := h.submit(t, "check my merge requests")
+	heard := h.listen(t, tk.ID)
 	done := h.await(t, tk.ID, chat.StatusCompleted, chat.StatusFailed)
 
 	if done.Status != chat.StatusCompleted {
@@ -116,20 +150,16 @@ func TestRunToCompletionStoresMessagesAndResult(t *testing.T) {
 		t.Error("start or finish time not recorded")
 	}
 
-	// The transient messages are stored; the final one is not, since it lives
-	// in the chat's response.
-	got := h.repo.Texts(tk.ID)
+	// Progress is announced and not stored. It was stored once, so a dropped
+	// stream could replay it; there is no such stream now, and where a chat
+	// had got to an hour ago is worth nothing.
+	got := heard()
 	if len(got) != len(updates) {
-		t.Fatalf("stored %d messages %v, want %d", len(got), got, len(updates))
+		t.Fatalf("heard %d updates %v, want %d", len(got), got, len(updates))
 	}
 	for i, want := range updates {
 		if got[i] != want {
-			t.Errorf("message %d = %q, want %q", i, got[i], want)
-		}
-	}
-	for _, text := range got {
-		if text == done.Response {
-			t.Error("the final message was stored as a transient one as well")
+			t.Errorf("update %d = %q, want %q", i, got[i], want)
 		}
 	}
 }
@@ -146,10 +176,6 @@ func TestProviderFailureFailsTheChat(t *testing.T) {
 	}
 	if done.Error != reason {
 		t.Errorf("Error = %q, want %q", done.Error, reason)
-	}
-	// Progress before the failure is still worth keeping.
-	if len(h.repo.Texts(tk.ID)) != 1 {
-		t.Errorf("stored %v, want the update sent before the failure", h.repo.Texts(tk.ID))
 	}
 }
 

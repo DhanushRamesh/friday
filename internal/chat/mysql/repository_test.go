@@ -360,68 +360,6 @@ func TestListFiltersByStatus(t *testing.T) {
 	}
 }
 
-func TestAppendMessageNumbersInOrder(t *testing.T) {
-	r := newRepository(t)
-	ctx := context.Background()
-
-	tk := storedChat(t, r, "talk to me")
-
-	texts := []string{"Let me take a look.", "Still working on it.", "Nearly there."}
-	for i, text := range texts {
-		msg, err := r.AppendMessage(ctx, tk.ID, "update", text)
-		if err != nil {
-			t.Fatalf("AppendMessage %d: %v", i, err)
-		}
-		if msg.Seq != i+1 {
-			t.Errorf("message %d has seq %d, want %d", i, msg.Seq, i+1)
-		}
-		if msg.Text != text {
-			t.Errorf("message %d text = %q, want %q", i, msg.Text, text)
-		}
-		if msg.CreatedAt.Location() != time.UTC {
-			t.Errorf("message %d timestamp location = %v, want UTC", i, msg.CreatedAt.Location())
-		}
-	}
-
-	got, err := r.Messages(ctx, tk.ID)
-	if err != nil {
-		t.Fatalf("Messages: %v", err)
-	}
-	if len(got) != len(texts) {
-		t.Fatalf("got %d messages, want %d", len(got), len(texts))
-	}
-	for i, want := range texts {
-		if got[i].Text != want || got[i].Seq != i+1 {
-			t.Errorf("message %d = seq %d %q, want seq %d %q", i, got[i].Seq, got[i].Text, i+1, want)
-		}
-	}
-}
-
-// Messages belong to a chat; one cannot be recorded against a chat that does
-// not exist.
-func TestAppendMessageRejectsMissingChat(t *testing.T) {
-	r := newRepository(t)
-
-	_, err := r.AppendMessage(context.Background(), chat.NewID(), "update", "orphan")
-	if !errors.Is(err, chat.ErrNotFound) {
-		t.Errorf("error = %v, want ErrNotFound", err)
-	}
-}
-
-func TestMessagesForAChatWithNoneIsEmpty(t *testing.T) {
-	r := newRepository(t)
-
-	tk := storedChat(t, r, "silent chat")
-
-	got, err := r.Messages(context.Background(), tk.ID)
-	if err != nil {
-		t.Fatalf("Messages: %v", err)
-	}
-	if len(got) != 0 {
-		t.Errorf("got %d messages, want none", len(got))
-	}
-}
-
 // A process that stops mid-chat leaves rows reading running that nothing will
 // ever move.
 func TestFailRunningRecoversInterruptedChats(t *testing.T) {

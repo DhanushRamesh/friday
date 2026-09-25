@@ -11,125 +11,9 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/api/apitest"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/chats"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/httpx"
-	"github.com/DhanushRamesh/personal-assistant/internal/api/views"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	"github.com/DhanushRamesh/personal-assistant/internal/provider"
 )
-
-func TestCreateChatAcceptsAndRuns(t *testing.T) {
-	e := apitest.NewWith(t, apitest.Options{
-		Provider: &provider.Stub{Updates: []string{"one", "two"}},
-	})
-
-	rec := e.Do(t, http.MethodPost, "/v1/chats", `{"prompt":"check my merge requests"}`)
-	if rec.Code != http.StatusAccepted {
-		t.Fatalf("status = %d, want 202: %s", rec.Code, rec.Body)
-	}
-
-	var created views.Chat
-	e.Decode(t, rec, &created)
-	if !chat.ValidID(created.ID) {
-		t.Errorf("id = %q, want a chat identifier", created.ID)
-	}
-	if created.Status != string(chat.StatusPending) && created.Status != string(chat.StatusRunning) {
-		t.Errorf("status = %q, want pending or running", created.Status)
-	}
-	if created.Prompt != "check my merge requests" {
-		t.Errorf("prompt = %q, want it echoed back", created.Prompt)
-	}
-
-	done := e.AwaitStatus(t, created.ID, string(chat.StatusCompleted), string(chat.StatusFailed))
-	if done.Status != string(chat.StatusCompleted) {
-		t.Fatalf("status = %q (%s), want completed", done.Status, done.Error)
-	}
-	if !strings.Contains(done.Response, "check my merge requests") {
-		t.Errorf("response = %q, want it to reflect the prompt", done.Response)
-	}
-}
-
-// wait holds the connection until the chat finishes, so a caller using the
-// API by hand gets an answer without writing a poll loop.
-func TestCreateChatWithWaitReturnsTheFinishedChat(t *testing.T) {
-	e := apitest.NewWith(t, apitest.Options{Provider: &provider.Stub{Updates: []string{"one"}}})
-
-	rec := e.Do(t, http.MethodPost, "/v1/chats?wait=5s", `{"prompt":"answer me now"}`)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
-	}
-
-	var view views.Chat
-	e.Decode(t, rec, &view)
-	if view.Status != string(chat.StatusCompleted) {
-		t.Errorf("status = %q, want completed", view.Status)
-	}
-	if view.Response == "" {
-		t.Error("no response returned despite waiting")
-	}
-	if view.FinishedAt == nil {
-		t.Error("no finish time on a completed chat")
-	}
-}
-
-// A wait too short to cover the chat returns the unfinished chat rather than
-// failing, so the caller can fetch it later.
-func TestCreateChatWithShortWaitReturnsPending(t *testing.T) {
-	e := apitest.NewWith(t, apitest.Options{
-		Provider: &provider.Stub{Updates: []string{"a", "b"}, Delay: 200 * time.Millisecond},
-	})
-
-	rec := e.Do(t, http.MethodPost, "/v1/chats?wait=150ms", `{"prompt":"slow job"}`)
-	if rec.Code != http.StatusAccepted {
-		t.Fatalf("status = %d, want 202 for an unfinished chat: %s", rec.Code, rec.Body)
-	}
-
-	var view views.Chat
-	e.Decode(t, rec, &view)
-	if view.Status == string(chat.StatusCompleted) {
-		t.Error("chat completed within a wait shorter than its runtime")
-	}
-}
-
-func TestCreateChatRejectsBadRequests(t *testing.T) {
-	e := apitest.New(t)
-
-	cases := map[string]struct {
-		path, body string
-	}{
-		"empty prompt":    {"/v1/chats", `{"prompt":""}`},
-		"whitespace only": {"/v1/chats", `{"prompt":"   "}`},
-		"missing prompt":  {"/v1/chats", `{}`},
-		"not json":        {"/v1/chats", `not json at all`},
-		"unknown field":   {"/v1/chats", `{"prompt":"hi","model":"gpt"}`},
-		"two objects":     {"/v1/chats", `{"prompt":"hi"}{"prompt":"again"}`},
-		"bad wait":        {"/v1/chats?wait=soon", `{"prompt":"hi"}`},
-		"negative wait":   {"/v1/chats?wait=-5s", `{"prompt":"hi"}`},
-		"prompt too long": {"/v1/chats", `{"prompt":"` + strings.Repeat("a", chat.MaxPromptRunes+1) + `"}`},
-	}
-
-	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
-			rec := e.Do(t, http.MethodPost, tc.path, tc.body)
-			if rec.Code != http.StatusBadRequest {
-				t.Errorf("status = %d, want 400: %s", rec.Code, rec.Body)
-			}
-			var body httpx.ErrorResponse
-			e.Decode(t, rec, &body)
-			if body.Error == "" {
-				t.Error("no explanation returned")
-			}
-		})
-	}
-}
-
-// An empty body is a common mistake and must say so rather than crash.
-func TestCreateChatRejectsEmptyBody(t *testing.T) {
-	e := apitest.New(t)
-
-	rec := e.Do(t, http.MethodPost, "/v1/chats", "")
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("status = %d, want 400: %s", rec.Code, rec.Body)
-	}
-}
 
 func TestGetUnknownChatIsNotFound(t *testing.T) {
 	e := apitest.New(t)
@@ -171,12 +55,9 @@ func TestAnotherUsersChatIsHidden(t *testing.T) {
 func TestListReturnsChatsWithoutResponses(t *testing.T) {
 	e := apitest.New(t)
 
-	rec := e.Do(t, http.MethodPost, "/v1/chats?wait=5s", `{"prompt":"list me"}`)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("create: status %d: %s", rec.Code, rec.Body)
-	}
+	e.CreateIn(t, "", "list me", "")
 
-	rec = e.Get(t, "/v1/chats")
+	rec := e.Get(t, "/v1/chats")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
 	}
@@ -223,39 +104,19 @@ func TestListRejectsBadParameters(t *testing.T) {
 	}
 }
 
-func TestMessagesAreReadableAfterARun(t *testing.T) {
-	updates := []string{"Let me take a look.", "Still working on it."}
-	e := apitest.NewWith(t, apitest.Options{Provider: &provider.Stub{Updates: updates}})
-
-	created := e.CreateChat(t, "/v1/chats?wait=5s", "talk to me")
-
-	rec := e.Get(t, "/v1/chats/"+created.ID+"/messages")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
-	}
-
-	var body chats.MessagesResponse
-	e.Decode(t, rec, &body)
-	if len(body.Messages) != len(updates) {
-		t.Fatalf("got %d messages, want %d: %+v", len(body.Messages), len(updates), body.Messages)
-	}
-	for i, want := range updates {
-		if body.Messages[i].Text != want {
-			t.Errorf("message %d = %q, want %q", i, body.Messages[i].Text, want)
-		}
-		if body.Messages[i].Seq != i+1 {
-			t.Errorf("message %d has seq %d, want %d", i, body.Messages[i].Seq, i+1)
-		}
-	}
-}
-
 // Cancelling is how "stop" reaches the server while it is still speaking.
 func TestCancelStopsARunningChat(t *testing.T) {
 	e := apitest.NewWith(t, apitest.Options{
 		Provider: &provider.Stub{Updates: []string{"a", "b", "c", "d"}, Delay: 40 * time.Millisecond},
 	})
 
-	created := e.CreateChat(t, "/v1/chats", "a long job")
+	// /api/chat answers only when the chat is done, so the prompt goes on
+	// another goroutine and is stopped while it is still running. That is
+	// what a client does too: it holds the response open and aborts it.
+	go e.Do(t, http.MethodPost, "/api/chat",
+		`{"model":"assistant","messages":[{"role":"user","content":"a long job"}]}`)
+
+	created := e.AwaitAny(t, string(chat.StatusRunning), string(chat.StatusPending))
 
 	rec := e.Do(t, http.MethodPost, "/v1/chats/"+created.ID+"/cancel", "")
 	if rec.Code != http.StatusAccepted {
@@ -272,7 +133,7 @@ func TestCancelStopsARunningChat(t *testing.T) {
 func TestCancelAFinishedChatConflicts(t *testing.T) {
 	e := apitest.New(t)
 
-	created := e.CreateChat(t, "/v1/chats?wait=5s", "finishes quickly")
+	created := e.CreateIn(t, "", "finishes quickly", "")
 
 	rec := e.Do(t, http.MethodPost, "/v1/chats/"+created.ID+"/cancel", "")
 	if rec.Code != http.StatusConflict {
@@ -294,7 +155,7 @@ func TestOversizedBodyRejected(t *testing.T) {
 	e := apitest.New(t)
 
 	huge := bytes.Repeat([]byte("a"), httpx.MaxRequestBody+1024)
-	r := httptest.NewRequest(http.MethodPost, "/v1/chats", bytes.NewReader(huge))
+	r := httptest.NewRequest(http.MethodPost, "/api/chat", bytes.NewReader(huge))
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Authorization", "Bearer "+e.Token)
 
@@ -314,7 +175,8 @@ func TestInternalFailureIsNotRevealed(t *testing.T) {
 	}
 
 	// Force a failure the handler cannot recover from.
-	rec = e.Do(t, http.MethodPost, "/v1/chats", `{"prompt":"will fail to save"}`)
+	rec = e.Do(t, http.MethodPost, "/api/chat",
+		`{"model":"assistant","messages":[{"role":"user","content":"will fail to save"}]}`)
 	if rec.Code == http.StatusInternalServerError {
 		if strings.Contains(rec.Body.String(), apitest.ErrStorage.Error()) {
 			t.Errorf("internal error text reached the caller: %s", rec.Body)

@@ -9,7 +9,6 @@ import 'package:http/http.dart' as http;
 import 'byte_source.dart';
 import 'errors.dart';
 import 'models.dart';
-import 'sse.dart';
 import 'token_store.dart';
 
 /// _defaultTimeout : How long an ordinary request may take.
@@ -187,14 +186,61 @@ class AssistantApi {
         body: {'title': title},
       ));
 
-  /// createChat : Sends a prompt.
+  /// ask : Sends a prompt and reads the answer as it arrives.
   ///
-  /// Returns as soon as the assistant accepts it, with the chat still pending —
-  /// the answer arrives on [streamChat]. Passing [wait] holds the connection
-  /// until the chat finishes or the wait elapses, which is a convenience for
-  /// scripting rather than the path a voice client takes.
+  /// One endpoint, Ollama's shape, and it answers only when the chat is over.
+  /// The chunks come back as newline-delimited JSON: each carries a piece of
+  /// what to say, and the last carries done together with the failure's code
+  /// and detail when there was one.
   ///
   /// Sending a prompt supersedes whatever is still running in the same
+  /// session, so a correction cancels the question it corrects.
+  Stream<AnswerChunk> ask(String prompt, {String? sessionId}) async* {
+    final token = _token;
+    if (token == null) throw const NotAuthenticated();
+
+    final StreamedResponse response;
+    try {
+      response = await _bytes.post(
+        _url('/api/chat'),
+        {
+          'Accept': 'application/x-ndjson',
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        jsonEncode({
+          'model': 'assistant',
+          'messages': [
+            {'role': 'user', 'content': prompt},
+          ],
+          if (sessionId != null && sessionId.isNotEmpty) 'session_id': sessionId,
+        }),
+      );
+    } on Object catch (e) {
+      throw Unreachable('I cannot reach the assistant at the moment.', e);
+    }
+
+    if (response.statusCode != 200) {
+      // A refusal's body is short, so reading it whole is safe here in a way
+      // it would not be for the answer itself.
+      final body = await utf8.decodeStream(response.body);
+      throw _failureFor(response.statusCode, body);
+    }
+
+    var buffer = '';
+    await for (final bytes in response.body) {
+      buffer += utf8.decode(bytes, allowMalformed: true);
+      while (true) {
+        final end = buffer.indexOf('\n');
+        if (end < 0) break;
+        final line = buffer.substring(0, end).trim();
+        buffer = buffer.substring(end + 1);
+        if (line.isEmpty) continue;
+        yield AnswerChunk.fromJson(jsonDecode(line) as Map<String, dynamic>);
+      }
+    }
+  }
+
   /// session, so a correction cancels the question it corrects.
   Future<Chat> createChat(
     String prompt, {
@@ -233,49 +279,10 @@ class AssistantApi {
         ChatSummary.fromJson,
       );
 
-  /// messages : Returns everything a chat said while it ran.
-  Future<List<Message>> messages(String chatId) async => parseList(
-    await _send('GET', '/v1/chats/$chatId/messages'),
-    'messages',
-    Message.fromJson,
-  );
-
   /// cancelChat : Stops a chat that has not finished. This is what "stop"
   /// does while the assistant is speaking.
   Future<Chat> cancelChat(String chatId) async =>
       Chat.fromJson(await _send('POST', '/v1/chats/$chatId/cancel'));
-
-  /// streamChat : Yields what a chat says, as it says it, ending once the
-  /// chat has finished.
-  ///
-  /// Everything already said is replayed first, so joining late loses
-  /// nothing. [resumeFrom] is the sequence number of the last event already
-  /// heard; after a dropped connection, passing it avoids hearing the same
-  /// thing twice, which for a voice client would mean repeating itself.
-  Stream<ChatEvent> streamChat(String chatId, {int resumeFrom = 0}) async* {
-    final token = _token;
-    if (token == null) throw const NotAuthenticated();
-
-    final StreamedResponse response;
-    try {
-      response = await _bytes.open(_url('/v1/chats/$chatId/stream'), {
-        'Accept': 'text/event-stream',
-        'Authorization': 'Bearer $token',
-        if (resumeFrom > 0) 'Last-Event-ID': '$resumeFrom',
-      });
-    } on Object catch (e) {
-      throw Unreachable('I cannot reach the assistant at the moment.', e);
-    }
-
-    if (response.statusCode != 200) {
-      // The body of a refusal is short, so reading it whole is safe here in
-      // a way it would not be for the stream itself.
-      final body = await utf8.decodeStream(response.body);
-      throw _failureFor(response.statusCode, body);
-    }
-
-    yield* parseEvents(response.body);
-  }
 
   /// close : Releases the connections this client holds.
   void close() {
