@@ -293,3 +293,40 @@ func TestAWholeToolPairSurvives(t *testing.T) {
 		t.Fatalf("sent %d messages, want the question, the call and the answer", len(window.Messages))
 	}
 }
+
+// The reserve counts what is sent alongside the history, since tools are not
+// free and there can be a great many of them.
+func TestTheReserveCountsTheToolsSentWithIt(t *testing.T) {
+	bare := conversation.ReserveFor(0)
+	if bare != conversation.DefaultReserveTokens {
+		t.Errorf("ReserveFor(0) = %d, want the reply's own reserve", bare)
+	}
+
+	// Seven tools at roughly six hundred bytes each.
+	withTools := conversation.ReserveFor(4200)
+	if withTools <= bare {
+		t.Fatalf("ReserveFor(4200) = %d, want more than %d", withTools, bare)
+	}
+	if got, want := withTools-bare, 4200/conversation.BytesPerToken; got != want {
+		t.Errorf("tools added %d tokens to the reserve, want %d", got, want)
+	}
+}
+
+// A bigger reserve leaves less room for the conversation, which is the whole
+// point: a model told about forty tools has that much less of its window for
+// what was actually said.
+func TestToolsTakeRoomFromTheConversation(t *testing.T) {
+	window := 8000
+
+	roomy := conversation.Limits{ContextTokens: window, ReserveTokens: conversation.ReserveFor(0)}
+	crowded := conversation.Limits{ContextTokens: window, ReserveTokens: conversation.ReserveFor(40 * 600)}
+
+	long := []conversation.Message{said(conversation.User, strings.Repeat("a", 60000))}
+
+	spare := len(conversation.Plan(long, conversation.Summary{}, roomy).Messages[0].Content)
+	tight := len(conversation.Plan(long, conversation.Summary{}, crowded).Messages[0].Content)
+
+	if tight >= spare {
+		t.Errorf("forty tools left %d bytes for the conversation and none left %d; want less", tight, spare)
+	}
+}

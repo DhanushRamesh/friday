@@ -473,6 +473,27 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### The reserve is measured, not assumed
+
+`ReserveTokens` was a flat 2,048 standing for the system prompt, the tool
+schemas and the reply together. That was true while there were no tools. Seven
+of them cost about 1,200 tokens; a dozen cost more than the whole reserve, and
+the arithmetic protecting the context window would have been wrong with
+nothing failing to say so.
+
+It now covers the reply alone, and what is sent alongside is counted:
+`ReserveFor(bytes)` adds the system prompt and every tool offered. A model with
+a small window and forty tools is given measurably less conversation than one
+with none, which it was not before.
+
+Measured per chat, because both halves move: the manner can be changed while
+the server runs, and the tools one channel may reach are not the tools another
+may.
+
+The endpoint takes at most 500 tools in a call, which is not the limit that
+matters. At roughly six hundred bytes each, a hundred tools cost as much as
+the entire conversation budget on every turn, used or not.
+
 ### Where a prompt lands is the server's to decide
 
 The browser used to name the conversation on every prompt. That made

@@ -203,7 +203,7 @@ func (r *Runner) history(ctx context.Context, t *chat.Chat) conversation.Window 
 		r.logger.ErrorContext(ctx, "cannot read conversation summary", slog.Any("error", err))
 	}
 
-	return conversation.Plan(said, summary, r.limitsFor(t.Model))
+	return conversation.Plan(said, summary, r.limitsFor(t.Model, r.alongside(t)))
 }
 
 // toProviderTurns : Converts a conversation's messages into the form a provider

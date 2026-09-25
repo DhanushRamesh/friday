@@ -26,7 +26,7 @@ func (r *Runner) condense(ctx context.Context, t *chat.Chat) {
 		return
 	}
 
-	limits := r.limitsFor(t.Model)
+	limits := r.limitsFor(t.Model, r.alongside(t))
 
 	current, err := r.messages.Summary(ctx, conversationID)
 	if err != nil {

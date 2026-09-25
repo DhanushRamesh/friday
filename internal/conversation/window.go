@@ -11,9 +11,27 @@ const DefaultBudget = 60000
 const BytesPerToken = 4
 
 // DefaultReserveTokens : How much of a model's context window is left alone
-// when no reserve is given, for the system prompt, the tool schemas and the
-// reply.
+// for the reply, before anything sent alongside the history is counted.
+//
+// Only the reply. It used to stand for the system prompt and the tool schemas
+// as well, as one flat number, which was true while there were no tools: a
+// dozen of them cost more than the whole reserve, and the arithmetic
+// protecting the context window would have been wrong without anything
+// failing. What is sent alongside is measured instead, by ReserveFor.
 const DefaultReserveTokens = 2048
+
+// ReserveFor : The reserve to leave for a reply sent alongside extraBytes of
+// system prompt and tool schemas.
+//
+// Measured rather than assumed, because the thing being measured grows: every
+// tool costs roughly six hundred bytes on every turn, whether the turn uses it
+// or not.
+func ReserveFor(extraBytes int) int {
+	if extraBytes < 0 {
+		extraBytes = 0
+	}
+	return DefaultReserveTokens + extraBytes/BytesPerToken
+}
 
 // MinBudget : The least history a model's context window is taken to leave
 // room for. A window smaller than the reserve would otherwise work out as no
@@ -49,9 +67,10 @@ type Limits struct {
 	// ContextTokens : The context window of the model behind the service.
 	// Zero means it is unknown and only Bytes applies.
 	ContextTokens int
-	// ReserveTokens : How much of ContextTokens to leave for the system
-	// prompt, the tool schemas and the reply. Zero selects
-	// DefaultReserveTokens. Ignored without ContextTokens.
+	// ReserveTokens : How much of ContextTokens to leave for everything that
+	// is not the conversation: the reply, the system prompt and the tool
+	// schemas. Zero selects DefaultReserveTokens, which covers the reply
+	// alone. Ignored without ContextTokens. See ReserveFor.
 	ReserveTokens int
 }
 

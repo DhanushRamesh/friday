@@ -294,12 +294,27 @@ func (r *Runner) prompt() string {
 // window is the chosen model's, so a client answered by a smaller model is
 // sent less. A chosen model nobody has catalogued declares no window, leaving
 // the byte budget to bound it alone.
-func (r *Runner) limitsFor(m chat.Model) conversation.Limits {
+func (r *Runner) limitsFor(m chat.Model, alongside int) conversation.Limits {
 	limits := r.historyLimits
 	if m.Chosen() {
 		limits.ContextTokens = llm.ContextTokens(m.Vendor, m.ID)
 	}
+	limits.ReserveTokens = conversation.ReserveFor(alongside)
 	return limits
+}
+
+// alongside : How much is sent with the history but is not part of it.
+//
+// The system prompt and every tool offered, whether the turn uses them or
+// not. Measured per chat because both change: the manner can be switched
+// while the server runs, and the tools a channel may reach are not the tools
+// another may.
+func (r *Runner) alongside(t *chat.Chat) int {
+	n := len(r.prompt())
+	for _, spec := range r.offered(t) {
+		n += len(spec.Name) + len(spec.Description) + len(spec.Parameters)
+	}
+	return n
 }
 
 // stop : Cancels a chat, recording why. It reports whether one was running.
