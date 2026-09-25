@@ -473,6 +473,40 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### Three ceilings, and condensing before any of them is reached
+
+A long conversation used to lose its early half in silence: the history was
+held to sixty thousand bytes and the oldest messages fell off the front.
+Nothing broke, which was the problem — the assistant simply forgot the
+morning.
+
+Three separate things cap a history, and they come from three places:
+
+| ceiling | belongs to | who knows it |
+| --- | --- | --- |
+| message count | the wire format | the adapter for that service |
+| context window | the model behind the service | the provider |
+| byte budget | us | configuration |
+
+They are kept as one `session.Limits` and all of them hold at once. The count
+is what Ulaa hard-codes as `slice(-100)` inside its platform-AI format; ours
+stays a declared number so a service without that cap is not held to someone
+else's. The context window is converted to bytes at four bytes a token, which
+is an approximation the reserve is sized to absorb; counting exactly needs the
+model's own tokeniser, and being wrong by a little is what the reserve is for.
+
+`Due` reports when the earliest part should be condensed — at ninety percent
+of whichever ceiling is nearest, not when one is hit. `Plan` then sends the
+summary in place of what it covers. The boundary between them is moved back to
+the start of a turn, so a question is never condensed apart from its answer;
+once a tool call and its result are messages, the same rule is what keeps a
+result from being sent without the call that asked for it.
+
+Ulaa clips instead and repairs the damage afterwards — dropping messages until
+the first is a user's, collapsing the same speaker twice in a row, choosing
+between two adjacent tool results by matching ids against the last tool call.
+Choosing the boundary correctly is cheaper than mending it.
+
 ### A message has an identifier, and a position
 
 `(session_id, seq)` was the key. It is unique and stable while the table is

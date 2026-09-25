@@ -68,9 +68,10 @@ type Options struct {
 	MaxConcurrent int
 	// Messages : Where the conversation is read and written. Required.
 	Messages session.Repository
-	// HistoryBudget : How much of a session, in bytes of text, is sent to
-	// the provider. Zero selects session.DefaultBudget.
-	HistoryBudget int
+	// HistoryLimits : The ceilings the conversation sent to the provider is
+	// held under. A zero size selects session.DefaultBudget, and a zero
+	// count means the provider accepts any number of messages.
+	HistoryLimits session.Limits
 }
 
 // Runner : Executes chats in the background.
@@ -83,7 +84,7 @@ type Runner struct {
 	publisher     Publisher
 	logger        *slog.Logger
 	chatTimeout   time.Duration
-	historyBudget int
+	historyLimits session.Limits
 
 	// slots : Limits how many chats run at once. A chat holds one for the
 	// whole of its run.
@@ -129,9 +130,6 @@ func New(opts Options) (*Runner, error) {
 	if opts.MaxConcurrent <= 0 {
 		opts.MaxConcurrent = DefaultMaxConcurrent
 	}
-	if opts.HistoryBudget <= 0 {
-		opts.HistoryBudget = session.DefaultBudget
-	}
 
 	base, stop := context.WithCancel(context.Background())
 	return &Runner{
@@ -141,7 +139,7 @@ func New(opts Options) (*Runner, error) {
 		publisher:     opts.Publisher,
 		logger:        opts.Logger,
 		chatTimeout:   opts.ChatTimeout,
-		historyBudget: opts.HistoryBudget,
+		historyLimits: opts.HistoryLimits,
 		slots:         make(chan struct{}, opts.MaxConcurrent),
 		base:          base,
 		stopBase:      stop,

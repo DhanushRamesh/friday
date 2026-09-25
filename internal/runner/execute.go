@@ -120,7 +120,8 @@ func (r *Runner) history(ctx context.Context, t *chat.Chat) []provider.Turn {
 		return nil
 	}
 
-	return toProviderTurns(session.Within(session.ForModel(said), r.historyBudget))
+	window := session.Plan(said, session.Summary{}, r.historyLimits)
+	return toProviderTurns(window.Messages)
 }
 
 // toProviderTurns : Converts a session's messages into the form a provider

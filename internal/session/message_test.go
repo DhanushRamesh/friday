@@ -14,61 +14,6 @@ func said(role session.Role, text string) session.Message {
 	return session.Message{Role: role, Content: text, At: time.Now()}
 }
 
-// Nothing is dropped while the whole session fits.
-func TestWithinKeepsASessionThatFits(t *testing.T) {
-	messages := []session.Message{
-		said(session.User, "what time is it"),
-		said(session.Assistant, "half past two"),
-	}
-
-	kept := session.Within(messages, 1000)
-
-	if len(kept) != 2 {
-		t.Fatalf("kept %d messages, want both", len(kept))
-	}
-}
-
-// The oldest go first: a follow-up refers to what was just said, not to what
-// opened the session an hour ago.
-func TestWithinDropsTheOldest(t *testing.T) {
-	messages := []session.Message{
-		said(session.User, strings.Repeat("a", 10)),
-		said(session.Assistant, strings.Repeat("b", 10)),
-		said(session.User, strings.Repeat("c", 10)),
-	}
-
-	kept := session.Within(messages, 20)
-
-	if len(kept) != 2 {
-		t.Fatalf("kept %d messages, want the last two", len(kept))
-	}
-	if kept[0].Content[0] != 'b' || kept[1].Content[0] != 'c' {
-		t.Errorf("kept %q and %q, want the last two", kept[0].Content, kept[1].Content)
-	}
-}
-
-// A single turn longer than the whole budget is cut rather than dropped:
-// dropping it would leave the model answering about a subject it never saw.
-func TestWithinCutsATurnTooLongToFit(t *testing.T) {
-	messages := []session.Message{said(session.User, strings.Repeat("a", 100))}
-
-	kept := session.Within(messages, 30)
-
-	if len(kept) != 1 {
-		t.Fatalf("kept %d messages, want the one cut down", len(kept))
-	}
-	if len(kept[0].Content) != 30 {
-		t.Errorf("kept %d characters, want 30", len(kept[0].Content))
-	}
-}
-
-// Trimming an empty session is not an error, and asks for nothing.
-func TestWithinOnAnEmptySession(t *testing.T) {
-	if kept := session.Within(nil, 100); len(kept) != 0 {
-		t.Errorf("kept %d messages from nothing", len(kept))
-	}
-}
-
 // Joining two questions keeps the time of the earlier one: that is when the
 // speaker started saying all of it.
 func TestForModelKeepsTheEarlierTime(t *testing.T) {
