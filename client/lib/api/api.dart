@@ -109,8 +109,15 @@ class AssistantApi {
       Identity.fromJson(await _send('GET', '/v1/me'));
 
   /// listClients : Returns the user's clients, revoked ones included.
-  Future<List<Client>> listClients() async =>
-      parseList(await _send('GET', '/v1/clients'), 'clients', Client.fromJson);
+  Future<List<Client>> listClients({bool revoked = false}) async => parseList(
+    await _send(
+      'GET',
+      '/v1/clients',
+      query: {if (revoked) 'revoked': 'true'},
+    ),
+    'clients',
+    Client.fromJson,
+  );
 
   /// setClientChannel : Changes how a client's prompts are treated.
   ///

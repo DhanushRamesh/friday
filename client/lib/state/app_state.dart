@@ -99,6 +99,13 @@ class AppState extends ChangeNotifier {
   List<Client> _clients = const [];
   List<Client> get clients => _clients;
 
+  bool _showRevoked = false;
+
+  /// showRevoked : Whether the clients list is showing what has been revoked
+  /// rather than what still works. A revoked client cannot authenticate and
+  /// cannot be brought back, so it is a record rather than a row to act on.
+  bool get showRevoked => _showRevoked;
+
   bool _showArchived = false;
 
   /// showArchived : Whether the sidebar is listing what has been put away
@@ -389,7 +396,7 @@ class AppState extends ChangeNotifier {
   /// loadClients : Reads the clients holding a token, for the settings screen.
   Future<void> loadClients() async {
     try {
-      _clients = await api.listClients();
+      _clients = await api.listClients(revoked: _showRevoked);
     } on Object catch (e) {
       _error = _explain(e);
     }
@@ -404,6 +411,13 @@ class AppState extends ChangeNotifier {
       _error = _explain(e);
     }
     notifyListeners();
+  }
+
+  /// setShowRevoked : Switches the clients list between usable and revoked.
+  Future<void> setShowRevoked(bool revoked) async {
+    if (_showRevoked == revoked) return;
+    _showRevoked = revoked;
+    await loadClients();
   }
 
   /// revoke : Takes a client's token away. Revoking this one signs it out,

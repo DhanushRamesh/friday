@@ -88,10 +88,9 @@ func TestRevokingAnUnknownClientIsNotFound(t *testing.T) {
 	}
 }
 
-// A client listing shows the user's own clients, marking which is in use and
-// which have been revoked. A revoked one stays listed, so that a revocation
-// is visible rather than silently absent.
-func TestClientListing(t *testing.T) {
+// The listing marks which client is in use, because "which of these am I
+// looking at right now" is the first thing needed to decide what to revoke.
+func TestClientListingMarksTheOneInUse(t *testing.T) {
 	e := apitest.New(t)
 
 	phone := e.Login(t, "my phone")
@@ -105,7 +104,7 @@ func TestClientListing(t *testing.T) {
 	var list clients.ListResponse
 	e.Decode(t, rec, &list)
 
-	var sawCurrent, sawRevoked bool
+	var sawCurrent bool
 	for _, d := range list.Clients {
 		if d.ID == laptop.Client.ID {
 			if !d.Current {
@@ -114,14 +113,28 @@ func TestClientListing(t *testing.T) {
 			sawCurrent = true
 		}
 		if d.ID == phone.Client.ID {
+			t.Error("a revoked client is in the ordinary listing")
+		}
+	}
+	if !sawCurrent {
+		t.Errorf("the client in use is missing: %+v", list.Clients)
+	}
+
+	// It is still findable, marked as what it is, for anyone asking whether
+	// a revocation actually happened.
+	rec = e.As(t, laptop.Token, http.MethodGet, "/v1/clients?revoked=true")
+	e.Decode(t, rec, &list)
+	var sawRevoked bool
+	for _, d := range list.Clients {
+		if d.ID == phone.Client.ID {
 			if !d.Revoked {
 				t.Error("the revoked client is not marked revoked")
 			}
 			sawRevoked = true
 		}
 	}
-	if !sawCurrent || !sawRevoked {
-		t.Errorf("listing did not show both clients: %+v", list.Clients)
+	if !sawRevoked {
+		t.Errorf("the revoked client is missing: %+v", list.Clients)
 	}
 }
 
@@ -222,4 +235,41 @@ func TestAClientCannotPromoteItself(t *testing.T) {
 	if rec.Code != http.StatusForbidden {
 		t.Errorf("lowering: status = %d, want 403: %s", rec.Code, rec.Body)
 	}
+}
+
+// A revoked client cannot authenticate and cannot be brought back, so it is a
+// record rather than a row to act on. Left in the ordinary listing it would
+// accumulate for ever beside the clients that still work.
+func TestRevokedClientsAreListedSeparately(t *testing.T) {
+	e := apitest.New(t)
+	old := e.Login(t, "an old browser")
+
+	rec := e.Do(t, http.MethodDelete, "/v1/clients/"+old.Client.ID, "")
+	if rec.Code != http.StatusOK && rec.Code != http.StatusNoContent {
+		t.Fatalf("revoke: status %d: %s", rec.Code, rec.Body)
+	}
+
+	if listedClients(t, e, "")[old.Client.ID] {
+		t.Error("a revoked client is still in the ordinary listing")
+	}
+	if !listedClients(t, e, "?revoked=true")[old.Client.ID] {
+		t.Error("a revoked client is missing from the revoked listing")
+	}
+	// And the one still in use is not in the revoked listing.
+	if listedClients(t, e, "?revoked=true")[e.Client.ID] {
+		t.Error("a usable client appeared among the revoked")
+	}
+}
+
+// listedClients : The client identifiers a listing returns.
+func listedClients(t *testing.T, e *apitest.Env, query string) map[string]bool {
+	t.Helper()
+	rec := e.Do(t, http.MethodGet, "/v1/clients"+query, "")
+	var out clients.ListResponse
+	e.Decode(t, rec, &out)
+	ids := make(map[string]bool, len(out.Clients))
+	for _, c := range out.Clients {
+		ids[c.ID] = true
+	}
+	return ids
 }

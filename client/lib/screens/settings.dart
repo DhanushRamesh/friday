@@ -337,14 +337,27 @@ class _ClientsModule extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => _Section(
-    title: 'Clients',
-    subtitle:
-        'Everything holding a token for this account, including the voice '
-        'satellite. A client says what it is when it registers; Home '
-        'Assistant cannot, so its channel is set here.',
+    title: state.showRevoked ? 'Revoked clients' : 'Clients',
+    subtitle: state.showRevoked
+        ? 'Kept so a revocation is visible rather than silently absent. None '
+              'of these can sign in, and none can be brought back.'
+        : 'Everything holding a token for this account, including the voice '
+              'satellite. A client says what it is when it registers; Home '
+              'Assistant cannot, so its channel is set here.',
+    action: InkWell(
+      onTap: () => state.setShowRevoked(!state.showRevoked),
+      borderRadius: BorderRadius.circular(AppRadius.xs),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xxs),
+        child: Text(
+          state.showRevoked ? 'Show active' : 'Show revoked',
+          style: context.text.caption.copyWith(color: context.colors.accent),
+        ),
+      ),
+    ),
     child: state.clients.isEmpty
         ? Text(
-            'Nothing to show.',
+            state.showRevoked ? 'Nothing revoked.' : 'Nothing to show.',
             style: context.text.caption.copyWith(
               color: context.colors.textMuted,
             ),
@@ -367,18 +380,31 @@ class _ClientsModule extends StatelessWidget {
 /// _Section : A titled card, so the page reads as a few groups rather than
 /// one long list of fields.
 class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.child, this.subtitle});
+  const _Section({
+    required this.title,
+    required this.child,
+    this.subtitle,
+    this.action,
+  });
 
   final String title;
   final String? subtitle;
   final Widget child;
+
+  /// action : Something to do with the whole section, shown beside its title.
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) => AppSurface(
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(title, style: context.text.label),
+        Row(
+          children: [
+            Expanded(child: Text(title, style: context.text.label)),
+            ?action,
+          ],
+        ),
         if (subtitle != null) ...[
           const SizedBox(height: AppSpacing.xxs),
           Text(

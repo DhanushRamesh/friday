@@ -110,7 +110,11 @@ type Repository interface {
 
 	// ListClients : Returns a user's clients, newest first, including
 	// revoked ones so that a revocation is visible.
-	ListClients(ctx context.Context, userID string) ([]Client, error)
+	// [revoked] chooses which listing: the clients still usable, or the ones
+	// that are not. Never both, because a revoked client is not a lesser
+	// version of a live one — it cannot authenticate and cannot be brought
+	// back, so it is a record rather than something to act on.
+	ListClients(ctx context.Context, userID string, revoked bool) ([]Client, error)
 
 	// ReissueClientToken : Replaces a client's token with a new one, so
 	// signing in again on the same install keeps one client rather than

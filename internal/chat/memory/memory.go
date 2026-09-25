@@ -322,12 +322,12 @@ func (m *Repository) ClientByTokenHash(_ context.Context, tokenHash string) (*ch
 }
 
 // ListClients : Returns a user's clients, newest first.
-func (m *Repository) ListClients(_ context.Context, userID string) ([]chat.Client, error) {
+func (m *Repository) ListClients(_ context.Context, userID string, revoked bool) ([]chat.Client, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var out []chat.Client
 	for _, d := range m.clients {
-		if d.UserID == userID {
+		if d.UserID == userID && d.Revoked() == revoked {
 			out = append(out, d)
 		}
 	}

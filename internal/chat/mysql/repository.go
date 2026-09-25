@@ -240,12 +240,16 @@ func (r *Repository) ClientByTokenHash(ctx context.Context, tokenHash string) (*
 }
 
 // ListClients : Returns a user's clients, newest first.
-func (r *Repository) ListClients(ctx context.Context, userID string) ([]chat.Client, error) {
+func (r *Repository) ListClients(ctx context.Context, userID string, revoked bool) ([]chat.Client, error) {
+	q := r.db.WithContext(ctx).Where("user_id = ?", userID)
+	if revoked {
+		q = q.Where("revoked_at IS NOT NULL")
+	} else {
+		q = q.Where("revoked_at IS NULL")
+	}
+
 	var rows []clientRow
-	err := r.db.WithContext(ctx).
-		Where("user_id = ?", userID).
-		Order("id DESC").
-		Find(&rows).Error
+	err := q.Order("id DESC").Find(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("chat: listing clients: %w", err)
 	}

@@ -64,13 +64,19 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// List : Returns the caller's clients, revoked ones included so that a
-// revocation is visible rather than silently absent.
+// List : Returns the caller's clients, the usable ones by default.
+//
+// ?revoked=true returns the revoked ones instead. They are kept out of the
+// ordinary listing because a revoked client cannot authenticate, cannot be
+// brought back, and signing in with its identifier registers a new one rather
+// than reviving it — so it is a record of something that happened, not a row
+// to act on, and it would otherwise accumulate for ever.
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	c := authn.Of(ctx)
 
-	clients, err := h.repo.ListClients(ctx, c.User.ID)
+	revoked := r.URL.Query().Get("revoked") == "true"
+	clients, err := h.repo.ListClients(ctx, c.User.ID, revoked)
 	if err != nil {
 		h.Fail(ctx, w, "listing clients", err)
 		return
