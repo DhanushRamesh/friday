@@ -275,6 +275,7 @@ class Session {
     required this.id,
     required this.title,
     required this.active,
+    this.archived = false,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -285,6 +286,10 @@ class Session {
   /// active : Whether this is where the calling client's prompts land.
   final bool active;
 
+  /// archived : Whether it has been put away. An archived session keeps
+  /// everything said in it and simply stops being offered.
+  final bool archived;
+
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -293,6 +298,7 @@ class Session {
     id: json['id'] as String,
     title: json['title'] as String? ?? '',
     active: json['active'] as bool? ?? false,
+    archived: json['archived'] as bool? ?? false,
     createdAt: _time(json['created_at'])!,
     updatedAt: _time(json['updated_at'])!,
   );

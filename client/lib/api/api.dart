@@ -131,11 +131,14 @@ class AssistantApi {
       );
 
   /// listSessions : Returns sessions, most recently used first.
-  Future<List<Session>> listSessions({int? limit}) async => parseList(
+  Future<List<Session>> listSessions({int? limit, bool archived = false}) async => parseList(
     await _send(
       'GET',
       '/v1/sessions',
-      query: {if (limit != null) 'limit': '$limit'},
+      query: {
+        if (limit != null) 'limit': '$limit',
+        if (archived) 'archived': 'true',
+      },
     ),
     'sessions',
     Session.fromJson,
@@ -149,6 +152,29 @@ class AssistantApi {
   /// the same user stay where they are.
   Future<Session> activateSession(String sessionId) async =>
       Session.fromJson(await _send('POST', '/v1/sessions/$sessionId/activate'));
+
+  /// archiveSession : Puts a session away, or brings it back.
+  ///
+  /// Archiving the session this client is in leaves it nowhere to talk, so the
+  /// server starts a fresh one and returns it. Unarchiving returns the session
+  /// itself, since nothing moved.
+  Future<Session> archiveSession(String sessionId, {bool archived = true}) async {
+    final path = archived ? 'archive' : 'unarchive';
+    final json = await _send('POST', '/v1/sessions/$sessionId/$path');
+    return Session.fromJson(
+      archived ? json['active'] as Map<String, dynamic> : json,
+    );
+  }
+
+  /// deleteSession : Removes a session and everything said in it.
+  ///
+  /// Nothing here can be undone. Returns the session this client is in
+  /// afterwards, which is a fresh one when the deleted session was the one it
+  /// was using.
+  Future<Session> deleteSession(String sessionId) async {
+    final json = await _send('DELETE', '/v1/sessions/$sessionId');
+    return Session.fromJson(json['active'] as Map<String, dynamic>);
+  }
 
   /// renameSession : Changes what a session is called.
   ///

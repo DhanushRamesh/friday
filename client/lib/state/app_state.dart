@@ -86,6 +86,13 @@ class AppState extends ChangeNotifier {
   List<Client> _clients = const [];
   List<Client> get clients => _clients;
 
+  bool _showArchived = false;
+
+  /// showArchived : Whether the sidebar is listing what has been put away
+  /// rather than what is in use. The two are separate listings, not one with
+  /// a filter, because an archived session is never where a prompt lands.
+  bool get showArchived => _showArchived;
+
   bool _busy = false;
 
   /// busy : Whether a whole-screen operation is in flight. Sending is not
@@ -263,6 +270,58 @@ class AppState extends ChangeNotifier {
       _error = _explain(e);
     } finally {
       _set(busy: false);
+    }
+  }
+
+  /// setShowArchived : Switches the sidebar between live and archived.
+  Future<void> setShowArchived(bool archived) async {
+    if (_showArchived == archived) return;
+    _showArchived = archived;
+    _set(busy: true, error: null);
+    try {
+      _sessions = await api.listSessions(archived: archived);
+    } on Object catch (e) {
+      _error = _explain(e);
+    } finally {
+      _set(busy: false);
+    }
+  }
+
+  /// archive : Puts a session away, or brings it back.
+  Future<void> archive(String id, {bool archived = true}) async {
+    _set(busy: true, error: null);
+    try {
+      final active = await api.archiveSession(id, archived: archived);
+      await _afterRemoval(id, active);
+    } on Object catch (e) {
+      _error = _explain(e);
+    } finally {
+      _set(busy: false);
+    }
+  }
+
+  /// remove : Deletes a session and everything said in it.
+  Future<void> remove(String id) async {
+    _set(busy: true, error: null);
+    try {
+      final active = await api.deleteSession(id);
+      await _afterRemoval(id, active);
+    } on Object catch (e) {
+      _error = _explain(e);
+    } finally {
+      _set(busy: false);
+    }
+  }
+
+  /// _afterRemoval : Reloads the listing and opens wherever the client now is.
+  ///
+  /// The server decides that, because it is the one that knows whether the
+  /// session removed was the active one. Following its answer rather than
+  /// guessing keeps the two from disagreeing about where a prompt will land.
+  Future<void> _afterRemoval(String removed, Session active) async {
+    _sessions = await api.listSessions(archived: _showArchived);
+    if (_sessionId == removed) {
+      await _open(active.id);
     }
   }
 

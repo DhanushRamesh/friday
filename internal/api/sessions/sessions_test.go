@@ -290,3 +290,103 @@ func TestRenamingAMissingSessionIsNotFound(t *testing.T) {
 		t.Errorf("status = %d, want 404: %s", rec.Code, rec.Body)
 	}
 }
+
+func TestArchivingHidesASessionAndUnarchivingBringsItBack(t *testing.T) {
+	e := apitest.New(t)
+	rec := e.Do(t, http.MethodPost, "/v1/sessions", `{"title":"old talk","activate":false}`)
+	var s views.Session
+	e.Decode(t, rec, &s)
+
+	rec = e.Do(t, http.MethodPost, "/v1/sessions/"+s.ID+"/archive", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("archive: status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+
+	if listed(t, e, "")[s.ID] {
+		t.Error("an archived session is still in the ordinary listing")
+	}
+	if !listed(t, e, "?archived=true")[s.ID] {
+		t.Error("an archived session is missing from the archived listing")
+	}
+
+	rec = e.Do(t, http.MethodPost, "/v1/sessions/"+s.ID+"/unarchive", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unarchive: status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	if !listed(t, e, "")[s.ID] {
+		t.Error("unarchiving did not bring the session back")
+	}
+}
+
+// Archiving the session a prompt would land in has to move the client
+// somewhere, or the next thing said goes into the conversation just put away.
+func TestArchivingTheActiveSessionStartsAFreshOne(t *testing.T) {
+	e := apitest.New(t)
+	first := e.CreateIn(t, "", "a question", "?wait=5s")
+
+	rec := e.Do(t, http.MethodPost, "/v1/sessions/"+first.SessionID+"/archive", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("archive: status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	var out sessions.RemovedResponse
+	e.Decode(t, rec, &out)
+
+	if out.Active.ID == first.SessionID {
+		t.Fatal("still active in the session that was archived")
+	}
+	if !out.Active.Active {
+		t.Error("the replacement does not report itself active")
+	}
+	// Fresh rather than the most recent survivor: having put a conversation
+	// away, being dropped into an older one reads as the wrong thing.
+	if out.Active.Title != "" {
+		t.Errorf("replacement title = %q, want an empty new session", out.Active.Title)
+	}
+
+	landed := e.CreateIn(t, "", "where does this go", "?wait=5s")
+	if landed.SessionID != out.Active.ID {
+		t.Errorf("prompt landed in %s, want the replacement %s",
+			landed.SessionID, out.Active.ID)
+	}
+}
+
+func TestDeletingASessionTakesItsChatsWithIt(t *testing.T) {
+	e := apitest.New(t)
+	created := e.CreateIn(t, "", "something to forget", "?wait=5s")
+
+	rec := e.Do(t, http.MethodDelete, "/v1/sessions/"+created.SessionID, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("delete: status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+
+	rec = e.Do(t, http.MethodGet, "/v1/sessions/"+created.SessionID, "")
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("the session survived the delete: %d", rec.Code)
+	}
+	rec = e.Do(t, http.MethodGet, "/v1/chats/"+created.ID, "")
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("a chat outlived the session it belonged to: %d", rec.Code)
+	}
+}
+
+func TestDeletingAMissingSessionIsNotFound(t *testing.T) {
+	e := apitest.New(t)
+
+	rec := e.Do(t, http.MethodDelete, "/v1/sessions/"+chat.NewSessionID(), "")
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404: %s", rec.Code, rec.Body)
+	}
+}
+
+// listed : The identifiers a listing returns, keyed for lookup.
+func listed(t *testing.T, e *apitest.Env, query string) map[string]bool {
+	t.Helper()
+	rec := e.Do(t, http.MethodGet, "/v1/sessions"+query, "")
+	var out sessions.ListResponse
+	e.Decode(t, rec, &out)
+	ids := make(map[string]bool, len(out.Sessions))
+	for _, s := range out.Sessions {
+		ids[s.ID] = true
+	}
+	return ids
+}

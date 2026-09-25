@@ -15,7 +15,10 @@ class AppSessionTile extends StatefulWidget {
     required this.onTap,
     this.subtitle,
     this.active = false,
+    this.archived = false,
     this.onRename,
+    this.onArchive,
+    this.onDelete,
   });
 
   final String title;
@@ -30,9 +33,15 @@ class AppSessionTile extends StatefulWidget {
   final String? subtitle;
   final VoidCallback onTap;
 
-  /// onRename : Offered on hover, and always on a touch screen where there is
-  /// no hover to offer it on. Null leaves the tile without the control.
+  /// archived : Whether this session has been put away, which decides
+  /// whether the menu offers to archive it or to bring it back.
+  final bool archived;
+
+  /// onRename, onArchive, onDelete : The actions the menu offers. A null one
+  /// is left out rather than shown disabled.
   final VoidCallback? onRename;
+  final VoidCallback? onArchive;
+  final VoidCallback? onDelete;
 
   @override
   State<AppSessionTile> createState() => _FSessionTileState();
@@ -40,6 +49,11 @@ class AppSessionTile extends StatefulWidget {
 
 class _FSessionTileState extends State<AppSessionTile> {
   bool _hovered = false;
+
+  bool get _hasActions =>
+      widget.onRename != null ||
+      widget.onArchive != null ||
+      widget.onDelete != null;
 
   @override
   Widget build(BuildContext context) {
@@ -109,8 +123,13 @@ class _FSessionTileState extends State<AppSessionTile> {
                   ],
                 ),
               ),
-              if (widget.onRename != null && (_hovered || widget.selected))
-                _RenameButton(onPressed: widget.onRename!),
+              if (_hasActions && (_hovered || widget.selected))
+                _TileMenu(
+                  archived: widget.archived,
+                  onRename: widget.onRename,
+                  onArchive: widget.onArchive,
+                  onDelete: widget.onDelete,
+                ),
             ],
           ),
         ),
@@ -119,30 +138,76 @@ class _FSessionTileState extends State<AppSessionTile> {
   }
 }
 
-/// _RenameButton : The small control that opens a rename.
+/// _TileMenu : Rename, archive and delete for one session.
 ///
 /// Shown on hover or while the session is selected, rather than always: a
-/// column of sessions each carrying a visible button is a column of buttons
+/// column of sessions each carrying visible buttons is a column of buttons
 /// with names attached.
-class _RenameButton extends StatelessWidget {
-  const _RenameButton({required this.onPressed});
+class _TileMenu extends StatelessWidget {
+  const _TileMenu({
+    required this.archived,
+    this.onRename,
+    this.onArchive,
+    this.onDelete,
+  });
 
-  final VoidCallback onPressed;
+  final bool archived;
+  final VoidCallback? onRename;
+  final VoidCallback? onArchive;
+  final VoidCallback? onDelete;
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-    message: 'Rename',
-    child: InkWell(
-      onTap: onPressed,
-      borderRadius: BorderRadius.circular(AppRadius.xs),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xs),
-        child: Icon(
-          Icons.edit_outlined,
-          size: 14,
-          color: context.colors.textMuted,
-        ),
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return PopupMenuButton<VoidCallback>(
+      tooltip: 'More',
+      padding: EdgeInsets.zero,
+      splashRadius: 14,
+      color: colors.surfaceRaised,
+      icon: Icon(Icons.more_horiz, size: 16, color: colors.textMuted),
+      // The tile underneath is what switches session, and a tap that lands on
+      // it while aiming for the menu would navigate away instead.
+      onSelected: (action) => action(),
+      itemBuilder: (context) => [
+        if (onRename != null)
+          _item(context, Icons.edit_outlined, 'Rename', onRename!),
+        if (onArchive != null)
+          _item(
+            context,
+            archived ? Icons.unarchive_outlined : Icons.archive_outlined,
+            archived ? 'Unarchive' : 'Archive',
+            onArchive!,
+          ),
+        if (onDelete != null)
+          _item(
+            context,
+            Icons.delete_outline,
+            'Delete',
+            onDelete!,
+            tone: colors.danger,
+          ),
+      ],
+    );
+  }
+
+  PopupMenuItem<VoidCallback> _item(
+    BuildContext context,
+    IconData icon,
+    String label,
+    VoidCallback action, {
+    Color? tone,
+  }) {
+    final colour = tone ?? context.colors.textSecondary;
+    return PopupMenuItem<VoidCallback>(
+      value: action,
+      height: 38,
+      child: Row(
+        children: [
+          Icon(icon, size: 15, color: colour),
+          const SizedBox(width: AppSpacing.sm),
+          Text(label, style: context.text.body.copyWith(color: colour)),
+        ],
       ),
-    ),
-  );
+    );
+  }
 }

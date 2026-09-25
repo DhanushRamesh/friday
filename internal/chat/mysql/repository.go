@@ -369,6 +369,74 @@ func (r *Repository) RenameSession(ctx context.Context, userID, sessionID, title
 	return nil
 }
 
+// SetSessionArchived : Puts a session away or brings it back.
+func (r *Repository) SetSessionArchived(ctx context.Context, userID, sessionID string, archived bool) error {
+	session, err := r.GetSession(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	if session.UserID != userID {
+		return chat.ErrNotOwned
+	}
+
+	if archived {
+		session.Archive()
+	} else {
+		session.Unarchive()
+	}
+
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&sessionRow{}).
+			Where("id = ?", sessionID).
+			Update("archived_at", session.ArchivedAt).Error; err != nil {
+			return fmt.Errorf("chat: archiving session %s: %w", sessionID, err)
+		}
+		if !archived {
+			return nil
+		}
+		// A client left pointing at an archived session would keep putting
+		// prompts into it, which is the one thing archiving is meant to stop.
+		return clearActiveSession(tx, sessionID)
+	})
+}
+
+// DeleteSession : Removes a session and everything said in it.
+func (r *Repository) DeleteSession(ctx context.Context, userID, sessionID string) error {
+	session, err := r.GetSession(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	if session.UserID != userID {
+		return chat.ErrNotOwned
+	}
+
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Before the row goes, not after: active_session_id has no foreign
+		// key, so a client left pointing at a deleted session would be
+		// holding an identifier nothing can resolve, and the next prompt
+		// would fail on the chats foreign key instead.
+		if err := clearActiveSession(tx, sessionID); err != nil {
+			return err
+		}
+		// The chats and the transcript follow by their own cascades.
+		if err := tx.Where("id = ?", sessionID).Delete(&sessionRow{}).Error; err != nil {
+			return fmt.Errorf("chat: deleting session %s: %w", sessionID, err)
+		}
+		return nil
+	})
+}
+
+// clearActiveSession : Unpoints every client that was using a session.
+func clearActiveSession(tx *gorm.DB, sessionID string) error {
+	err := tx.Model(&clientRow{}).
+		Where("active_session_id = ?", sessionID).
+		Update("active_session_id", nil).Error
+	if err != nil {
+		return fmt.Errorf("chat: clearing active session %s: %w", sessionID, err)
+	}
+	return nil
+}
+
 func (r *Repository) SetActiveSession(ctx context.Context, userID, clientID, sessionID string) error {
 	session, err := r.GetSession(ctx, sessionID)
 	if err != nil {
@@ -440,13 +508,37 @@ func (r *Repository) ListSessions(ctx context.Context, userID string, limit int)
 		limit = chat.MaxListLimit
 	}
 
+	return r.listSessions(ctx, userID, limit, false)
+}
+
+// ListArchivedSessions : Returns a user's archived sessions.
+func (r *Repository) ListArchivedSessions(ctx context.Context, userID string, limit int) ([]chat.Session, error) {
+	return r.listSessions(ctx, userID, limit, true)
+}
+
+// listSessions : The listing both views share.
+//
+// Archived sessions are excluded from the ordinary one rather than mixed in
+// and filtered by the caller, because EnsureSession takes the first row of it
+// to decide where a prompt lands. An archived session reaching that would put
+// a prompt into a conversation the user had put away.
+func (r *Repository) listSessions(ctx context.Context, userID string, limit int, archived bool) ([]chat.Session, error) {
+	if limit <= 0 {
+		limit = chat.DefaultListLimit
+	}
+	if limit > chat.MaxListLimit {
+		limit = chat.MaxListLimit
+	}
+
+	q := r.db.WithContext(ctx).Model(&sessionRow{}).Where("user_id = ?", userID)
+	if archived {
+		q = q.Where("archived_at IS NOT NULL")
+	} else {
+		q = q.Where("archived_at IS NULL")
+	}
+
 	var rows []sessionRow
-	err := r.db.WithContext(ctx).
-		Model(&sessionRow{}).
-		Where("user_id = ?", userID).
-		Order("updated_at DESC").
-		Limit(limit).
-		Find(&rows).Error
+	err := q.Order("updated_at DESC").Limit(limit).Find(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("chat: listing sessions: %w", err)
 	}

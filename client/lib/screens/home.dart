@@ -110,6 +110,40 @@ class _HomeScreenState extends State<HomeScreen> {
     if (title != null) await widget.state.rename(id, title);
   }
 
+  /// _confirmDelete : Asks before removing a session for good.
+  ///
+  /// Archive is reversible and asks nothing. This one cannot be undone and
+  /// takes the transcript with it, so it is the only action here that stops
+  /// to check.
+  Future<void> _confirmDelete(String id, String title) async {
+    final name = title.isEmpty ? 'this session' : '"$title"';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: context.colors.surfaceRaised,
+        title: Text('Delete $name?', style: context.text.subtitle),
+        content: Text(
+          'Everything said in it goes too, and none of it can be brought '
+          'back. Archive instead if you only want it out of the way.',
+          style: context.text.body,
+        ),
+        actions: [
+          AppButton(
+            label: 'Cancel',
+            variant: AppButtonVariant.ghost,
+            onPressed: () => Navigator.of(context).pop(false),
+          ),
+          AppButton(
+            label: 'Delete',
+            variant: AppButtonVariant.danger,
+            onPressed: () => Navigator.of(context).pop(true),
+          ),
+        ],
+      ),
+    );
+    if (ok ?? false) await widget.state.remove(id);
+  }
+
   void _openSettings() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -130,6 +164,7 @@ class _HomeScreenState extends State<HomeScreen> {
           state: state,
           onSettings: _openSettings,
           onRename: _rename,
+          onDelete: _confirmDelete,
           onPicked: compact ? () => Navigator.of(context).maybePop() : null,
         );
 
@@ -168,14 +203,16 @@ class _Sidebar extends StatelessWidget {
     required this.state,
     required this.onSettings,
     required this.onRename,
+    required this.onDelete,
     this.onPicked,
   });
 
   final AppState state;
   final VoidCallback onSettings;
 
-  /// onRename : Called with a session and its current name.
+  /// onRename, onDelete : Called with a session and its current name.
   final void Function(String id, String title) onRename;
+  final void Function(String id, String title) onDelete;
 
   /// onPicked : Called after a session is chosen, so the drawer can close
   /// itself when the sidebar is inside one.
@@ -225,12 +262,43 @@ class _Sidebar extends StatelessWidget {
                     },
             ),
           ),
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: AppSpacing.sm),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    state.showArchived ? 'Archived' : 'Sessions',
+                    style: context.text.label.copyWith(
+                      color: context.colors.textMuted,
+                    ),
+                  ),
+                ),
+                InkWell(
+                  onTap: () => state.setShowArchived(!state.showArchived),
+                  borderRadius: BorderRadius.circular(AppRadius.xs),
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.xxs),
+                    child: Text(
+                      state.showArchived ? 'Show live' : 'Show archived',
+                      style: context.text.caption.copyWith(
+                        color: context.colors.accent,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xs),
           Expanded(
             child: state.sessions.isEmpty
                 ? Center(
                     child: Text(
-                      'No sessions yet.',
+                      state.showArchived
+                          ? 'Nothing archived.'
+                          : 'No sessions yet.',
                       style: context.text.caption.copyWith(
                         color: context.colors.textMuted,
                       ),
@@ -254,7 +322,11 @@ class _Sidebar extends StatelessWidget {
                             await state.select(s.id);
                             onPicked?.call();
                           },
+                          archived: s.archived,
                           onRename: () => onRename(s.id, s.title),
+                          onArchive: () =>
+                              state.archive(s.id, archived: !s.archived),
+                          onDelete: () => onDelete(s.id, s.title),
                         ),
                       );
                     },

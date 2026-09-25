@@ -315,6 +315,47 @@ by the assistant itself, so the page's own origin is the server's address and
 nothing has to be configured; during development `--dart-define=ASSISTANT_URL`
 points it somewhere else and the loopback CORS rule lets it through.
 
+### Archiving and deleting are different things, and both exist
+
+Archiving puts a session away: it keeps everything said in it, stops appearing
+in the listing, and is never where a prompt lands. Deleting removes the row,
+and the chats and the transcript follow it by the cascades already on their
+foreign keys. There is no undo on the second, which is why the first exists
+and is what a client offers first.
+
+The two listings are separate rather than one with a filter. `EnsureSession`
+takes the first row of the ordinary listing to decide where a prompt goes, so
+an archived session reaching that would put a prompt back into a conversation
+the user had put away.
+
+**Removing the session a client is in starts a fresh one**, rather than
+falling back to the most recent survivor as `EnsureSession` would. Having just
+put a conversation away, being dropped into an unrelated older one reads as
+the wrong thing happening. The server decides this and returns the session the
+client is now in, because it is the side that knows whether what was removed
+was the active one; a client that guessed would end up disagreeing with it
+about where the next prompt lands.
+
+`active_session_id` has no foreign key, so both paths clear it from every
+client pointed at the session before the row goes. Left behind, it is an
+identifier nothing can resolve, and the next prompt fails on the chats foreign
+key instead of anything that explains itself.
+
+### Tools will be reachable differently by voice and by hand
+
+Not built yet, recorded so the shape is not lost. When the assistant can call
+tools, which tools it may call depends on how it was reached: a voice turn
+gets a restricted set, while the interface and the API get all of them.
+
+The reason is that voice has no confirmation step worth the name. A spoken
+"yes" to something misheard is the whole authorisation, where a client can
+show what is about to happen and wait. So anything destructive, anything that
+spends money, and anything that leaves the house belongs to the channels that
+can ask properly.
+
+This is why a chat carries which client submitted it rather than only which
+user: the channel has to reach whatever decides the tool set.
+
 ### A failure is said one way and recorded another
 
 Two audiences want different things from the same failure. Somebody waiting

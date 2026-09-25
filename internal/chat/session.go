@@ -35,7 +35,31 @@ type Session struct {
 	CreatedAt time.Time
 	// UpdatedAt : When a chat was last added to it.
 	UpdatedAt time.Time
+	// ArchivedAt : When it was put away, or nil while it is in use.
+	//
+	// An archived session keeps everything said in it and simply stops
+	// appearing: it is not offered in a listing, and is never the one a
+	// prompt lands in by default.
+	ArchivedAt *time.Time
 }
+
+// Archived : Whether the session has been put away.
+func (c *Session) Archived() bool { return c.ArchivedAt != nil }
+
+// Archive : Puts the session away, keeping everything said in it.
+//
+// Archiving one already archived is not an error. The caller asked for it to
+// be away and it is away; failing would only make a client that lost a
+// response have to tell the difference.
+func (c *Session) Archive() {
+	if c.ArchivedAt == nil {
+		at := now()
+		c.ArchivedAt = &at
+	}
+}
+
+// Unarchive : Brings the session back into the listing.
+func (c *Session) Unarchive() { c.ArchivedAt = nil }
 
 // NewSession : Creates a session belonging to a user.
 //

@@ -199,12 +199,21 @@ func (m *Repository) GetSession(_ context.Context, id string) (*chat.Session, er
 }
 
 // ListSessions : Returns stored sessions.
-func (m *Repository) ListSessions(_ context.Context, userID string, limit int) ([]chat.Session, error) {
+func (m *Repository) ListSessions(ctx context.Context, userID string, limit int) ([]chat.Session, error) {
+	return m.listSessions(ctx, userID, limit, false)
+}
+
+// ListArchivedSessions : Returns stored sessions that have been put away.
+func (m *Repository) ListArchivedSessions(ctx context.Context, userID string, limit int) ([]chat.Session, error) {
+	return m.listSessions(ctx, userID, limit, true)
+}
+
+func (m *Repository) listSessions(_ context.Context, userID string, limit int, archived bool) ([]chat.Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var out []chat.Session
 	for _, c := range m.sessions {
-		if c.UserID != userID {
+		if c.UserID != userID || c.Archived() != archived {
 			continue
 		}
 		out = append(out, c)
@@ -214,6 +223,65 @@ func (m *Repository) ListSessions(_ context.Context, userID string, limit int) (
 		out = out[:limit]
 	}
 	return out, nil
+}
+
+// SetSessionArchived : Puts a stored session away or brings it back.
+func (m *Repository) SetSessionArchived(_ context.Context, userID, sessionID string, archived bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	session, ok := m.sessions[sessionID]
+	if !ok {
+		return chat.ErrNotFound
+	}
+	if session.UserID != userID {
+		return chat.ErrNotOwned
+	}
+	if archived {
+		session.Archive()
+		m.clearActive(sessionID)
+	} else {
+		session.Unarchive()
+	}
+	m.sessions[sessionID] = session
+	return nil
+}
+
+// DeleteSession : Removes a stored session and everything said in it.
+func (m *Repository) DeleteSession(_ context.Context, userID, sessionID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	session, ok := m.sessions[sessionID]
+	if !ok {
+		return chat.ErrNotFound
+	}
+	if session.UserID != userID {
+		return chat.ErrNotOwned
+	}
+
+	m.clearActive(sessionID)
+	delete(m.sessions, sessionID)
+	// Standing in for the database's cascades, so a test sees what a real
+	// delete leaves behind rather than a session's chats outliving it.
+	for id, t := range m.chats {
+		if t.SessionID == sessionID {
+			delete(m.chats, id)
+			delete(m.messages, id)
+		}
+	}
+	delete(m.said, sessionID)
+	return nil
+}
+
+// clearActive : Unpoints every client using a session. The caller holds mu.
+func (m *Repository) clearActive(sessionID string) {
+	for id, d := range m.clients {
+		if d.ActiveSessionID == sessionID {
+			d.ActiveSessionID = ""
+			m.clients[id] = d
+		}
+	}
 }
 
 // CreateUser : Stores a new user.

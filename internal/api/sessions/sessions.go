@@ -7,6 +7,7 @@
 package sessions
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -35,6 +36,16 @@ type RenameRequest struct {
 	// refused: a title given by mistake should be removable without deleting
 	// the conversation.
 	Title string `json:"title"`
+}
+
+// RemovedResponse : What is left after a session is put away or deleted.
+type RemovedResponse struct {
+	// Active : The session this client is now in.
+	//
+	// Removing the one it was using leaves it with nowhere to talk, so a
+	// fresh session is started and named here. Removing any other session
+	// leaves this as the one that was already active.
+	Active views.Session `json:"active"`
 }
 
 // ListResponse : The body of a listing of sessions.
@@ -68,6 +79,9 @@ func (h *Handler) Mount(r chi.Router) {
 		r.Get("/{id}", h.Get)
 		r.Post("/{id}/activate", h.Activate)
 		r.Post("/{id}/rename", h.Rename)
+		r.Post("/{id}/archive", h.Archive)
+		r.Post("/{id}/unarchive", h.Unarchive)
+		r.Delete("/{id}", h.Delete)
 	})
 }
 
@@ -122,8 +136,18 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		limit = parsed
 	}
 
+	// The two listings are separate rather than one with a flag, because an
+	// archived session is not a lesser version of a live one: it is never
+	// where a prompt lands, and mixing them would put it in reach of code
+	// that takes the first row.
+	archived := r.URL.Query().Get("archived") == "true"
+
 	c := authn.Of(ctx)
-	sessions, err := h.repo.ListSessions(ctx, c.User.ID, limit)
+	list := h.repo.ListSessions
+	if archived {
+		list = h.repo.ListArchivedSessions
+	}
+	sessions, err := list(ctx, c.User.ID, limit)
 	if err != nil {
 		h.Fail(ctx, w, "listing sessions", err)
 		return
@@ -223,6 +247,121 @@ func (h *Handler) Rename(w http.ResponseWriter, r *http.Request) {
 	h.Logger.InfoContext(ctx, "session renamed", slog.String("session_id", id))
 	httpx.WriteJSON(ctx, w, http.StatusOK,
 		views.OfSession(*session, session.ID == c.Client.ActiveSessionID))
+}
+
+// Archive : Puts a session away, keeping everything said in it.
+func (h *Handler) Archive(w http.ResponseWriter, r *http.Request) {
+	h.setArchived(w, r, true)
+}
+
+// Unarchive : Brings an archived session back into the listing.
+func (h *Handler) Unarchive(w http.ResponseWriter, r *http.Request) {
+	h.setArchived(w, r, false)
+}
+
+// setArchived : The work behind Archive and Unarchive.
+func (h *Handler) setArchived(w http.ResponseWriter, r *http.Request, archived bool) {
+	ctx := r.Context()
+	c := authn.Of(ctx)
+	id := chi.URLParam(r, "id")
+
+	if !chat.ValidSessionID(id) {
+		httpx.WriteError(ctx, w, http.StatusNotFound, "No such session.")
+		return
+	}
+
+	err := h.repo.SetSessionArchived(ctx, c.User.ID, id, archived)
+	if !h.resolved(ctx, w, err, "archiving session") {
+		return
+	}
+
+	if !archived {
+		session, err := h.repo.GetSession(ctx, id)
+		if err != nil {
+			h.Fail(ctx, w, "reading session", err)
+			return
+		}
+		h.Logger.InfoContext(ctx, "session unarchived", slog.String("session_id", id))
+		httpx.WriteJSON(ctx, w, http.StatusOK, views.OfSession(*session, false))
+		return
+	}
+
+	h.Logger.InfoContext(ctx, "session archived", slog.String("session_id", id))
+	h.writeActive(ctx, w, c, id)
+}
+
+// Delete : Removes a session and everything said in it.
+//
+// There is no undo. Archive is the reversible one, and is what a client
+// should offer first.
+func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	c := authn.Of(ctx)
+	id := chi.URLParam(r, "id")
+
+	if !chat.ValidSessionID(id) {
+		httpx.WriteError(ctx, w, http.StatusNotFound, "No such session.")
+		return
+	}
+
+	err := h.repo.DeleteSession(ctx, c.User.ID, id)
+	if !h.resolved(ctx, w, err, "deleting session") {
+		return
+	}
+
+	h.Logger.InfoContext(ctx, "session deleted", slog.String("session_id", id))
+	h.writeActive(ctx, w, c, id)
+}
+
+// writeActive : Answers with the session this client is now in, starting one
+// when the session just removed was the one it was using.
+//
+// A fresh session rather than the most recent surviving one: having just put
+// a conversation away, being dropped into an unrelated older one reads as the
+// wrong thing happening.
+func (h *Handler) writeActive(ctx context.Context, w http.ResponseWriter, c *authn.Caller, removed string) {
+	if c.Client.ActiveSessionID != removed {
+		session, err := h.repo.GetSession(ctx, c.Client.ActiveSessionID)
+		if err == nil {
+			httpx.WriteJSON(ctx, w, http.StatusOK,
+				RemovedResponse{Active: views.OfSession(*session, true)})
+			return
+		}
+		// Falls through to a new one: the client was pointed at something
+		// that is no longer readable, which is the same problem.
+	}
+
+	fresh := chat.NewSession(c.User.ID, "")
+	if err := h.repo.CreateSession(ctx, fresh); err != nil {
+		h.Fail(ctx, w, "starting a replacement session", err)
+		return
+	}
+	if err := h.repo.SetActiveSession(ctx, c.User.ID, c.Client.ID, fresh.ID); err != nil {
+		h.Fail(ctx, w, "activating the replacement session", err)
+		return
+	}
+
+	h.Logger.InfoContext(ctx, "replacement session started",
+		slog.String("session_id", fresh.ID))
+	httpx.WriteJSON(ctx, w, http.StatusOK,
+		RemovedResponse{Active: views.OfSession(*fresh, true)})
+}
+
+// resolved : Reports whether an ownership-checked write succeeded, answering
+// the caller when it did not.
+//
+// Not found and not owned are answered alike, as elsewhere: telling one user
+// that another's session exists reveals more than it should.
+func (h *Handler) resolved(ctx context.Context, w http.ResponseWriter, err error, doing string) bool {
+	switch {
+	case errors.Is(err, chat.ErrNotFound), errors.Is(err, chat.ErrNotOwned):
+		httpx.WriteError(ctx, w, http.StatusNotFound, "No such session.")
+		return false
+	case err != nil:
+		h.Fail(ctx, w, doing, err)
+		return false
+	}
+	return true
 }
 
 // Activate : Switches where a prompt from this client lands.

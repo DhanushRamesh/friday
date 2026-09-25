@@ -56,11 +56,12 @@ var summaryColumns = []string{
 
 // sessionRow : The sessions table, as GORM sees it.
 type sessionRow struct {
-	ID        string    `gorm:"column:id;primaryKey"`
-	UserID    *string   `gorm:"column:user_id"`
-	Title     string    `gorm:"column:title"`
-	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime:false"`
-	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime:false"`
+	ID         string     `gorm:"column:id;primaryKey"`
+	UserID     *string    `gorm:"column:user_id"`
+	Title      string     `gorm:"column:title"`
+	CreatedAt  time.Time  `gorm:"column:created_at;autoCreateTime:false"`
+	UpdatedAt  time.Time  `gorm:"column:updated_at;autoUpdateTime:false"`
+	ArchivedAt *time.Time `gorm:"column:archived_at"`
 }
 
 // userRow : The users table, as GORM sees it.
@@ -121,11 +122,12 @@ func (sessionRow) TableName() string { return "sessions" }
 // toSession : Converts a stored row back into a session.
 func (r *sessionRow) toSession() chat.Session {
 	return chat.Session{
-		ID:        r.ID,
-		UserID:    value(r.UserID),
-		Title:     r.Title,
-		CreatedAt: r.CreatedAt.UTC(),
-		UpdatedAt: r.UpdatedAt.UTC(),
+		ID:         r.ID,
+		UserID:     value(r.UserID),
+		Title:      r.Title,
+		CreatedAt:  r.CreatedAt.UTC(),
+		UpdatedAt:  r.UpdatedAt.UTC(),
+		ArchivedAt: utc(r.ArchivedAt),
 	}
 }
 

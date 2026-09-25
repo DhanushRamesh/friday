@@ -155,6 +155,22 @@ type Repository interface {
 	// else.
 	RenameSession(ctx context.Context, userID, sessionID, title string) error
 
+	// SetSessionArchived : Puts a session away or brings it back. It reports
+	// ErrNotFound if there is no such session, and ErrNotOwned if it belongs
+	// to somebody else.
+	//
+	// Archiving clears it from any client that was pointed at it, so that a
+	// prompt does not land in a session the user has put away.
+	SetSessionArchived(ctx context.Context, userID, sessionID string, archived bool) error
+
+	// DeleteSession : Removes a session and everything said in it. It reports
+	// ErrNotFound if there is no such session, and ErrNotOwned if it belongs
+	// to somebody else.
+	//
+	// The chats and the transcript go with it, by the cascade on their
+	// foreign keys. Nothing here can be undone.
+	DeleteSession(ctx context.Context, userID, sessionID string) error
+
 	// GetSession : Returns a session. It reports ErrNotFound if
 	// there is none.
 	GetSession(ctx context.Context, id string) (*Session, error)
@@ -163,6 +179,10 @@ type Repository interface {
 	// first. They belong to the person, so every one of their clients sees
 	// all of them.
 	ListSessions(ctx context.Context, userID string, limit int) ([]Session, error)
+
+	// ListArchivedSessions : Returns a user's archived sessions, most
+	// recently used first.
+	ListArchivedSessions(ctx context.Context, userID string, limit int) ([]Session, error)
 
 	// Unfinished : Returns the identifiers of a session's chats that
 	// have not reached a terminal status, oldest first.

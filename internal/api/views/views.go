@@ -152,20 +152,25 @@ func OfClient(d chat.Client, current bool) Client {
 
 // Session : A session as the API returns it.
 type Session struct {
-	ID        string    `json:"id"`
-	Title     string    `json:"title,omitempty"`
-	Active    bool      `json:"active"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID       string `json:"id"`
+	Title    string `json:"title,omitempty"`
+	Active   bool   `json:"active"`
+	Archived bool   `json:"archived,omitempty"`
+	// ArchivedAt : When it was put away. Absent while it is in use.
+	ArchivedAt *time.Time `json:"archived_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 // OfSession : Renders a session for the API.
 func OfSession(c chat.Session, active bool) Session {
 	return Session{
-		ID:        c.ID,
-		Title:     c.Title,
-		Active:    active,
-		CreatedAt: c.CreatedAt,
-		UpdatedAt: c.UpdatedAt,
+		ID:         c.ID,
+		Title:      c.Title,
+		Active:     active,
+		Archived:   c.Archived(),
+		ArchivedAt: c.ArchivedAt,
+		CreatedAt:  c.CreatedAt,
+		UpdatedAt:  c.UpdatedAt,
 	}
 }
