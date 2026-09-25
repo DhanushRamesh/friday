@@ -59,7 +59,10 @@ start: build ## Start in the background
 	@if [ -f $(PIDFILE) ] && kill -0 $$(cat $(PIDFILE)) 2>/dev/null; then \
 		echo "already running (pid $$(cat $(PIDFILE)))"; exit 0; \
 	fi
-	@./$(BINARY) > $(LOGFILE) 2>&1 & echo $$! > $(PIDFILE)
+	@# Appended, not truncated. Restarting used to destroy the record of
+	@# whatever had just gone wrong, which is exactly when a restart happens.
+	@printf '\n=== started %s ===\n' "$$(date -Is)" >> $(LOGFILE)
+	@./$(BINARY) >> $(LOGFILE) 2>&1 & echo $$! > $(PIDFILE)
 	@sleep 2
 	@if kill -0 $$(cat $(PIDFILE)) 2>/dev/null; then \
 		echo "started (pid $$(cat $(PIDFILE))), logging to $(LOGFILE)"; \
@@ -117,6 +120,11 @@ createuser: ## Create a user locally (prompts for a password)
 	@go run $(PKG) createuser $(USER_NAME)
 
 .PHONY: createuser
+
+.PHONY: logs-clear
+logs-clear: ## Empty the local log
+	@: > $(LOGFILE)
+	@echo "cleared $(LOGFILE)"
 
 clean: stop ## Stop and remove build output
 	@rm -rf $(BUILD) $(BINARY) $(LOGFILE) $(PIDFILE) $(CLIENT_OUT) $(CLIENT_PID)
