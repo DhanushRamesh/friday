@@ -42,6 +42,17 @@ const (
 	// conversation it becomes the model explaining an outage it had no part
 	// in, and inventing detail to fill the gap.
 	Failure Kind = "error"
+
+	// Interruption : The turn was stopped part-way by the person.
+	//
+	// Unlike a Failure this is given to a model, because the model has to
+	// know the turn did not finish. Dropping the question instead would be
+	// simpler while a turn is only ever text — nothing happened, so nothing
+	// is lost. It stops being true the moment a turn can act: half a chain
+	// of tool calls may already have run and persisted its effects, and a
+	// history that omits the request leaves the model contradicting a world
+	// it changed.
+	Interruption Kind = "stopped"
 )
 
 // Role : Who said something.
@@ -93,6 +104,22 @@ func Answered(sessionID, content string, at time.Time) Message {
 	}
 }
 
+// Interrupted : A note that the person stopped the turn before it finished.
+//
+// Written as the assistant's own turn so the roles still alternate, and
+// worded as a statement of what happened rather than an apology: it is read
+// back to a model, which should treat it as a fact about the conversation and
+// not as something to make up for.
+func Interrupted(sessionID string, at time.Time) Message {
+	return Message{
+		SessionID: sessionID,
+		Kind:      Interruption,
+		Role:      Assistant,
+		Content:   "[The person stopped this before it finished.]",
+		At:        at,
+	}
+}
+
 // Failed : The assistant reporting that it could not answer.
 func Failed(sessionID, content string, at time.Time) Message {
 	return Message{
@@ -123,7 +150,7 @@ func (m Message) Valid() error {
 
 // ForModel : The messages a provider is given, oldest first.
 //
-// Failures are dropped: see Failure. Consecutive messages by the same speaker
+// Failures are dropped: see Failure. Interruptions are not: see Interruption. Consecutive messages by the same speaker
 // are joined, because a question that was superseded contributes no answer
 // and two questions would otherwise sit side by side — which providers that
 // require the roles to alternate reject, and which reads correctly joined
@@ -131,7 +158,7 @@ func (m Message) Valid() error {
 func ForModel(messages []Message) []Message {
 	kept := make([]Message, 0, len(messages))
 	for _, m := range messages {
-		if m.Kind != Chat || strings.TrimSpace(m.Content) == "" {
+		if m.Kind == Failure || strings.TrimSpace(m.Content) == "" {
 			continue
 		}
 		if n := len(kept); n > 0 && kept[n-1].Role == m.Role {

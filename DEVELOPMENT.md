@@ -315,6 +315,24 @@ by the assistant itself, so the page's own origin is the server's address and
 nothing has to be configured; during development `--dart-define=ASSISTANT_URL`
 points it somewhere else and the loopback CORS rule lets it through.
 
+### A stopped turn is marked, not erased
+
+Saying "stop" cancels the turn. What stays behind is the question, whatever
+the assistant managed to say, and a message recording that the person stopped
+it — `session.Interruption`, written as the assistant's own turn so the roles
+still alternate.
+
+Deleting the question instead would be simpler, and while a turn is only ever
+text it would also be harmless: nothing happened, so nothing is lost. That
+stops being true the moment a turn can act. Half a chain of tool calls may
+already have run and left its effects behind, and a history with the request
+removed leaves the model contradicting a world it changed.
+
+So this is the one thing the model is told about that a `Failure` never is.
+A failure read back as conversation becomes the model explaining an outage it
+had no part in; an interruption read back is a fact about the conversation
+that the next turn needs.
+
 ### Comments
 
 Follow Go doc comment convention.

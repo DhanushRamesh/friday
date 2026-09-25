@@ -129,11 +129,12 @@ func toProviderTurns(messages []session.Message) []provider.Turn {
 	return out
 }
 
-// record : Stores what the chat ended up saying, so the next turn in the
-// session can refer to it.
+// recordOutcome : Stores what the chat ended up saying, so the next turn in
+// the session can refer to it.
 //
 // A failure is recorded too, and shown to the person, but is never given back
-// to a model: see session.Failure.
+// to a model: see session.Failure. A turn the person stopped is marked as
+// stopped, and that mark is given to a model: see session.Interruption.
 func (r *Runner) recordOutcome(ctx context.Context, t *chat.Chat) {
 	if t.SessionID == "" {
 		return
@@ -145,20 +146,26 @@ func (r *Runner) recordOutcome(ctx context.Context, t *chat.Chat) {
 		said = &now
 	}
 
-	var m session.Message
+	var written []session.Message
 	switch {
 	case t.Response != "":
-		m = session.Answered(t.SessionID, t.Response, *said)
+		written = append(written, session.Answered(t.SessionID, t.Response, *said))
 	case t.Error != "":
-		m = session.Failed(t.SessionID, t.Error, *said)
-	default:
-		// Cancelled before it said anything. The question stays in the log,
-		// which is what lets the correction that replaced it be understood.
-		return
+		written = append(written, session.Failed(t.SessionID, t.Error, *said))
 	}
 
-	if _, err := r.messages.Append(ctx, m); err != nil {
-		r.logger.ErrorContext(ctx, "cannot record the answer", slog.Any("error", err))
+	// Whatever it managed to say, a turn the person stopped is marked as
+	// stopped. Partial output is kept rather than replaced: what ran, ran,
+	// and once a turn can call tools some of it will have left effects
+	// behind that the next turn has to reason about.
+	if t.Status == chat.StatusCancelled {
+		written = append(written, session.Interrupted(t.SessionID, *said))
+	}
+
+	for _, m := range written {
+		if _, err := r.messages.Append(ctx, m); err != nil {
+			r.logger.ErrorContext(ctx, "cannot record the answer", slog.Any("error", err))
+		}
 	}
 }
 

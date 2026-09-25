@@ -129,3 +129,43 @@ func TestForModelDropsEmptyMessages(t *testing.T) {
 		t.Errorf("kept %d messages, want the two questions joined into one", got)
 	}
 }
+
+func TestForModelKeepsAnInterruption(t *testing.T) {
+	messages := []session.Message{
+		{Kind: session.Chat, Role: session.User, Content: "add rice to the list"},
+		{Kind: session.Interruption, Role: session.Assistant, Content: "[stopped]"},
+		{Kind: session.Chat, Role: session.User, Content: "what did you get done"},
+	}
+
+	forModel := session.ForModel(messages)
+
+	// Three messages, not two joined into one: the interruption sits between
+	// the questions and keeps them apart, which is the whole point. A model
+	// that saw them joined would read one question and never learn that the
+	// first was cut off.
+	if len(forModel) != 3 {
+		t.Fatalf("model saw %d messages, want all three", len(forModel))
+	}
+	if forModel[1].Kind != session.Interruption {
+		t.Errorf("the interruption did not reach the model: %+v", forModel[1])
+	}
+}
+
+func TestInterruptedIsTheAssistantsTurn(t *testing.T) {
+	at := time.Date(2026, 9, 25, 13, 0, 0, 0, time.UTC)
+
+	m := session.Interrupted("ses_1", at)
+
+	// Written as the assistant so the roles still alternate. As the user it
+	// would join onto the question before it and read as part of what was
+	// asked.
+	if m.Role != session.Assistant {
+		t.Errorf("role = %q, want the assistant", m.Role)
+	}
+	if m.Kind != session.Interruption {
+		t.Errorf("kind = %q, want an interruption", m.Kind)
+	}
+	if strings.TrimSpace(m.Content) == "" {
+		t.Error("an interruption with no content would be dropped by ForModel")
+	}
+}
