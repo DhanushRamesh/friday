@@ -8,9 +8,9 @@ import (
 
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
+	"github.com/DhanushRamesh/personal-assistant/internal/environment"
 	"github.com/DhanushRamesh/personal-assistant/internal/events"
 	"github.com/DhanushRamesh/personal-assistant/internal/failure"
-	"github.com/DhanushRamesh/personal-assistant/internal/provider"
 )
 
 // execute : Runs one chat from start to a terminal status.
@@ -47,7 +47,7 @@ func (r *Runner) execute(ctx, lifeCtx context.Context, t *chat.Chat) {
 	// After the answer is recorded and announced, so that maintaining the
 	// conversation's memory is never in front of the person waiting for it. The
 	// slot is still held, which keeps this from competing with the next
-	// chat for the same provider.
+	// chat for the same environment.
 	r.condense(ctx, t)
 }
 
@@ -58,7 +58,7 @@ func (r *Runner) execute(ctx, lifeCtx context.Context, t *chat.Chat) {
 // used to record that the chat was cancelled.
 func (r *Runner) consume(runCtx, ctx context.Context, t *chat.Chat) {
 	window := r.history(ctx, t)
-	stream, err := r.provider.Run(runCtx, provider.Request{
+	stream, err := r.environment.Run(runCtx, environment.Request{
 		Prompt:  t.Prompt,
 		History: toProviderTurns(window.Messages),
 		Summary: window.Summary,
@@ -73,12 +73,12 @@ func (r *Runner) consume(runCtx, ctx context.Context, t *chat.Chat) {
 		return
 	}
 
-	var final *provider.Message
+	var final *environment.Message
 	for msg := range stream {
 		switch msg.Kind {
-		case provider.KindUpdate:
+		case environment.KindUpdate:
 			r.announce(t.ID, msg)
-		case provider.KindFinal, provider.KindError:
+		case environment.KindFinal, environment.KindError:
 			// Keep a copy: the loop must run to completion so the provider's
 			// goroutine is not left blocked on a send.
 			m := msg
@@ -90,7 +90,7 @@ func (r *Runner) consume(runCtx, ctx context.Context, t *chat.Chat) {
 	}
 
 	switch {
-	case final != nil && final.Kind == provider.KindError:
+	case final != nil && final.Kind == environment.KindError:
 		if final.Code != "" && !failure.Known(failure.Code(final.Code)) {
 			r.logger.WarnContext(ctx, "provider sent an unknown failure code",
 				slog.String("code", final.Code))
@@ -143,11 +143,11 @@ func (r *Runner) history(ctx context.Context, t *chat.Chat) conversation.Window 
 
 // toProviderTurns : Converts a conversation's messages into the form a provider
 // takes.
-func toProviderTurns(messages []conversation.Message) []provider.Turn {
-	out := make([]provider.Turn, len(messages))
+func toProviderTurns(messages []conversation.Message) []environment.Turn {
+	out := make([]environment.Turn, len(messages))
 	for i, m := range messages {
-		out[i] = provider.Turn{
-			Role: provider.Role(m.Role),
+		out[i] = environment.Turn{
+			Role: environment.Role(m.Role),
 			Text: m.Content,
 		}
 	}
@@ -259,7 +259,7 @@ func (r *Runner) finishWith(ctx context.Context, t *chat.Chat, transition func()
 // being produced and worth nothing afterwards. It used to be written to a
 // table so a dropped stream could replay it, and that table went with the
 // stream.
-func (r *Runner) announce(chatID string, msg provider.Message) {
+func (r *Runner) announce(chatID string, msg environment.Message) {
 	r.publish(events.Event{
 		ChatID: chatID,
 		Kind:   events.KindUpdate,

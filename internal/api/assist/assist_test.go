@@ -89,7 +89,7 @@ func TestAnswerIsStreamedAndEndsWithDone(t *testing.T) {
 // last. Taking the wrong one asks the model something nobody said.
 func TestTheQuestionIsTheLastThingTheUserSaid(t *testing.T) {
 	recorder := &apitest.RecordingProvider{}
-	e := apitest.NewWith(t, apitest.Options{Provider: recorder})
+	e := apitest.NewWith(t, apitest.Options{Environment: recorder})
 
 	rec := e.Do(t, http.MethodPost, "/api/chat", `{
 		"model": "assistant",
@@ -195,7 +195,7 @@ func decodeChunks(t *testing.T, body string) []assist.ChatChunk {
 func TestChatIsCancelledWhenHomeAssistantHangsUp(t *testing.T) {
 	// Slow enough that the request is certain to be abandoned mid-answer.
 	e := apitest.NewWith(t, apitest.Options{
-		Provider: &apitest.RecordingProvider{Delay: 5 * time.Second},
+		Environment: &apitest.RecordingProvider{Delay: 5 * time.Second},
 	})
 
 	ctx, hangUp := context.WithCancel(context.Background())

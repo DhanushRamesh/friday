@@ -11,8 +11,8 @@ package views
 import (
 	"time"
 
-	"github.com/DhanushRamesh/personal-assistant/internal/catalog"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/llm"
 )
 
 // Chat : A chat as the API returns it.
@@ -181,7 +181,7 @@ type Model struct {
 }
 
 // OfModel : Renders a catalogued model for the API.
-func OfModel(m catalog.Model) Model {
+func OfModel(m llm.Model) Model {
 	return Model{
 		ID:            m.ID,
 		Name:          m.Name,

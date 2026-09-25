@@ -16,8 +16,8 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/api/authn"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/httpx"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/views"
-	"github.com/DhanushRamesh/personal-assistant/internal/catalog"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/llm"
 )
 
 // ListResponse : The body of a listing of clients.
@@ -54,7 +54,7 @@ type Handler struct {
 	repo chat.Repository
 	// models : What the configured provider can actually reach. Offering
 	// anything else would offer a model the server cannot call.
-	models []catalog.Model
+	models []llm.Model
 	// defaultModel : The identifier of the model answering a client that has
 	// chosen none.
 	defaultModel string
@@ -62,7 +62,7 @@ type Handler struct {
 
 // New : Builds the handler from the store holding the clients, the models the
 // provider in use can reach, and the one it falls back to.
-func New(logger *slog.Logger, repo chat.Repository, models []catalog.Model, defaultModel string) *Handler {
+func New(logger *slog.Logger, repo chat.Repository, models []llm.Model, defaultModel string) *Handler {
 	return &Handler{
 		Responder:    httpx.Responder{Logger: logger},
 		repo:         repo,

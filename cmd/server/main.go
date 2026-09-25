@@ -14,14 +14,14 @@ import (
 	"time"
 
 	"github.com/DhanushRamesh/personal-assistant/internal/api"
-	"github.com/DhanushRamesh/personal-assistant/internal/catalog"
 	chatmysql "github.com/DhanushRamesh/personal-assistant/internal/chat/mysql"
 	"github.com/DhanushRamesh/personal-assistant/internal/config"
 	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
+	"github.com/DhanushRamesh/personal-assistant/internal/environment"
+	"github.com/DhanushRamesh/personal-assistant/internal/environment/platformai"
 	"github.com/DhanushRamesh/personal-assistant/internal/events"
+	"github.com/DhanushRamesh/personal-assistant/internal/llm"
 	"github.com/DhanushRamesh/personal-assistant/internal/logging"
-	"github.com/DhanushRamesh/personal-assistant/internal/provider"
-	"github.com/DhanushRamesh/personal-assistant/internal/provider/platformai"
 	"github.com/DhanushRamesh/personal-assistant/internal/runner"
 	"github.com/DhanushRamesh/personal-assistant/internal/storage"
 )
@@ -144,7 +144,7 @@ func run() error {
 	chatRunner, err := runner.New(runner.Options{
 		Repository:    chats,
 		Messages:      chats,
-		Provider:      answerer,
+		Environment:   answerer,
 		Logger:        logger.Logger,
 		Publisher:     bus,
 		HistoryLimits: historyLimits(cfg, logger.Logger),
@@ -185,7 +185,7 @@ func run() error {
 
 // buildProvider : Returns the engine that answers chats, as configuration
 // selects it.
-func buildProvider(cfg config.Config, logger *slog.Logger) (provider.Provider, error) {
+func buildProvider(cfg config.Config, logger *slog.Logger) (environment.Environment, error) {
 	switch cfg.Provider.Name {
 	case config.ProviderPlatformAI:
 		return platformai.New(platformai.Config{
@@ -207,7 +207,7 @@ func buildProvider(cfg config.Config, logger *slog.Logger) (provider.Provider, e
 	default:
 		// Answers from a script, so everything around an answer can be worked
 		// on without credentials or a network.
-		return &provider.Stub{Delay: 300 * time.Millisecond}, nil
+		return &environment.Stub{Delay: 300 * time.Millisecond}, nil
 	}
 }
 
@@ -218,15 +218,15 @@ func buildProvider(cfg config.Config, logger *slog.Logger) (provider.Provider, e
 // what each one holds. Neither knows the other: a model the endpoint routes
 // but nobody has catalogued is left out, since there would be nothing to
 // tell a person about it.
-func reachableModels(cfg config.Config) []catalog.Model {
+func reachableModels(cfg config.Config) []llm.Model {
 	if cfg.Provider.Name != config.ProviderPlatformAI {
 		return nil
 	}
 
 	refs := platformai.Models()
-	out := make([]catalog.Model, 0, len(refs))
+	out := make([]llm.Model, 0, len(refs))
 	for _, ref := range refs {
-		if m, ok := catalog.Find(ref.Vendor, ref.ID); ok {
+		if m, ok := llm.Find(ref.Vendor, ref.ID); ok {
 			out = append(out, m)
 		}
 	}
@@ -250,7 +250,7 @@ func historyLimits(cfg config.Config, logger *slog.Logger) conversation.Limits {
 	limits.Count = platformai.MaxMessages
 
 	vendor, id := cfg.PlatformAI.Vendor, cfg.PlatformAI.Model
-	model, known := catalog.Find(vendor, id)
+	model, known := llm.Find(vendor, id)
 	if !known {
 		logger.Warn("model is not in the catalogue, so only the byte budget bounds the history",
 			slog.String("vendor", vendor), slog.String("model", id))

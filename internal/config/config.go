@@ -121,7 +121,7 @@ type Provider struct {
 }
 
 // PlatformAI : Credentials and endpoints for Zoho Platform AI. Read only when
-// it is the selected provider.
+// it is the selected environment.
 type PlatformAI struct {
 	ClientID     string
 	ClientSecret logging.Secret
@@ -203,7 +203,7 @@ func (c Config) LogValue() slog.Value {
 		slog.String("database.addr", c.Database.SafeAddr()),
 		slog.Int("database.max_open_conns", c.Database.MaxOpenConns),
 		slog.Bool("database.auto_migrate", c.Database.AutoMigrate),
-		slog.String("provider.name", string(c.Provider.Name)),
+		slog.String("environment.name", string(c.Provider.Name)),
 		slog.String("platformai.model", c.PlatformAI.Model),
 	)
 }

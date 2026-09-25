@@ -95,7 +95,7 @@ func (s Summary) covers(seq int) bool {
 	return s.Text != "" && seq <= s.ThroughSeq
 }
 
-// Window : What one turn sends to a provider.
+// Window : What one turn sends to a environment.
 type Window struct {
 	// Summary : The condensed earlier conversation, empty when there is none.
 	Summary string

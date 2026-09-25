@@ -8,7 +8,7 @@ import (
 
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
-	"github.com/DhanushRamesh/personal-assistant/internal/provider"
+	"github.com/DhanushRamesh/personal-assistant/internal/environment"
 )
 
 // errNoAnswer : Returned when a provider's stream ends without a result.
@@ -90,7 +90,7 @@ func between(messages []conversation.Message, after, through int) []conversation
 // Used for the assistant's own housekeeping rather than for a chat, so the
 // result is not recorded anywhere and no failure is shown to anyone.
 func (r *Runner) ask(ctx context.Context, model chat.Model, prompt string) (string, error) {
-	stream, err := r.provider.Run(ctx, provider.Request{
+	stream, err := r.environment.Run(ctx, environment.Request{
 		Prompt: prompt,
 		Vendor: model.Vendor,
 		Model:  model.ID,
@@ -101,9 +101,9 @@ func (r *Runner) ask(ctx context.Context, model chat.Model, prompt string) (stri
 
 	// The stream is drained to the end whatever it says, so the provider's
 	// goroutine is never left blocked on a send.
-	var final *provider.Message
+	var final *environment.Message
 	for msg := range stream {
-		if msg.Kind == provider.KindFinal || msg.Kind == provider.KindError {
+		if msg.Kind == environment.KindFinal || msg.Kind == environment.KindError {
 			m := msg
 			final = &m
 		}
@@ -114,7 +114,7 @@ func (r *Runner) ask(ctx context.Context, model chat.Model, prompt string) (stri
 		return "", ctx.Err()
 	case final == nil:
 		return "", errNoAnswer
-	case final.Kind == provider.KindError:
+	case final.Kind == environment.KindError:
 		return "", errors.New(final.Text)
 	}
 

@@ -12,7 +12,7 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/api/chats"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/httpx"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
-	"github.com/DhanushRamesh/personal-assistant/internal/provider"
+	"github.com/DhanushRamesh/personal-assistant/internal/environment"
 )
 
 func TestGetUnknownChatIsNotFound(t *testing.T) {
@@ -107,7 +107,7 @@ func TestListRejectsBadParameters(t *testing.T) {
 // Cancelling is how "stop" reaches the server while it is still speaking.
 func TestCancelStopsARunningChat(t *testing.T) {
 	e := apitest.NewWith(t, apitest.Options{
-		Provider: &provider.Stub{Updates: []string{"a", "b", "c", "d"}, Delay: 40 * time.Millisecond},
+		Environment: &environment.Stub{Updates: []string{"a", "b", "c", "d"}, Delay: 40 * time.Millisecond},
 	})
 
 	// /api/chat answers only when the chat is done, so the prompt goes on

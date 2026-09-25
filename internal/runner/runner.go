@@ -1,7 +1,7 @@
 // Package runner : Executes chats.
 //
 // It joins the three pieces that otherwise know nothing of each other: a chat,
-// which records where it is in its lifecycle; a provider, which produces the
+// which records where it is in its lifecycle; an environment, which produces the
 // stream of messages answering it; and a repository, which stores both.
 package runner
 
@@ -13,12 +13,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DhanushRamesh/personal-assistant/internal/catalog"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
+	"github.com/DhanushRamesh/personal-assistant/internal/environment"
 	"github.com/DhanushRamesh/personal-assistant/internal/events"
+	"github.com/DhanushRamesh/personal-assistant/internal/llm"
 	"github.com/DhanushRamesh/personal-assistant/internal/logging"
-	"github.com/DhanushRamesh/personal-assistant/internal/provider"
 )
 
 const (
@@ -58,8 +58,8 @@ type Publisher interface {
 type Options struct {
 	// Repository : Stores chats and their messages. Required.
 	Repository chat.Repository
-	// Provider : Answers prompts. Required.
-	Provider provider.Provider
+	// Environment : Where prompts are sent to be answered. Required.
+	Environment environment.Environment
 	// Logger : Receives execution records. Required.
 	Logger *slog.Logger
 	// Publisher : Receives a chat's messages as they happen, for clients
@@ -89,7 +89,7 @@ type Options struct {
 type Runner struct {
 	repo            chat.Repository
 	messages        conversation.Repository
-	provider        provider.Provider
+	environment     environment.Environment
 	publisher       Publisher
 	logger          *slog.Logger
 	chatTimeout     time.Duration
@@ -126,8 +126,8 @@ func New(opts Options) (*Runner, error) {
 	switch {
 	case opts.Repository == nil:
 		return nil, errors.New("runner: a repository is required")
-	case opts.Provider == nil:
-		return nil, errors.New("runner: a provider is required")
+	case opts.Environment == nil:
+		return nil, errors.New("runner: an environment is required")
 	case opts.Logger == nil:
 		return nil, errors.New("runner: a logger is required")
 	case opts.Messages == nil:
@@ -148,7 +148,7 @@ func New(opts Options) (*Runner, error) {
 	return &Runner{
 		repo:            opts.Repository,
 		messages:        opts.Messages,
-		provider:        opts.Provider,
+		environment:     opts.Environment,
 		publisher:       opts.Publisher,
 		logger:          opts.Logger,
 		chatTimeout:     opts.ChatTimeout,
@@ -190,7 +190,7 @@ func (r *Runner) Submit(t *chat.Chat) error {
 
 	ctx := logging.WithAttrs(r.base,
 		slog.String("chat_id", t.ID),
-		slog.String("provider", r.provider.Name()))
+		slog.String("environment", r.environment.Name()))
 	lifeCtx, stopLife := context.WithCancel(ctx)
 
 	r.mu.Lock()
@@ -261,7 +261,7 @@ func (r *Runner) Shutdown(ctx context.Context) error {
 func (r *Runner) limitsFor(m chat.Model) conversation.Limits {
 	limits := r.historyLimits
 	if m.Chosen() {
-		limits.ContextTokens = catalog.ContextTokens(m.Vendor, m.ID)
+		limits.ContextTokens = llm.ContextTokens(m.Vendor, m.ID)
 	}
 	return limits
 }

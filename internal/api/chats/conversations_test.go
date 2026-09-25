@@ -10,7 +10,7 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/api/apitest"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/views"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
-	"github.com/DhanushRamesh/personal-assistant/internal/provider"
+	"github.com/DhanushRamesh/personal-assistant/internal/environment"
 )
 
 // Where a prompt lands, and what happens to what was already running there,
@@ -47,7 +47,7 @@ func TestChatsInTheSameConversationShareIt(t *testing.T) {
 // reaches it with nothing to correct.
 func TestHistoryReachesTheProvider(t *testing.T) {
 	recorder := &apitest.RecordingProvider{}
-	e := apitest.NewWith(t, apitest.Options{Provider: recorder})
+	e := apitest.NewWith(t, apitest.Options{Environment: recorder})
 
 	first := e.CreateIn(t, "", "List three programming languages.", "?wait=5s")
 	e.CreateIn(t, first.ConversationID, "No, make it four.", "?wait=5s")
@@ -71,7 +71,7 @@ func TestHistoryReachesTheProvider(t *testing.T) {
 // something already discussed.
 func TestThePromptIsNotAlsoInItsOwnHistory(t *testing.T) {
 	recorder := &apitest.RecordingProvider{}
-	e := apitest.NewWith(t, apitest.Options{Provider: recorder})
+	e := apitest.NewWith(t, apitest.Options{Environment: recorder})
 
 	first := e.CreateIn(t, "", "List three programming languages.", "?wait=5s")
 	e.CreateIn(t, first.ConversationID, "No, make it four.", "?wait=5s")
@@ -91,12 +91,12 @@ func TestThePromptIsNotAlsoInItsOwnHistory(t *testing.T) {
 // no identifier, no decoration a model could mistake for something to copy.
 func TestHistoryCarriesBothSpeakers(t *testing.T) {
 	recorder := &apitest.RecordingProvider{}
-	e := apitest.NewWith(t, apitest.Options{Provider: recorder})
+	e := apitest.NewWith(t, apitest.Options{Environment: recorder})
 
 	first := e.CreateIn(t, "", "List three programming languages.", "?wait=5s")
 	e.CreateIn(t, first.ConversationID, "No, make it four.", "?wait=5s")
 
-	var roles []provider.Role
+	var roles []environment.Role
 	for _, turn := range recorder.LastHistory() {
 		roles = append(roles, turn.Role)
 		if strings.HasPrefix(turn.Text, "[") {
@@ -104,7 +104,7 @@ func TestHistoryCarriesBothSpeakers(t *testing.T) {
 		}
 	}
 
-	if len(roles) != 2 || roles[0] != provider.RoleUser || roles[1] != provider.RoleAssistant {
+	if len(roles) != 2 || roles[0] != environment.RoleUser || roles[1] != environment.RoleAssistant {
 		t.Errorf("roles = %v, want the question then the answer", roles)
 	}
 }
@@ -135,7 +135,7 @@ func TestNamingAConversationDoesNotMoveTheClient(t *testing.T) {
 // listened to at once, and a correction means the first is no longer wanted.
 func TestANewPromptSupersedesARunningChat(t *testing.T) {
 	e := apitest.NewWith(t, apitest.Options{
-		Provider: &provider.Stub{Updates: []string{"a", "b", "c", "d"}, Delay: 50 * time.Millisecond},
+		Environment: &environment.Stub{Updates: []string{"a", "b", "c", "d"}, Delay: 50 * time.Millisecond},
 	})
 
 	first := e.Ask(t, "", "List three programming languages.")
@@ -152,7 +152,7 @@ func TestANewPromptSupersedesARunningChat(t *testing.T) {
 // A prompt in one conversation must not disturb a chat running in another.
 func TestSupersedingIsScopedToOneConversation(t *testing.T) {
 	e := apitest.NewWith(t, apitest.Options{
-		Provider: &provider.Stub{Updates: []string{"a", "b", "c", "d"}, Delay: 50 * time.Millisecond},
+		Environment: &environment.Stub{Updates: []string{"a", "b", "c", "d"}, Delay: 50 * time.Millisecond},
 	})
 
 	// A chat running in the conversation that is active to begin with.
@@ -187,7 +187,7 @@ func TestSupersedingIsScopedToOneConversation(t *testing.T) {
 // correction work: the question it corrects was cancelled as it arrived.
 func TestASupersededPromptStaysInHistory(t *testing.T) {
 	recorder := &apitest.RecordingProvider{Delay: 60 * time.Millisecond}
-	e := apitest.NewWith(t, apitest.Options{Provider: recorder})
+	e := apitest.NewWith(t, apitest.Options{Environment: recorder})
 
 	first := e.Ask(t, "", "List three programming languages.")
 

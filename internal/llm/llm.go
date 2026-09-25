@@ -1,11 +1,11 @@
-// Package catalog knows what each model can do.
+// Package llm knows what each model can do.
 //
 // A context window is a property of the model, not of the service in front of
 // it: the same model reached through two endpoints has the same window, and
 // two models behind one endpoint do not. Keeping it here is what lets the
 // history sent to a model be sized to the model rather than to a number
 // guessed once and left behind when the configuration changes.
-package catalog
+package llm
 
 import "strings"
 

@@ -8,7 +8,7 @@ import (
 
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
-	"github.com/DhanushRamesh/personal-assistant/internal/provider"
+	"github.com/DhanushRamesh/personal-assistant/internal/environment"
 	"github.com/DhanushRamesh/personal-assistant/internal/runner"
 )
 
@@ -23,7 +23,7 @@ func contents(messages []conversation.Message) []string {
 
 // Both halves of an exchange are written down, in the order they were said.
 func TestAnExchangeIsRecorded(t *testing.T) {
-	h := newHarness(t, &provider.Stub{}, runner.Options{})
+	h := newHarness(t, &environment.Stub{}, runner.Options{})
 
 	tk := h.submit(t, "check my merge requests")
 	h.await(t, tk.ID, chat.StatusCompleted, chat.StatusFailed)
@@ -80,10 +80,10 @@ func TestTheEarlierExchangeReachesTheModel(t *testing.T) {
 	if len(seen) != 2 {
 		t.Fatalf("model saw %d turns, want the question and the answer", len(seen))
 	}
-	if seen[0].Role != provider.RoleUser || !strings.Contains(seen[0].Text, "List three") {
+	if seen[0].Role != environment.RoleUser || !strings.Contains(seen[0].Text, "List three") {
 		t.Errorf("first turn = %q by %q", seen[0].Text, seen[0].Role)
 	}
-	if seen[1].Role != provider.RoleAssistant {
+	if seen[1].Role != environment.RoleAssistant {
 		t.Errorf("second turn = %q by %q, want the answer", seen[1].Text, seen[1].Role)
 	}
 	// The log knows when each was said; the model is not told. Timestamps
@@ -145,7 +145,7 @@ func TestAFailureIsRecordedAndSentOnWithItsDetail(t *testing.T) {
 // reason: the note was being written and silently refused by the store,
 // because Valid did not know the kind. The log said so and nothing else did.
 func TestACancelledChatLeavesItsQuestionAndAMark(t *testing.T) {
-	h := newHarness(t, &provider.Stub{
+	h := newHarness(t, &environment.Stub{
 		Updates: []string{"one", "two", "three"},
 		Delay:   30 * time.Millisecond,
 	}, runner.Options{})
@@ -176,23 +176,23 @@ type recordingProvider struct {
 	failWith   string
 	failCode   string
 	failDetail string
-	seen       []provider.Turn
+	seen       []environment.Turn
 }
 
 func (p *recordingProvider) Name() string { return "recording" }
 
-func (p *recordingProvider) history() []provider.Turn {
-	return append([]provider.Turn(nil), p.seen...)
+func (p *recordingProvider) history() []environment.Turn {
+	return append([]environment.Turn(nil), p.seen...)
 }
 
-func (p *recordingProvider) Run(ctx context.Context, req provider.Request) (<-chan provider.Message, error) {
-	p.seen = append([]provider.Turn(nil), req.History...)
+func (p *recordingProvider) Run(ctx context.Context, req environment.Request) (<-chan environment.Message, error) {
+	p.seen = append([]environment.Turn(nil), req.History...)
 
-	ch := make(chan provider.Message, 1)
+	ch := make(chan environment.Message, 1)
 	if p.failWith != "" {
-		ch <- provider.Failure(p.failWith, p.failCode, p.failDetail)
+		ch <- environment.Failure(p.failWith, p.failCode, p.failDetail)
 	} else {
-		ch <- provider.Final("an answer")
+		ch <- environment.Final("an answer")
 	}
 	close(ch)
 	return ch, nil

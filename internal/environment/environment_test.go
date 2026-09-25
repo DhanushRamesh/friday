@@ -1,25 +1,25 @@
-package provider_test
+package environment_test
 
 import (
 	"testing"
 
-	"github.com/DhanushRamesh/personal-assistant/internal/provider"
+	"github.com/DhanushRamesh/personal-assistant/internal/environment"
 )
 
 func TestKindPredicates(t *testing.T) {
-	for _, k := range []provider.Kind{provider.KindUpdate, provider.KindFinal, provider.KindError} {
+	for _, k := range []environment.Kind{environment.KindUpdate, environment.KindFinal, environment.KindError} {
 		if !k.Valid() {
 			t.Errorf("%s.Valid() = false, want true", k)
 		}
 	}
-	if provider.Kind("chatter").Valid() {
+	if environment.Kind("chatter").Valid() {
 		t.Error(`Kind("chatter").Valid() = true, want false`)
 	}
 
-	if provider.KindUpdate.Terminal() {
+	if environment.KindUpdate.Terminal() {
 		t.Error("an update must not end the stream")
 	}
-	for _, k := range []provider.Kind{provider.KindFinal, provider.KindError} {
+	for _, k := range []environment.Kind{environment.KindFinal, environment.KindError} {
 		if !k.Terminal() {
 			t.Errorf("%s.Terminal() = false, want true", k)
 		}
@@ -28,12 +28,12 @@ func TestKindPredicates(t *testing.T) {
 
 func TestMessageConstructors(t *testing.T) {
 	cases := []struct {
-		msg      provider.Message
-		wantKind provider.Kind
+		msg      environment.Message
+		wantKind environment.Kind
 	}{
-		{provider.Update("working"), provider.KindUpdate},
-		{provider.Final("done"), provider.KindFinal},
-		{provider.Failure("GitLab did not respond in time.", "timeout", ""), provider.KindError},
+		{environment.Update("working"), environment.KindUpdate},
+		{environment.Final("done"), environment.KindFinal},
+		{environment.Failure("GitLab did not respond in time.", "timeout", ""), environment.KindError},
 	}
 
 	for _, tc := range cases {

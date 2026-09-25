@@ -1,4 +1,4 @@
-package provider
+package environment
 
 import (
 	"context"
@@ -47,7 +47,7 @@ type Stub struct {
 func (s *Stub) Name() string { return "stub" }
 
 // Run : Sends the configured updates, then either the result or the
-// configured failure. See Provider.Run for the contract it follows.
+// configured failure. See Environment.Run for the contract it follows.
 func (s *Stub) Run(ctx context.Context, req Request) (<-chan Message, error) {
 	if strings.TrimSpace(req.Prompt) == "" {
 		return nil, ErrEmptyPrompt

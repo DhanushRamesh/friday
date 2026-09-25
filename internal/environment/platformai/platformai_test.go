@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DhanushRamesh/personal-assistant/internal/catalog"
+	"github.com/DhanushRamesh/personal-assistant/internal/environment"
+	"github.com/DhanushRamesh/personal-assistant/internal/environment/platformai"
 	"github.com/DhanushRamesh/personal-assistant/internal/failure"
+	"github.com/DhanushRamesh/personal-assistant/internal/llm"
 	"github.com/DhanushRamesh/personal-assistant/internal/logging"
-	"github.com/DhanushRamesh/personal-assistant/internal/provider"
-	"github.com/DhanushRamesh/personal-assistant/internal/provider/platformai"
 )
 
 // discard : A logger that writes nowhere.
@@ -96,9 +96,9 @@ func newFakeService(t *testing.T) (*fakeService, platformai.Config) {
 }
 
 // collect : Drains a stream, returning every message.
-func collect(t *testing.T, ch <-chan provider.Message) []provider.Message {
+func collect(t *testing.T, ch <-chan environment.Message) []environment.Message {
 	t.Helper()
-	var got []provider.Message
+	var got []environment.Message
 	for msg := range ch {
 		got = append(got, msg)
 	}
@@ -106,9 +106,9 @@ func collect(t *testing.T, ch <-chan provider.Message) []provider.Message {
 }
 
 // run : Starts a run, failing the test if it could not be started.
-func run(t *testing.T, p *platformai.Provider, prompt string) []provider.Message {
+func run(t *testing.T, p *platformai.Environment, prompt string) []environment.Message {
 	t.Helper()
-	ch, err := p.Run(context.Background(), provider.Request{Prompt: prompt})
+	ch, err := p.Run(context.Background(), environment.Request{Prompt: prompt})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -116,7 +116,7 @@ func run(t *testing.T, p *platformai.Provider, prompt string) []provider.Message
 }
 
 // newProvider : Builds a Provider against the fake service.
-func newProvider(t *testing.T, cfg platformai.Config) *platformai.Provider {
+func newProvider(t *testing.T, cfg platformai.Config) *platformai.Environment {
 	t.Helper()
 	p, err := platformai.New(cfg, discard())
 	if err != nil {
@@ -133,7 +133,7 @@ func TestRunAnswersWithoutInventingProgress(t *testing.T) {
 	got := run(t, newProvider(t, cfg), "check my merge requests")
 
 	for _, m := range got {
-		if m.Kind == provider.KindUpdate {
+		if m.Kind == environment.KindUpdate {
 			t.Errorf("the provider made up progress of its own: %q", m.Text)
 		}
 	}
@@ -142,7 +142,7 @@ func TestRunAnswersWithoutInventingProgress(t *testing.T) {
 	}
 
 	last := got[len(got)-1]
-	if last.Kind != provider.KindFinal {
+	if last.Kind != environment.KindFinal {
 		t.Fatalf("last message kind = %q, want final", last.Kind)
 	}
 	if last.Text != "You have four open merge requests." {
@@ -209,11 +209,11 @@ func TestMessagesReachTheModelUnadorned(t *testing.T) {
 	cfg.SystemPrompt = "answer in spoken sentences"
 	p := newProvider(t, cfg)
 
-	req := provider.Request{
+	req := environment.Request{
 		Prompt: "and the one before that",
-		History: []provider.Turn{
-			{Role: provider.RoleUser, Text: "what is the time"},
-			{Role: provider.RoleAssistant, Text: "half past two"},
+		History: []environment.Turn{
+			{Role: environment.RoleUser, Text: "what is the time"},
+			{Role: environment.RoleAssistant, Text: "half past two"},
 		},
 	}
 	ch, err := p.Run(context.Background(), req)
@@ -261,7 +261,7 @@ func TestContentBlocksAreJoined(t *testing.T) {
 	got := run(t, newProvider(t, cfg), "check")
 
 	last := got[len(got)-1]
-	if last.Kind != provider.KindFinal {
+	if last.Kind != environment.KindFinal {
 		t.Fatalf("last kind = %q, want final", last.Kind)
 	}
 	if last.Text != "You have four open merge requests." {
@@ -311,7 +311,7 @@ func TestServiceErrorIsPassedOn(t *testing.T) {
 	got := run(t, newProvider(t, cfg), "too much")
 
 	last := got[len(got)-1]
-	if last.Kind != provider.KindError {
+	if last.Kind != environment.KindError {
 		t.Fatalf("last kind = %q, want error", last.Kind)
 	}
 	// The status decides what is said. The service's own wording is kept, but
@@ -344,7 +344,7 @@ func TestUnexpectedFailureIsDescribedInGeneralTerms(t *testing.T) {
 	got := run(t, newProvider(t, cfg), "boom")
 
 	last := got[len(got)-1]
-	if last.Kind != provider.KindError {
+	if last.Kind != environment.KindError {
 		t.Fatalf("last kind = %q, want error", last.Kind)
 	}
 	for _, leak := range []string{"10.0.0.7", "html", "500"} {
@@ -363,7 +363,7 @@ func TestEmptyReplyIsAFailure(t *testing.T) {
 
 	got := run(t, newProvider(t, cfg), "say nothing")
 
-	if last := got[len(got)-1]; last.Kind != provider.KindError {
+	if last := got[len(got)-1]; last.Kind != environment.KindError {
 		t.Errorf("last kind = %q, want error for an empty reply", last.Kind)
 	}
 }
@@ -380,7 +380,7 @@ func TestASlowCallStillOnlyAnswers(t *testing.T) {
 
 	got := run(t, newProvider(t, cfg), "slow question")
 
-	if len(got) != 1 || got[0].Kind != provider.KindFinal {
+	if len(got) != 1 || got[0].Kind != environment.KindFinal {
 		t.Errorf("got %+v, want just the answer", got)
 	}
 }
@@ -395,7 +395,7 @@ func TestCancellationEndsTheRun(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	p := newProvider(t, cfg)
-	ch, err := p.Run(ctx, provider.Request{Prompt: "stop me"})
+	ch, err := p.Run(ctx, environment.Request{Prompt: "stop me"})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -403,7 +403,7 @@ func TestCancellationEndsTheRun(t *testing.T) {
 	cancel()
 
 	for msg := range ch {
-		if msg.Kind == provider.KindFinal {
+		if msg.Kind == environment.KindFinal {
 			t.Error("a cancelled run produced a final message")
 		}
 	}
@@ -414,7 +414,7 @@ func TestRunRejectsEmptyPrompt(t *testing.T) {
 	p := newProvider(t, cfg)
 
 	for _, prompt := range []string{"", "   "} {
-		ch, err := p.Run(context.Background(), provider.Request{Prompt: prompt})
+		ch, err := p.Run(context.Background(), environment.Request{Prompt: prompt})
 		if err == nil {
 			t.Errorf("Run(%q): want an error", prompt)
 		}
@@ -505,7 +505,7 @@ func TestTransportFailureDoesNotLeakCredentials(t *testing.T) {
 	got := run(t, p, "will not connect")
 
 	last := got[len(got)-1]
-	if last.Kind != provider.KindError {
+	if last.Kind != environment.KindError {
 		t.Fatalf("last kind = %q, want error", last.Kind)
 	}
 
@@ -545,7 +545,7 @@ func TestARefusedTokenIsRenewedAndTheCallRetried(t *testing.T) {
 	got := run(t, newProvider(t, cfg), "ask me")
 
 	last := got[len(got)-1]
-	if last.Kind != provider.KindFinal {
+	if last.Kind != environment.KindFinal {
 		t.Fatalf("last kind = %q (%s), want the retry to have answered",
 			last.Kind, last.Text)
 	}
@@ -576,7 +576,7 @@ func TestARefusedTokenIsNotRetriedForEver(t *testing.T) {
 
 	got := run(t, newProvider(t, cfg), "ask me")
 
-	if last := got[len(got)-1]; last.Kind != provider.KindError {
+	if last := got[len(got)-1]; last.Kind != environment.KindError {
 		t.Fatalf("last kind = %q, want error", last.Kind)
 	}
 	if chatCalls.Load() != 2 {
@@ -656,7 +656,7 @@ func TestNoAssistantNameIsHardcodedInSpokenText(t *testing.T) {
 // on vendor and identifier, and a typo in either silently drops an entry.
 func TestEveryRoutedModelIsCatalogued(t *testing.T) {
 	for _, ref := range platformai.Models() {
-		if _, ok := catalog.Find(ref.Vendor, ref.ID); !ok {
+		if _, ok := llm.Find(ref.Vendor, ref.ID); !ok {
 			t.Errorf("%s/%s is routed but not in the catalogue", ref.Vendor, ref.ID)
 		}
 	}
@@ -693,7 +693,7 @@ func TestATokenFailureKeepsWhatTheServiceSaid(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	stream, err := p.Run(context.Background(), provider.Request{Prompt: "hello"})
+	stream, err := p.Run(context.Background(), environment.Request{Prompt: "hello"})
 	if err != nil {
 		if !strings.Contains(err.Error(), throttled) {
 			t.Errorf("error = %q, want it to carry what the service said", err)
@@ -701,14 +701,14 @@ func TestATokenFailureKeepsWhatTheServiceSaid(t *testing.T) {
 		return
 	}
 
-	var final *provider.Message
+	var final *environment.Message
 	for m := range stream {
-		if m.Kind == provider.KindError || m.Kind == provider.KindFinal {
+		if m.Kind == environment.KindError || m.Kind == environment.KindFinal {
 			msg := m
 			final = &msg
 		}
 	}
-	if final == nil || final.Kind != provider.KindError {
+	if final == nil || final.Kind != environment.KindError {
 		t.Fatalf("final = %+v, want a failure", final)
 	}
 	if !strings.Contains(final.Detail, throttled) {

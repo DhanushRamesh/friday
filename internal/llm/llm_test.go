@@ -1,15 +1,15 @@
-package catalog_test
+package llm_test
 
 import (
 	"testing"
 
-	"github.com/DhanushRamesh/personal-assistant/internal/catalog"
+	"github.com/DhanushRamesh/personal-assistant/internal/llm"
 )
 
 // The model configuration actually selects has to be findable, or the window
 // it declares is never applied.
 func TestTheConfiguredModelIsKnown(t *testing.T) {
-	model, ok := catalog.Find("anthropic", "claude-sonnet-4-6")
+	model, ok := llm.Find("anthropic", "claude-sonnet-4-6")
 	if !ok {
 		t.Fatal("claude-sonnet-4-6 is not in the catalogue")
 	}
@@ -21,10 +21,10 @@ func TestTheConfiguredModelIsKnown(t *testing.T) {
 // An identifier is only unique within a vendor, so the vendor is part of the
 // key rather than a label beside it.
 func TestTheVendorIsPartOfTheKey(t *testing.T) {
-	if _, ok := catalog.Find("openai", "claude-sonnet-4-6"); ok {
+	if _, ok := llm.Find("openai", "claude-sonnet-4-6"); ok {
 		t.Error("found an Anthropic model under OpenAI")
 	}
-	if _, ok := catalog.Find("", "claude-sonnet-4-6"); !ok {
+	if _, ok := llm.Find("", "claude-sonnet-4-6"); !ok {
 		t.Error("no vendor should match on the identifier alone")
 	}
 }
@@ -32,10 +32,10 @@ func TestTheVendorIsPartOfTheKey(t *testing.T) {
 // A model nobody has catalogued is not an error. It declares no window, and
 // the byte budget governs alone.
 func TestAnUnknownModelDeclaresNothing(t *testing.T) {
-	if _, ok := catalog.Find("anthropic", "claude-from-the-future"); ok {
+	if _, ok := llm.Find("anthropic", "claude-from-the-future"); ok {
 		t.Error("found a model that is not listed")
 	}
-	if got := catalog.ContextTokens("anthropic", "claude-from-the-future"); got != 0 {
+	if got := llm.ContextTokens("anthropic", "claude-from-the-future"); got != 0 {
 		t.Errorf("ContextTokens = %d, want 0 for an unknown model", got)
 	}
 }
@@ -44,7 +44,7 @@ func TestAnUnknownModelDeclaresNothing(t *testing.T) {
 // indistinguishable from not being listed at all.
 func TestEveryEntryIsUsable(t *testing.T) {
 	seen := map[string]bool{}
-	for _, m := range catalog.All() {
+	for _, m := range llm.All() {
 		switch {
 		case m.ID == "":
 			t.Error("a model has no identifier")
@@ -66,13 +66,13 @@ func TestEveryEntryIsUsable(t *testing.T) {
 
 // The listing is a copy, so a caller cannot edit the catalogue by accident.
 func TestAllReturnsACopy(t *testing.T) {
-	first := catalog.All()
+	first := llm.All()
 	if len(first) == 0 {
 		t.Fatal("the catalogue is empty")
 	}
 	first[0].ContextTokens = 1
 
-	if catalog.All()[0].ContextTokens == 1 {
+	if llm.All()[0].ContextTokens == 1 {
 		t.Error("editing the listing changed the catalogue")
 	}
 }

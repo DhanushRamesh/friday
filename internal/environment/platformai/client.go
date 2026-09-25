@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DhanushRamesh/personal-assistant/internal/provider"
+	"github.com/DhanushRamesh/personal-assistant/internal/environment"
 )
 
 // tokenRefreshMargin : How long before expiry a cached token is replaced,
@@ -75,7 +75,7 @@ func (e *APIError) Error() string {
 //
 // The whole refresh is serialised, so concurrent chats share one token rather
 // than each fetching their own.
-func (p *Provider) accessToken(ctx context.Context) (string, error) {
+func (p *Environment) accessToken(ctx context.Context) (string, error) {
 	p.tokenMu.Lock()
 	defer p.tokenMu.Unlock()
 
@@ -92,7 +92,7 @@ func (p *Provider) accessToken(ctx context.Context) (string, error) {
 // issued for the same client, so authorising from anywhere else — or a
 // second copy of the server running — silently revokes ours long before the
 // expiry we calculated.
-func (p *Provider) forgetToken() {
+func (p *Environment) forgetToken() {
 	p.tokenMu.Lock()
 	defer p.tokenMu.Unlock()
 	p.token = ""
@@ -101,7 +101,7 @@ func (p *Provider) forgetToken() {
 
 // mintToken : Exchanges the refresh token for a new access token. The
 // caller holds tokenMu.
-func (p *Provider) mintToken(ctx context.Context) (string, error) {
+func (p *Environment) mintToken(ctx context.Context) (string, error) {
 
 	params := url.Values{}
 	params.Set("grant_type", "refresh_token")
@@ -147,7 +147,7 @@ func (p *Provider) mintToken(ctx context.Context) (string, error) {
 
 // chat : Sends a prompt, preceded by what was said earlier, and returns the
 // assistant's reply.
-func (p *Provider) chat(ctx context.Context, ask provider.Request) (string, error) {
+func (p *Environment) chat(ctx context.Context, ask environment.Request) (string, error) {
 	text, status, err := p.attemptChat(ctx, ask)
 	if err == nil {
 		return text, nil
@@ -180,7 +180,7 @@ func withSummary(prompt, summary string) string {
 	return prompt + "\n\nEarlier in this conversation, summarised:\n" + summary
 }
 
-func (p *Provider) attemptChat(ctx context.Context, ask provider.Request) (string, int, error) {
+func (p *Environment) attemptChat(ctx context.Context, ask environment.Request) (string, int, error) {
 	token, err := p.accessToken(ctx)
 	if err != nil {
 		// A refusal minting the token is the same problem as a refusal
@@ -196,7 +196,7 @@ func (p *Provider) attemptChat(ctx context.Context, ask provider.Request) (strin
 		})
 	}
 	messages = append(messages, chatMessage{
-		Role:    string(provider.RoleUser),
+		Role:    string(environment.RoleUser),
 		Content: ask.Prompt,
 	})
 

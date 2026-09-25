@@ -12,15 +12,15 @@ import (
 
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat/memory"
+	"github.com/DhanushRamesh/personal-assistant/internal/environment"
 	"github.com/DhanushRamesh/personal-assistant/internal/events"
-	"github.com/DhanushRamesh/personal-assistant/internal/provider"
 	"github.com/DhanushRamesh/personal-assistant/internal/runner"
 )
 
 // discard : A logger that writes nowhere.
 func discard() *slog.Logger { return slog.New(slog.NewJSONHandler(io.Discard, nil)) }
 
-// harness : A runner with an in-memory repository and a stub provider.
+// harness : A runner with an in-memory repository and a stub environment.
 type harness struct {
 	runner *runner.Runner
 	repo   *memory.Repository
@@ -69,8 +69,8 @@ func (h *harness) conversation(t *testing.T) string {
 	return h.convID
 }
 
-// newHarness : Builds a runner around the given provider.
-func newHarness(t *testing.T, p provider.Provider, opts runner.Options) *harness {
+// newHarness : Builds a runner around the given environment.
+func newHarness(t *testing.T, p environment.Environment, opts runner.Options) *harness {
 	t.Helper()
 
 	repo := memory.New()
@@ -78,7 +78,7 @@ func newHarness(t *testing.T, p provider.Provider, opts runner.Options) *harness
 	opts.Repository = repo
 	opts.Messages = repo
 	opts.Publisher = bus
-	opts.Provider = p
+	opts.Environment = p
 	opts.Logger = discard()
 
 	r, err := runner.New(opts)
@@ -134,7 +134,7 @@ func (h *harness) await(t *testing.T, id string, want ...chat.Status) *chat.Chat
 
 func TestRunToCompletionAnnouncesProgressAndStoresTheResult(t *testing.T) {
 	updates := []string{"Let me take a look.", "Still working on it."}
-	h := newHarness(t, &provider.Stub{Updates: updates}, runner.Options{})
+	h := newHarness(t, &environment.Stub{Updates: updates}, runner.Options{})
 
 	tk := h.submit(t, "check my merge requests")
 	heard := h.listen(t, tk.ID)
@@ -166,7 +166,7 @@ func TestRunToCompletionAnnouncesProgressAndStoresTheResult(t *testing.T) {
 
 func TestProviderFailureFailsTheChat(t *testing.T) {
 	const reason = "The service did not respond in time."
-	h := newHarness(t, &provider.Stub{Updates: []string{"working"}, FailWith: reason}, runner.Options{})
+	h := newHarness(t, &environment.Stub{Updates: []string{"working"}, FailWith: reason}, runner.Options{})
 
 	tk := h.submit(t, "do something")
 	done := h.await(t, tk.ID, chat.StatusFailed, chat.StatusCompleted)
@@ -201,7 +201,7 @@ func TestProviderThatWillNotStartFailsTheChat(t *testing.T) {
 // Cancelling mid-run must stop the chat and record it, which is what saying
 // "stop" while the assistant is speaking will do.
 func TestCancelStopsARunningChat(t *testing.T) {
-	h := newHarness(t, &provider.Stub{
+	h := newHarness(t, &environment.Stub{
 		Updates: []string{"one", "two", "three", "four", "five"},
 		Delay:   30 * time.Millisecond,
 	}, runner.Options{})
@@ -226,7 +226,7 @@ func TestCancelStopsARunningChat(t *testing.T) {
 }
 
 func TestCancelReportsWhenNothingIsRunning(t *testing.T) {
-	h := newHarness(t, &provider.Stub{}, runner.Options{})
+	h := newHarness(t, &environment.Stub{}, runner.Options{})
 
 	if h.runner.Cancel(chat.NewID()) {
 		t.Error("Cancel reported stopping a chat that was never running")
@@ -236,7 +236,7 @@ func TestCancelReportsWhenNothingIsRunning(t *testing.T) {
 // A chat that outlives its deadline must be stopped and explained, rather
 // than holding its slot until the process restarts.
 func TestChatExceedingItsDeadlineFails(t *testing.T) {
-	h := newHarness(t, &provider.Stub{
+	h := newHarness(t, &environment.Stub{
 		Updates: []string{"one", "two", "three", "four", "five", "six"},
 		Delay:   50 * time.Millisecond,
 	}, runner.Options{ChatTimeout: 40 * time.Millisecond})
@@ -257,10 +257,10 @@ func TestChatExceedingItsDeadlineFails(t *testing.T) {
 func TestShutdownStopsAndRecordsRunningChats(t *testing.T) {
 	repo := memory.New()
 	r, err := runner.New(runner.Options{
-		Repository: repo,
-		Messages:   repo,
-		Provider:   &provider.Stub{Updates: []string{"a", "b", "c", "d"}, Delay: 40 * time.Millisecond},
-		Logger:     discard(),
+		Repository:  repo,
+		Messages:    repo,
+		Environment: &environment.Stub{Updates: []string{"a", "b", "c", "d"}, Delay: 40 * time.Millisecond},
+		Logger:      discard(),
 	})
 	if err != nil {
 		t.Fatalf("runner.New: %v", err)
@@ -311,7 +311,7 @@ func TestShutdownStopsAndRecordsRunningChats(t *testing.T) {
 }
 
 func TestRecoverFailsChatsLeftRunning(t *testing.T) {
-	h := newHarness(t, &provider.Stub{}, runner.Options{})
+	h := newHarness(t, &environment.Stub{}, runner.Options{})
 	ctx := context.Background()
 
 	stranded, err := chat.New("", chat.ChannelDirect, "was running when the process died")
@@ -345,7 +345,7 @@ func TestRecoverFailsChatsLeftRunning(t *testing.T) {
 // frees, rather than appearing to run while they wait.
 func TestConcurrencyIsLimited(t *testing.T) {
 	const limit = 2
-	h := newHarness(t, &provider.Stub{Updates: []string{"a", "b"}, Delay: 60 * time.Millisecond},
+	h := newHarness(t, &environment.Stub{Updates: []string{"a", "b"}, Delay: 60 * time.Millisecond},
 		runner.Options{MaxConcurrent: limit})
 
 	var ids []string
@@ -386,7 +386,7 @@ func TestConcurrencyIsLimited(t *testing.T) {
 
 // A message that cannot be stored must not lose the answer with it.
 func TestUnstorableMessageDoesNotFailTheChat(t *testing.T) {
-	h := newHarness(t, &provider.Stub{Updates: []string{"progress"}}, runner.Options{})
+	h := newHarness(t, &environment.Stub{Updates: []string{"progress"}}, runner.Options{})
 	h.repo.FailAppends(errors.New("messages table is full"))
 
 	tk := h.submit(t, "answer me anyway")
@@ -401,16 +401,16 @@ func TestNewRequiresItsDependencies(t *testing.T) {
 	full := func() runner.Options {
 		repo := memory.New()
 		return runner.Options{
-			Repository: repo,
-			Messages:   repo,
-			Provider:   &provider.Stub{},
-			Logger:     discard(),
+			Repository:  repo,
+			Messages:    repo,
+			Environment: &environment.Stub{},
+			Logger:      discard(),
 		}
 	}
 
 	cases := map[string]func(*runner.Options){
 		"no repository": func(o *runner.Options) { o.Repository = nil },
-		"no provider":   func(o *runner.Options) { o.Provider = nil },
+		"no provider":   func(o *runner.Options) { o.Environment = nil },
 		"no logger":     func(o *runner.Options) { o.Logger = nil },
 		"no messages":   func(o *runner.Options) { o.Messages = nil },
 	}
@@ -424,7 +424,7 @@ func TestNewRequiresItsDependencies(t *testing.T) {
 }
 
 func TestDefaultsApplied(t *testing.T) {
-	h := newHarness(t, &provider.Stub{}, runner.Options{})
+	h := newHarness(t, &environment.Stub{}, runner.Options{})
 	tk := h.submit(t, "use the defaults")
 	if got := h.await(t, tk.ID, chat.StatusCompleted, chat.StatusFailed); got.Status != chat.StatusCompleted {
 		t.Errorf("Status = %q, want completed with default settings", got.Status)
@@ -438,14 +438,14 @@ type refusingProvider struct{}
 func (refusingProvider) Name() string { return "refusing" }
 
 // Run : Always reports that it cannot start.
-func (refusingProvider) Run(context.Context, provider.Request) (<-chan provider.Message, error) {
+func (refusingProvider) Run(context.Context, environment.Request) (<-chan environment.Message, error) {
 	return nil, errors.New("refusing: no credentials configured")
 }
 
 // A chat waiting for a slot must be cancellable, not only one already
 // running. Saying "stop" should work whichever it is.
 func TestCancelStopsAQueuedChat(t *testing.T) {
-	h := newHarness(t, &provider.Stub{
+	h := newHarness(t, &environment.Stub{
 		Updates: []string{"a", "b", "c"},
 		Delay:   80 * time.Millisecond,
 	}, runner.Options{MaxConcurrent: 1})

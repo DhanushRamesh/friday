@@ -9,7 +9,7 @@ import (
 
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
-	"github.com/DhanushRamesh/personal-assistant/internal/provider"
+	"github.com/DhanushRamesh/personal-assistant/internal/environment"
 	"github.com/DhanushRamesh/personal-assistant/internal/runner"
 )
 
@@ -28,7 +28,7 @@ type recorder struct {
 	notes string
 
 	mu   sync.Mutex
-	seen []provider.Request
+	seen []environment.Request
 }
 
 // Name : Returns the provider's name.
@@ -36,7 +36,7 @@ func (p *recorder) Name() string { return "recorder" }
 
 // Run : Answers a condensation prompt with the configured notes, and anything
 // else with a fixed sentence.
-func (p *recorder) Run(_ context.Context, req provider.Request) (<-chan provider.Message, error) {
+func (p *recorder) Run(_ context.Context, req environment.Request) (<-chan environment.Message, error) {
 	p.mu.Lock()
 	p.seen = append(p.seen, req)
 	p.mu.Unlock()
@@ -46,22 +46,22 @@ func (p *recorder) Run(_ context.Context, req provider.Request) (<-chan provider
 		answer = p.notes
 	}
 
-	ch := make(chan provider.Message, 1)
-	ch <- provider.Final(answer)
+	ch := make(chan environment.Message, 1)
+	ch <- environment.Final(answer)
 	close(ch)
 	return ch, nil
 }
 
 // requests : Every request the provider has been given.
-func (p *recorder) requests() []provider.Request {
+func (p *recorder) requests() []environment.Request {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return append([]provider.Request(nil), p.seen...)
+	return append([]environment.Request(nil), p.seen...)
 }
 
 // condensations : The requests that asked for a conversation to be condensed.
-func (p *recorder) condensations() []provider.Request {
-	var out []provider.Request
+func (p *recorder) condensations() []environment.Request {
+	var out []environment.Request
 	for _, r := range p.requests() {
 		if strings.Contains(r.Prompt, condenseMarker) {
 			out = append(out, r)
@@ -72,7 +72,7 @@ func (p *recorder) condensations() []provider.Request {
 
 // asking : The request carrying the given prompt, or nil if the provider was
 // never given it.
-func (p *recorder) asking(prompt string) *provider.Request {
+func (p *recorder) asking(prompt string) *environment.Request {
 	for _, r := range p.requests() {
 		if r.Prompt == prompt {
 			found := r

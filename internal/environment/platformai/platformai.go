@@ -1,7 +1,7 @@
 // Package platformai : Answers prompts using Zoho Platform AI.
 //
 // The service is request and response: one call returns one complete answer,
-// with nothing in between. The server's Provider interface streams, because a user
+// with nothing in between. The server's Environment interface streams, because a user
 // listening through earbuds needs to hear something long before the answer
 // arrives. This provider therefore produces its own progress messages while it
 // waits, and the service's reply becomes the final one.
@@ -17,9 +17,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DhanushRamesh/personal-assistant/internal/environment"
 	"github.com/DhanushRamesh/personal-assistant/internal/failure"
 	"github.com/DhanushRamesh/personal-assistant/internal/logging"
-	"github.com/DhanushRamesh/personal-assistant/internal/provider"
 )
 
 const (
@@ -153,8 +153,8 @@ type Config struct {
 	InsecureSkipVerify bool
 }
 
-// Provider : A provider backed by Zoho Platform AI.
-type Provider struct {
+// Environment : Zoho Platform AI, as one place to send a prompt.
+type Environment struct {
 	cfg    Config
 	logger *slog.Logger
 	http   *http.Client
@@ -162,9 +162,9 @@ type Provider struct {
 	tokenState
 }
 
-// New : Builds a Provider, applying defaults and reporting missing
+// New : Builds an Environment, applying defaults and reporting missing
 // credentials.
-func New(cfg Config, logger *slog.Logger) (*Provider, error) {
+func New(cfg Config, logger *slog.Logger) (*Environment, error) {
 	if logger == nil {
 		return nil, errors.New("platformai: a logger is required")
 	}
@@ -188,7 +188,7 @@ func New(cfg Config, logger *slog.Logger) (*Provider, error) {
 
 	applyDefaults(&cfg)
 
-	return &Provider{
+	return &Environment{
 		cfg:    cfg,
 		logger: logger,
 		http: &http.Client{
@@ -229,9 +229,9 @@ func applyDefaults(cfg *Config) {
 }
 
 // Name : Returns the provider's name.
-func (p *Provider) Name() string { return "platformai" }
+func (p *Environment) Name() string { return "platformai" }
 
-// Run : Sends the prompt and streams the reply. See provider.Provider for the
+// Run : Sends the prompt and streams the reply. See environment.Environment for the
 // contract it follows.
 //
 // The service answers in one piece, so the stream is the reply and nothing
@@ -244,12 +244,12 @@ func (p *Provider) Name() string { return "platformai" }
 // The client shows that the server is working without needing to be told. When a
 // provider has real progress to report, such as an agent loop naming the
 // tool it is using, that is what an update is for.
-func (p *Provider) Run(ctx context.Context, req provider.Request) (<-chan provider.Message, error) {
+func (p *Environment) Run(ctx context.Context, req environment.Request) (<-chan environment.Message, error) {
 	if strings.TrimSpace(req.Prompt) == "" {
-		return nil, provider.ErrEmptyPrompt
+		return nil, environment.ErrEmptyPrompt
 	}
 
-	ch := make(chan provider.Message)
+	ch := make(chan environment.Message)
 	go func() {
 		defer close(ch)
 
@@ -265,14 +265,14 @@ func (p *Provider) Run(ctx context.Context, req provider.Request) (<-chan provid
 				slog.Duration("after", time.Since(started)),
 				slog.Any("error", err))
 			f := classify(err)
-			send(ctx, ch, provider.Failure(f.Sentence(), string(f.Code), f.Full()))
+			send(ctx, ch, environment.Failure(f.Sentence(), string(f.Code), f.Full()))
 			return
 		}
 
 		p.logger.InfoContext(ctx, "platform ai answered",
 			slog.Duration("after", time.Since(started)),
 			slog.Int("reply_bytes", len(text)))
-		send(ctx, ch, provider.Final(text))
+		send(ctx, ch, environment.Final(text))
 	}()
 
 	return ch, nil
@@ -298,7 +298,7 @@ func classify(err error) *failure.Error {
 
 // send : Delivers a message, reporting false if ctx ends before the caller
 // receives it.
-func send(ctx context.Context, ch chan<- provider.Message, msg provider.Message) bool {
+func send(ctx context.Context, ch chan<- environment.Message, msg environment.Message) bool {
 	select {
 	case ch <- msg:
 		return true
@@ -308,4 +308,4 @@ func send(ctx context.Context, ch chan<- provider.Message, msg provider.Message)
 }
 
 // Provider implements the interface the runner depends on.
-var _ provider.Provider = (*Provider)(nil)
+var _ environment.Environment = (*Environment)(nil)

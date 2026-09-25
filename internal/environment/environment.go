@@ -7,7 +7,7 @@
 //
 // A run is a stream rather than a single reply, because an answer can take
 // long enough that the user needs to hear something before it arrives.
-package provider
+package environment
 
 import (
 	"context"
@@ -123,8 +123,13 @@ type Request struct {
 	Summary string
 }
 
-// Provider : An engine that answers a prompt as a stream of messages.
-type Provider interface {
+// Environment : An engine that answers a prompt as a stream of messages.
+//
+// One configured place to send a prompt: an endpoint, the credentials for it,
+// the wire format it speaks and the model behind it. Two of these may be the
+// same service reached with different credentials, or the same credentials
+// pointed at different models.
+type Environment interface {
 	// Name : Identifies the provider in configuration, routing and logs.
 	Name() string
 
@@ -132,7 +137,7 @@ type Provider interface {
 	// produces.
 	//
 	// The stream yields zero or more KindUpdate messages, then exactly one
-	// KindFinal or KindError message, and is then closed by the provider. A
+	// KindFinal or KindError message, and is then closed by the environment. A
 	// returned error means the run could not be started at all, in which case
 	// no channel is returned; a failure during the run arrives as KindError
 	// instead.

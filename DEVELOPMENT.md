@@ -473,6 +473,23 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### Package names follow the reference implementation
+
+`catalog` becomes `llm` and `provider` becomes `environment`, matching the
+services in the assistant this one borrows its model from. An `Environment` is
+one configured place to send a prompt: an endpoint, its credentials, the wire
+format it speaks and the model behind it.
+
+`failure` stays as it is. Go will not have a package called `error`: importing
+one binds that name in file scope, which shadows the predeclared type, and
+every file that imports it then fails on `func f() error` with "error is not a
+type". Aliasing each import would work and would mean the package is never
+called by its own name anywhere, which is not a rename.
+
+The `[provider]` section of the configuration keeps its name. Renaming a key
+in a file the server reads does not fail loudly: the section is simply not
+found, and the server falls back to the stub without an answer as to why.
+
 ### Two endpoints, two shapes of failure
 
 A failure carries the exact error so that the model can be asked what went

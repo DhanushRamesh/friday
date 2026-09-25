@@ -1,4 +1,4 @@
-package provider_test
+package environment_test
 
 import (
 	"context"
@@ -7,16 +7,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DhanushRamesh/personal-assistant/internal/provider"
+	"github.com/DhanushRamesh/personal-assistant/internal/environment"
 )
 
 // Stub must satisfy the interface it exists to stand in for.
-var _ provider.Provider = (*provider.Stub)(nil)
+var _ environment.Environment = (*environment.Stub)(nil)
 
 // collect : Drains a stream, returning every message it produced.
-func collect(t *testing.T, ch <-chan provider.Message) []provider.Message {
+func collect(t *testing.T, ch <-chan environment.Message) []environment.Message {
 	t.Helper()
-	var got []provider.Message
+	var got []environment.Message
 	for msg := range ch {
 		got = append(got, msg)
 	}
@@ -24,9 +24,9 @@ func collect(t *testing.T, ch <-chan provider.Message) []provider.Message {
 }
 
 // run : Starts a stub run, failing the test if it could not be started.
-func run(t *testing.T, ctx context.Context, s *provider.Stub, prompt string) <-chan provider.Message {
+func run(t *testing.T, ctx context.Context, s *environment.Stub, prompt string) <-chan environment.Message {
 	t.Helper()
-	ch, err := s.Run(ctx, provider.Request{Prompt: prompt})
+	ch, err := s.Run(ctx, environment.Request{Prompt: prompt})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -35,7 +35,7 @@ func run(t *testing.T, ctx context.Context, s *provider.Stub, prompt string) <-c
 
 // A run yields updates, then exactly one terminal message, then closes.
 func TestStubStreamsUpdatesThenOneFinal(t *testing.T) {
-	s := &provider.Stub{Updates: []string{"first", "second"}}
+	s := &environment.Stub{Updates: []string{"first", "second"}}
 
 	got := collect(t, run(t, context.Background(), s, "what is the time"))
 
@@ -43,12 +43,12 @@ func TestStubStreamsUpdatesThenOneFinal(t *testing.T) {
 		t.Fatalf("got %d messages, want 2 updates and 1 final: %v", len(got), got)
 	}
 	for i, msg := range got[:2] {
-		if msg.Kind != provider.KindUpdate {
+		if msg.Kind != environment.KindUpdate {
 			t.Errorf("message %d kind = %q, want update", i, msg.Kind)
 		}
 	}
 	last := got[len(got)-1]
-	if last.Kind != provider.KindFinal {
+	if last.Kind != environment.KindFinal {
 		t.Errorf("last message kind = %q, want final", last.Kind)
 	}
 	if !strings.Contains(last.Text, "what is the time") {
@@ -58,7 +58,7 @@ func TestStubStreamsUpdatesThenOneFinal(t *testing.T) {
 
 // Exactly one terminal message, and nothing after it.
 func TestStubSendsOneTerminalMessageLast(t *testing.T) {
-	s := &provider.Stub{}
+	s := &environment.Stub{}
 
 	got := collect(t, run(t, context.Background(), s, "hello"))
 
@@ -81,12 +81,12 @@ func TestStubSendsOneTerminalMessageLast(t *testing.T) {
 
 func TestStubFailureEndsWithKindError(t *testing.T) {
 	const reason = "The model did not respond in time."
-	s := &provider.Stub{Updates: []string{"working"}, FailWith: reason}
+	s := &environment.Stub{Updates: []string{"working"}, FailWith: reason}
 
 	got := collect(t, run(t, context.Background(), s, "do something"))
 
 	last := got[len(got)-1]
-	if last.Kind != provider.KindError {
+	if last.Kind != environment.KindError {
 		t.Fatalf("last message kind = %q, want error", last.Kind)
 	}
 	if last.Text != reason {
@@ -97,11 +97,11 @@ func TestStubFailureEndsWithKindError(t *testing.T) {
 // A run that cannot start reports it rather than returning a stream that
 // fails immediately.
 func TestStubRejectsEmptyPrompt(t *testing.T) {
-	s := &provider.Stub{}
+	s := &environment.Stub{}
 
 	for _, prompt := range []string{"", "   "} {
-		ch, err := s.Run(context.Background(), provider.Request{Prompt: prompt})
-		if !errors.Is(err, provider.ErrEmptyPrompt) {
+		ch, err := s.Run(context.Background(), environment.Request{Prompt: prompt})
+		if !errors.Is(err, environment.ErrEmptyPrompt) {
 			t.Errorf("Run(%q) error = %v, want ErrEmptyPrompt", prompt, err)
 		}
 		if ch != nil {
@@ -113,7 +113,7 @@ func TestStubRejectsEmptyPrompt(t *testing.T) {
 // Cancelling ends the run and closes the stream, which is what will stop a
 // chat mid-flight.
 func TestStubStopsWhenCancelled(t *testing.T) {
-	s := &provider.Stub{
+	s := &environment.Stub{
 		Updates: []string{"one", "two", "three", "four"},
 		Delay:   20 * time.Millisecond,
 	}
@@ -126,7 +126,7 @@ func TestStubStopsWhenCancelled(t *testing.T) {
 	if !ok {
 		t.Fatal("stream closed before producing anything")
 	}
-	if first.Kind != provider.KindUpdate {
+	if first.Kind != environment.KindUpdate {
 		t.Fatalf("first message kind = %q, want update", first.Kind)
 	}
 	cancel()
@@ -134,7 +134,7 @@ func TestStubStopsWhenCancelled(t *testing.T) {
 	// The stream must close, and must not have run to completion.
 	rest := collect(t, ch)
 	for _, msg := range rest {
-		if msg.Kind == provider.KindFinal {
+		if msg.Kind == environment.KindFinal {
 			t.Error("a cancelled run produced a final message")
 		}
 	}
@@ -145,7 +145,7 @@ func TestStubStopsWhenCancelled(t *testing.T) {
 
 // A context already cancelled must produce nothing at all.
 func TestStubProducesNothingWhenAlreadyCancelled(t *testing.T) {
-	s := &provider.Stub{Updates: []string{"one", "two"}}
+	s := &environment.Stub{Updates: []string{"one", "two"}}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -157,7 +157,7 @@ func TestStubProducesNothingWhenAlreadyCancelled(t *testing.T) {
 
 // Cancelling must not leave the provider's goroutine blocked on a send.
 func TestStubGoroutineEndsWhenCallerStopsReading(t *testing.T) {
-	s := &provider.Stub{Updates: []string{"one", "two", "three"}}
+	s := &environment.Stub{Updates: []string{"one", "two", "three"}}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	ch := run(t, ctx, s, "abandoned")
@@ -182,20 +182,20 @@ func TestStubGoroutineEndsWhenCallerStopsReading(t *testing.T) {
 
 // An empty non-nil slice means no updates, distinct from nil meaning defaults.
 func TestStubUpdatesNilMeansDefaultsEmptyMeansNone(t *testing.T) {
-	withDefaults := collect(t, run(t, context.Background(), &provider.Stub{}, "hello"))
+	withDefaults := collect(t, run(t, context.Background(), &environment.Stub{}, "hello"))
 	if len(withDefaults) < 2 {
 		t.Errorf("nil Updates produced %d messages, want defaults plus a final", len(withDefaults))
 	}
 
-	withNone := collect(t, run(t, context.Background(), &provider.Stub{Updates: []string{}}, "hello"))
-	if len(withNone) != 1 || withNone[0].Kind != provider.KindFinal {
+	withNone := collect(t, run(t, context.Background(), &environment.Stub{Updates: []string{}}, "hello"))
+	if len(withNone) != 1 || withNone[0].Kind != environment.KindFinal {
 		t.Errorf("empty Updates produced %v, want only a final message", withNone)
 	}
 }
 
 func TestStubDelayIsHonoured(t *testing.T) {
 	const delay = 15 * time.Millisecond
-	s := &provider.Stub{Updates: []string{"one", "two"}, Delay: delay}
+	s := &environment.Stub{Updates: []string{"one", "two"}, Delay: delay}
 
 	start := time.Now()
 	collect(t, run(t, context.Background(), s, "slow"))

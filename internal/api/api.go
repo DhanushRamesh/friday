@@ -26,8 +26,8 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/api/conversations"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/health"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/middleware"
-	"github.com/DhanushRamesh/personal-assistant/internal/catalog"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/llm"
 )
 
 // DefaultRequestTimeout : The per-request deadline applied when Options does
@@ -63,7 +63,7 @@ type Options struct {
 	// Models : The models the configured provider can reach, which are the
 	// ones a client may be set to answer with. Empty offers none, so a
 	// client keeps whatever the server is configured with.
-	Models []catalog.Model
+	Models []llm.Model
 	// DefaultModel : The identifier of the model answering a client that has
 	// chosen none, so a listing can name it.
 	DefaultModel string

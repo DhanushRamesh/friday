@@ -34,9 +34,9 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/auth"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat/memory"
+	"github.com/DhanushRamesh/personal-assistant/internal/environment"
 	"github.com/DhanushRamesh/personal-assistant/internal/events"
 	"github.com/DhanushRamesh/personal-assistant/internal/logging"
-	"github.com/DhanushRamesh/personal-assistant/internal/provider"
 	"github.com/DhanushRamesh/personal-assistant/internal/runner"
 )
 
@@ -88,8 +88,8 @@ func (p Pinger) Ping(context.Context) error { return p.Err }
 // Options : What to vary about an environment. The zero value gives a stub
 // provider and a reachable database.
 type Options struct {
-	// Provider : Answers chats. Nil selects a plain stub.
-	Provider provider.Provider
+	// Environment : Answers chats. Nil selects a plain stub.
+	Environment environment.Environment
 	// DB : What the readiness endpoint checks. Nil selects a reachable one.
 	DB api.Pinger
 	// AllowCrossOrigin : Whether the server answers a browser's
@@ -125,8 +125,8 @@ func New(t *testing.T) *Env {
 func NewWith(t *testing.T, opts Options) *Env {
 	t.Helper()
 
-	if opts.Provider == nil {
-		opts.Provider = &provider.Stub{}
+	if opts.Environment == nil {
+		opts.Environment = &environment.Stub{}
 	}
 	if opts.DB == nil {
 		opts.DB = Pinger{}
@@ -143,11 +143,11 @@ func NewWith(t *testing.T, opts Options) *Env {
 	t.Cleanup(bus.Close)
 
 	chatRunner, err := runner.New(runner.Options{
-		Repository: repo,
-		Messages:   repo,
-		Provider:   opts.Provider,
-		Logger:     logger.Logger,
-		Publisher:  bus,
+		Repository:  repo,
+		Messages:    repo,
+		Environment: opts.Environment,
+		Logger:      logger.Logger,
+		Publisher:   bus,
 	})
 	if err != nil {
 		t.Fatalf("runner.New: %v", err)
@@ -490,21 +490,21 @@ type RecordingProvider struct {
 	Delay time.Duration
 
 	mu      sync.Mutex
-	history []provider.Turn
+	history []environment.Turn
 	prompt  string
 }
 
-// Name : Identifies the provider.
+// Name : Identifies the environment.
 func (r *RecordingProvider) Name() string { return "recording" }
 
 // Run : Records the request's history and answers after Delay.
-func (r *RecordingProvider) Run(ctx context.Context, req provider.Request) (<-chan provider.Message, error) {
+func (r *RecordingProvider) Run(ctx context.Context, req environment.Request) (<-chan environment.Message, error) {
 	r.mu.Lock()
-	r.history = append([]provider.Turn(nil), req.History...)
+	r.history = append([]environment.Turn(nil), req.History...)
 	r.prompt = req.Prompt
 	r.mu.Unlock()
 
-	ch := make(chan provider.Message)
+	ch := make(chan environment.Message)
 	go func() {
 		defer close(ch)
 		if r.Delay > 0 {
@@ -515,7 +515,7 @@ func (r *RecordingProvider) Run(ctx context.Context, req provider.Request) (<-ch
 			}
 		}
 		select {
-		case ch <- provider.Final("an answer"):
+		case ch <- environment.Final("an answer"):
 		case <-ctx.Done():
 		}
 	}()
@@ -523,10 +523,10 @@ func (r *RecordingProvider) Run(ctx context.Context, req provider.Request) (<-ch
 }
 
 // LastHistory : Returns the history given to the most recent run.
-func (r *RecordingProvider) LastHistory() []provider.Turn {
+func (r *RecordingProvider) LastHistory() []environment.Turn {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return append([]provider.Turn(nil), r.history...)
+	return append([]environment.Turn(nil), r.history...)
 }
 
 // LastPrompt : Returns the prompt given to the most recent run.
