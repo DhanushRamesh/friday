@@ -473,6 +473,25 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### A tool that half-obeys has to say so
+
+Asked to make a conversation, switch to it and answer there, the assistant did
+the first two and answered in the old one. That is the rule working: a switch
+takes effect from the next message, so the model's history does not change
+underneath it mid-turn. It still read as a fault, because nothing was said
+about it.
+
+The rule stays. What changed is that the tool result now instructs the model
+to explain, in as many words: tell the person the reply lands in the old
+conversation, and if they asked for something to be said in the new one, say
+plainly that it cannot happen until their next message rather than answering
+as though it had.
+
+Written as an instruction because a statement was not enough. The old result
+said "it takes effect from the next thing the person says", the model read it,
+acted on it, and mentioned none of it. A tool result is read by a model, so it
+is written for one.
+
 ### The reserve is measured, not assumed
 
 `ReserveTokens` was a flat 2,048 standing for the system prompt, the tool

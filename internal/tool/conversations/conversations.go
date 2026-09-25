@@ -143,8 +143,10 @@ func switchTo(repo chat.Repository) tool.Tool {
 		Name:    "conversation_switch",
 		Purpose: "Make a conversation the one this client talks in from now on.",
 		UseWhen: "The person asks to go back to, or carry on with, a particular conversation.",
-		Avoid: "Do not use it to answer a question about another conversation's contents. " +
-			"Switching does not read it, and this turn still answers from the conversation it began in.",
+		Avoid: "Do not use it to answer a question about another conversation's contents: " +
+			"switching does not read it. And never treat a switch as though this reply will " +
+			"land in the new conversation. It will not, and saying nothing about that reads " +
+			"to the person as a fault.",
 		Channels: []chat.Channel{chat.ChannelVoice, chat.ChannelDirect},
 		Params: tool.Schema{
 			Properties: map[string]tool.Property{
@@ -173,8 +175,17 @@ func switchTo(repo chat.Repository) tool.Tool {
 			if err != nil {
 				return tool.Failed(refusal(err, args.ConversationID))
 			}
-			return tool.OK("Switched. It takes effect from the next thing the person says; " +
-				"this turn still answers from the conversation it began in.")
+			// The instruction is imperative because the model would
+			// otherwise read this, act on it, and say nothing. From the
+			// person's side that is indistinguishable from a fault: they
+			// asked for something in the new conversation and the reply
+			// appeared in the old one with no explanation.
+			return tool.OK("Switched, and it takes effect from the next thing the person says. " +
+				"This reply will still be recorded in the conversation you began in. " +
+				"You must tell the person both of those things. " +
+				"If they asked for something to be said in the new conversation, say plainly " +
+				"that it cannot happen until their next message, rather than answering here " +
+				"as though it had.")
 		},
 	}
 }
@@ -222,7 +233,12 @@ func create(repo chat.Repository) tool.Tool {
 					return tool.Partial("The conversation was created but this client could not be switched to it: " + err.Error())
 				}
 			}
-			return tool.OK("Created and switched to, from the next thing the person says.")
+			return tool.OK("Created, and switched to from the next thing the person says. " +
+				"This reply will still be recorded in the conversation you began in. " +
+				"You must tell the person both of those things. " +
+				"If they asked for something to be said in the new conversation, say plainly " +
+				"that it cannot happen until their next message, rather than answering here " +
+				"as though it had.")
 		},
 	}
 }
