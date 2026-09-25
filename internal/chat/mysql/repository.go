@@ -63,7 +63,7 @@ func (r *Repository) Update(ctx context.Context, t *chat.Chat) error {
 	result := r.db.WithContext(ctx).
 		Model(&chatRow{}).
 		Where("id = ?", t.ID).
-		Select("prompt", "status", "response", "error",
+		Select("prompt", "status", "response", "error", "error_code", "error_detail",
 			"created_at", "updated_at", "started_at", "finished_at").
 		Updates(row)
 

@@ -20,6 +20,7 @@ class Turn {
     required this.answer,
     required this.status,
     this.error = '',
+    this.detail = '',
   });
 
   final String chatId;
@@ -34,14 +35,25 @@ class Turn {
   /// answer rather than beside it.
   final String error;
 
+  /// detail : Exactly what the service said. Kept out of [error] because that
+  /// is the sentence a person reads first; this is what they get when they
+  /// ask for more.
+  final String detail;
+
   bool get isRunning => !status.isTerminal;
 
-  Turn copyWith({String? answer, ChatStatus? status, String? error}) => Turn(
+  Turn copyWith({
+    String? answer,
+    ChatStatus? status,
+    String? error,
+    String? detail,
+  }) => Turn(
     chatId: chatId,
     prompt: prompt,
     answer: answer ?? this.answer,
     status: status ?? this.status,
     error: error ?? this.error,
+    detail: detail ?? this.detail,
   );
 }
 
@@ -320,6 +332,7 @@ class AppState extends ChangeNotifier {
             _replace(chatId, (t) => t.copyWith(
               status: ChatStatus.failed,
               error: event.text,
+              detail: event.detail,
             ));
           case EventKind.cancelled:
             _replace(chatId, (t) => t.copyWith(status: ChatStatus.cancelled));
@@ -371,6 +384,7 @@ class AppState extends ChangeNotifier {
             status: c.status,
             response: '',
             error: c.error,
+            errorCode: c.errorCode,
             createdAt: c.createdAt,
             updatedAt: c.updatedAt,
           );
@@ -386,6 +400,7 @@ class AppState extends ChangeNotifier {
           answer: c.response,
           status: c.status,
           error: c.error,
+          detail: c.errorDetail,
         ),
     ];
     notifyListeners();

@@ -292,6 +292,7 @@ class _Conversation extends StatelessWidget {
                             speaker: AppSpeaker.assistant,
                             text: failed ? turn.error : turn.answer,
                             failed: failed,
+                            detail: failed ? turn.detail : null,
                             transient: turn.isRunning,
                           ),
                         const SizedBox(height: AppSpacing.lg),

@@ -19,6 +19,7 @@ class AppTurn extends StatelessWidget {
     required this.text,
     this.transient = false,
     this.failed = false,
+    this.detail,
     this.superseded = false,
     this.timestamp,
     this.trailing,
@@ -33,6 +34,13 @@ class AppTurn extends StatelessWidget {
 
   /// failed : Whether this is the reason a chat failed.
   final bool failed;
+
+  /// detail : The exact error behind a failure, revealed on request.
+  ///
+  /// Hidden by default rather than shown small, because the sentence above it
+  /// is the whole answer for almost everybody, and a stack of raw service
+  /// errors down the conversation makes the readable part hard to find.
+  final String? detail;
 
   /// superseded : Whether a later prompt cancelled this one. Shown faded
   /// rather than removed, so the conversation still reads in order and the
@@ -110,6 +118,7 @@ class AppTurn extends StatelessWidget {
                   // Selectable, because the usual thing to do with an answer
                   // is copy part of it somewhere else.
                   SelectableText(text, style: style),
+                  if ((detail ?? '').isNotEmpty) _MoreInfo(detail: detail!),
                 ],
               ),
             ),
@@ -203,4 +212,72 @@ class _StopButton extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// _MoreInfo : The exact error, behind a line you have to click.
+///
+/// The point of hiding it is that two people want different things from the
+/// same failure: one wants to know whether to try again, the other wants the
+/// words the service used. Showing both at once serves neither.
+class _MoreInfo extends StatefulWidget {
+  const _MoreInfo({required this.detail});
+
+  final String detail;
+
+  @override
+  State<_MoreInfo> createState() => _MoreInfoState();
+}
+
+class _MoreInfoState extends State<_MoreInfo> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: AppSpacing.xs),
+        InkWell(
+          onTap: () => setState(() => _open = !_open),
+          borderRadius: BorderRadius.circular(AppRadius.xs),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxs),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _open ? Icons.expand_less : Icons.expand_more,
+                  size: 14,
+                  color: colors.textMuted,
+                ),
+                const SizedBox(width: AppSpacing.xxs),
+                Text(
+                  _open ? 'Hide details' : 'More info',
+                  style: context.text.caption.copyWith(color: colors.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_open)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(top: AppSpacing.xs),
+            padding: const EdgeInsets.all(AppSpacing.sm),
+            decoration: BoxDecoration(
+              color: colors.surfaceSunken,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+              border: Border.all(color: colors.border),
+            ),
+            // Monospace and selectable: this exists to be read closely and
+            // pasted into a bug report.
+            child: SelectableText(
+              widget.detail,
+              style: context.text.mono.copyWith(color: colors.textSecondary),
+            ),
+          ),
+      ],
+    );
+  }
 }

@@ -73,6 +73,8 @@ class Chat {
     required this.status,
     required this.response,
     required this.error,
+    this.errorCode = '',
+    this.errorDetail = '',
     required this.createdAt,
     required this.updatedAt,
     this.startedAt,
@@ -90,6 +92,14 @@ class Chat {
   /// error : Why it failed, phrased to be spoken. Empty unless it did.
   final String error;
 
+  /// errorCode : Which kind of failure it was. Worth keying off rather than
+  /// matching on [error], which is prose and will be reworded.
+  final String errorCode;
+
+  /// errorDetail : Exactly what the service said. Shown on request, never in
+  /// place of [error].
+  final String errorDetail;
+
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? startedAt;
@@ -103,6 +113,7 @@ class Chat {
     status: ChatStatus.parse(json['status'] as String?),
     response: json['response'] as String? ?? '',
     error: json['error'] as String? ?? '',
+    errorCode: json['error_code'] as String? ?? '',
     createdAt: _time(json['created_at'])!,
     updatedAt: _time(json['updated_at'])!,
     startedAt: _time(json['started_at']),
@@ -121,6 +132,7 @@ class ChatSummary {
     required this.prompt,
     required this.status,
     required this.error,
+    this.errorCode = '',
     required this.createdAt,
     required this.updatedAt,
     this.startedAt,
@@ -132,6 +144,11 @@ class ChatSummary {
   final String prompt;
   final ChatStatus status;
   final String error;
+
+  /// errorCode : Which kind of failure it was. A listing carries this but not
+  /// the detail, which the server does not select for a list.
+  final String errorCode;
+
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? startedAt;
@@ -144,6 +161,7 @@ class ChatSummary {
     prompt: json['prompt'] as String? ?? '',
     status: ChatStatus.parse(json['status'] as String?),
     error: json['error'] as String? ?? '',
+    errorCode: json['error_code'] as String? ?? '',
     createdAt: _time(json['created_at'])!,
     updatedAt: _time(json['updated_at'])!,
     startedAt: _time(json['started_at']),
@@ -345,6 +363,8 @@ class ChatEvent {
     required this.kind,
     required this.seq,
     required this.text,
+    this.code = '',
+    this.detail = '',
     required this.at,
   });
 
@@ -357,6 +377,13 @@ class ChatEvent {
   /// text : What to say.
   final String text;
 
+  /// code : For an error, which kind of failure it was. Empty otherwise.
+  final String code;
+
+  /// detail : For an error, exactly what the service said. Empty otherwise,
+  /// and never the thing shown without being asked for.
+  final String detail;
+
   final DateTime at;
 
   /// isTerminal : Whether this event ends the stream.
@@ -367,6 +394,8 @@ class ChatEvent {
     kind: EventKind.parse(json['kind'] as String?),
     seq: json['seq'] as int? ?? 0,
     text: json['text'] as String? ?? '',
+    code: json['code'] as String? ?? '',
+    detail: json['detail'] as String? ?? '',
     at: _time(json['at']) ?? DateTime.now().toUtc(),
   );
 
