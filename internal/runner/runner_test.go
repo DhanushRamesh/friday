@@ -94,6 +94,22 @@ func newHarness(t *testing.T, p environment.Environment, opts runner.Options) *h
 }
 
 // submit : Creates and stores a chat, then starts it running.
+// submitOn : Creates and starts a chat that arrived by a given channel.
+func (h *harness) submitOn(t *testing.T, channel chat.Channel, prompt string) *chat.Chat {
+	t.Helper()
+	tk, err := chat.New(h.conversation(t), channel, prompt)
+	if err != nil {
+		t.Fatalf("chat.New: %v", err)
+	}
+	if err := h.repo.Create(context.Background(), tk); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := h.runner.Submit(tk); err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	return tk
+}
+
 func (h *harness) submit(t *testing.T, prompt string) *chat.Chat {
 	t.Helper()
 	tk, err := chat.New(h.conversation(t), chat.ChannelDirect, prompt)

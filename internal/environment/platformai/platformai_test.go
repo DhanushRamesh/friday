@@ -879,3 +879,34 @@ func TestARememberedToolExchangeIsSentBack(t *testing.T) {
 		t.Errorf("the tool result was not sent back against its call: %s", body)
 	}
 }
+
+// A blocked answer is not a bad request. Both arrive as a 400 and they want
+// opposite things said: nothing is wrong with the request, trying again will
+// not help, and pointing the person at their own words sends them looking for
+// a mistake they did not make.
+func TestABlockedAnswerIsNotABadRequest(t *testing.T) {
+	f, cfg := newFakeService(t)
+	f.chatHandler = func(w http.ResponseWriter, _ []byte) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":{"code":"E00000000","message":"Error in AI API Request",
+			"api_error":{"type":"invalid_request_error","message":"Output blocked by content filtering policy"}}}`))
+	}
+	p, _ := platformai.New(cfg, discard())
+
+	got := run(t, p, "do you know the lyrics of Fireflies")
+	last := got[len(got)-1]
+
+	if last.Kind != environment.KindError {
+		t.Fatalf("kind = %q, want a failure", last.Kind)
+	}
+	if last.Code != string(failure.Filtered) {
+		t.Errorf("code = %q, want %q", last.Code, failure.Filtered)
+	}
+	if strings.Contains(strings.ToLower(last.Text), "request") {
+		t.Errorf("text = %q, want it not to blame the request", last.Text)
+	}
+	// The exact reason still reaches the model and the more-info panel.
+	if !strings.Contains(last.Detail, "content filtering") {
+		t.Errorf("detail = %q, want the real reason kept", last.Detail)
+	}
+}

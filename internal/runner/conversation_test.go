@@ -201,3 +201,50 @@ func (p *recordingProvider) Run(ctx context.Context, req environment.Request) (<
 	close(ch)
 	return ch, nil
 }
+
+// Spoken, a failure says the exact error too. There is no "more info" on a
+// speaker, so the sentence alone leaves the person with a failure and no way
+// to reach what caused it.
+func TestAVoiceFailureSaysTheExactError(t *testing.T) {
+	const detail = "platformai: Output blocked by content filtering policy (HTTP 400)"
+
+	recorder := &recordingProvider{
+		failWith:   "The service would not let me answer that.",
+		failCode:   "filtered",
+		failDetail: detail,
+	}
+	h := newHarness(t, recorder, runner.Options{})
+
+	tk := h.submitOn(t, chat.ChannelVoice, "do you know the lyrics of Fireflies")
+	done := h.await(t, tk.ID, chat.StatusFailed, chat.StatusCompleted)
+
+	if !strings.Contains(done.Error, "content filtering") {
+		t.Errorf("spoken failure = %q, want the exact error in it", done.Error)
+	}
+	if done.ErrorDetail != detail {
+		t.Errorf("detail = %q, want it kept exactly", done.ErrorDetail)
+	}
+}
+
+// Typed, the sentence alone. The exact error is under "more info", and a wall
+// of service jargon in the transcript buries the part anybody reads.
+func TestATypedFailureKeepsTheJargonOutOfTheWay(t *testing.T) {
+	const detail = "platformai: Output blocked by content filtering policy (HTTP 400)"
+
+	recorder := &recordingProvider{
+		failWith:   "The service would not let me answer that.",
+		failCode:   "filtered",
+		failDetail: detail,
+	}
+	h := newHarness(t, recorder, runner.Options{})
+
+	tk := h.submitOn(t, chat.ChannelDirect, "do you know the lyrics of Fireflies")
+	done := h.await(t, tk.ID, chat.StatusFailed, chat.StatusCompleted)
+
+	if strings.Contains(done.Error, "content filtering") {
+		t.Errorf("shown failure = %q, want the jargon left to more-info", done.Error)
+	}
+	if done.ErrorDetail != detail {
+		t.Errorf("detail = %q, want it kept for when it is asked for", done.ErrorDetail)
+	}
+}

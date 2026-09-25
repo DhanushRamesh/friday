@@ -113,7 +113,8 @@ func (r *Runner) consume(runCtx, ctx context.Context, t *chat.Chat) {
 					slog.String("code", final.Code))
 			}
 			r.finishWith(ctx, t, func() error {
-				return t.FailWith(final.Text, final.Code, final.Detail)
+				return t.FailWith(spoken(t.Channel, final.Text, final.Detail),
+					final.Code, final.Detail)
 			})
 			return
 
@@ -137,6 +138,24 @@ func (r *Runner) consume(runCtx, ctx context.Context, t *chat.Chat) {
 			return
 		}
 	}
+}
+
+// spoken : What a failure says, for the channel it has to be said on.
+//
+// Typed, the sentence alone: the exact error is a click away under "more
+// info", and a wall of service jargon in the transcript buries the part
+// anybody reads.
+//
+// Spoken, both. There is no "more info" on a speaker, so a sentence on its own
+// leaves the person with a failure and no way to reach what caused it. Saying
+// it aloud is ugly and is still better than withholding it.
+func spoken(channel chat.Channel, sentence, detail string) string {
+	detail = strings.TrimSpace(detail)
+	if channel != chat.ChannelVoice || detail == "" {
+		return sentence
+	}
+	return sentence + " The exact error was: " + detail
+
 }
 
 // asUserTurn : The question as a turn, or nothing when there is none.

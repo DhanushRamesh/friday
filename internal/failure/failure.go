@@ -43,6 +43,13 @@ const (
 	TooLong Code = "too_long"
 	// BadResponse : It answered, and the answer could not be used.
 	BadResponse Code = "bad_response"
+	// Filtered : The service refused to let the answer through.
+	//
+	// Not a fault in the request and not something trying again will fix, so
+	// it is told apart from BadRequest: sending somebody to look for a
+	// mistake they did not make is worse than saying nothing.
+	Filtered Code = "filtered"
+
 	// Unexpected : Anything with no better description. The fallback.
 	Unexpected Code = "unexpected"
 )
@@ -62,6 +69,7 @@ var sentences = map[Code]string{
 	BadRequest:   "The service would not accept that request.",
 	TooLong:      "This conversation has grown too long. Start a new conversation.",
 	BadResponse:  "The service answered with something I could not use.",
+	Filtered:     "The service would not let me answer that.",
 	Unexpected:   "The service could not complete the request.",
 }
 

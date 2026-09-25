@@ -278,6 +278,14 @@ func (p *Environment) Run(ctx context.Context, req environment.Request) (<-chan 
 func classify(err error) *failure.Error {
 	var apiErr *APIError
 	if errors.As(err, &apiErr) {
+		// A blocked answer arrives as a 400 like a malformed request does,
+		// and the two want opposite things said. Nothing is wrong with the
+		// request, trying again will not help, and telling somebody their
+		// request was refused sends them looking for a mistake they did not
+		// make. Told apart by what the service said, since the status cannot.
+		if strings.Contains(strings.ToLower(apiErr.Message), "content filtering") {
+			return failure.New(failure.Filtered, apiErr.Message, err)
+		}
 		return failure.FromStatus(apiErr.Status, apiErr.Message, err)
 	}
 	if errors.Is(err, context.DeadlineExceeded) {

@@ -473,6 +473,26 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### A spoken failure says the exact error; a typed one keeps it aside
+
+Typed, a failure shows the sentence and keeps the service's own words under
+"more info". Spoken, there is no "more info": a sentence on its own leaves the
+person with a failure and no way to reach what caused it, so both are said
+aloud. Reading service jargon out is ugly and is still better than
+withholding it.
+
+### A blocked answer is not a bad request
+
+Both arrive as a 400 and they want opposite things said. Nothing is wrong with
+a request whose answer was blocked, trying again will not help, and telling
+somebody their request was refused sends them looking for a mistake they did
+not make. They are told apart by what the service said, because the status
+cannot tell them apart.
+
+That was found by asking for song lyrics: the endpoint answered "Output
+blocked by content filtering policy", and the assistant reported that the
+service would not accept the request.
+
 ### The assistant is told where it is
 
 Asked which conversation it was in, it named one it had switched away from
