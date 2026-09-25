@@ -184,3 +184,21 @@ func TestInterruptedIsTheAssistantsTurn(t *testing.T) {
 		t.Error("an interruption with no content would be dropped by ForModel")
 	}
 }
+
+// Every kind this package can build has to be one the store accepts. They
+// were listed in two places, and an interruption was rejected for a morning
+// because only one of them learned about it.
+func TestEveryConstructedMessageIsValid(t *testing.T) {
+	at := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
+
+	for name, m := range map[string]session.Message{
+		"said":        session.Said("ses_1", "what is the time", at),
+		"answered":    session.Answered("ses_1", "half past two", at),
+		"failed":      session.Failed("ses_1", "it did not work", "HTTP 500", at),
+		"interrupted": session.Interrupted("ses_1", at),
+	} {
+		if err := m.Valid(); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}

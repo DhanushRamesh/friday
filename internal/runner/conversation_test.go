@@ -137,9 +137,14 @@ func TestAFailureIsRecordedAndSentOnWithItsDetail(t *testing.T) {
 	}
 }
 
-// A chat cancelled before it said anything still leaves its question behind.
-// That is what lets the correction which replaced it be understood.
-func TestACancelledChatStillLeavesItsQuestion(t *testing.T) {
+// A cancelled turn leaves its question and a note that it was stopped. The
+// question alone would be read by the next turn as something never answered,
+// and joined onto whatever is asked next.
+//
+// This test used to assert the question alone, and passed for the wrong
+// reason: the note was being written and silently refused by the store,
+// because Valid did not know the kind. The log said so and nothing else did.
+func TestACancelledChatLeavesItsQuestionAndAMark(t *testing.T) {
 	h := newHarness(t, &provider.Stub{
 		Updates: []string{"one", "two", "three"},
 		Delay:   30 * time.Millisecond,
@@ -151,11 +156,17 @@ func TestACancelledChatStillLeavesItsQuestion(t *testing.T) {
 	h.await(t, tk.ID, chat.StatusCancelled, chat.StatusCompleted, chat.StatusFailed)
 
 	said := h.repo.Said(h.session(t))
-	if len(said) != 1 {
-		t.Fatalf("recorded %v, want only the question", contents(said))
+	if len(said) != 2 {
+		t.Fatalf("recorded %v, want the question and the mark", contents(said))
 	}
 	if said[0].Content != "List three programming languages." {
 		t.Errorf("recorded %q", said[0].Content)
+	}
+	if said[1].Kind != session.Interruption {
+		t.Errorf("second message is %q, want an interruption", said[1].Kind)
+	}
+	if said[1].Role != session.Assistant {
+		t.Errorf("the mark is %q, want the assistant so the roles alternate", said[1].Role)
 	}
 }
 

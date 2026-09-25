@@ -57,6 +57,16 @@ const (
 	Interruption Kind = "stopped"
 )
 
+// known : Whether this is a kind the store will accept.
+//
+// Listed here rather than checked inline in Valid, so that adding a kind and
+// forgetting to allow it is one edit rather than two. It was two, and an
+// interruption was rejected by the store for a morning without anything
+// louder than a line in the log.
+func (k Kind) known() bool {
+	return k == Chat || k == Failure || k == Interruption
+}
+
 // Role : Who said something.
 type Role string
 
@@ -149,7 +159,7 @@ func (m Message) Valid() error {
 		return errors.New("session: a message needs something in it")
 	case len(m.Content) > maxContentBytes:
 		return ErrTooLarge
-	case m.Kind != Chat && m.Kind != Failure:
+	case !m.Kind.known():
 		return errors.New("session: a message needs a kind")
 	case m.Role != User && m.Role != Assistant:
 		return errors.New("session: a message needs a speaker")
