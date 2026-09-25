@@ -12,3 +12,8 @@
 
 # Picovoice: the access key and the wake-word models are tied to an
 # account, so they are obtained per machine rather than committed.
+
+# Flutter's build output and local tooling state.
+client/build/
+client/.dart_tool/
+client/*.iml

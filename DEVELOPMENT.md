@@ -291,17 +291,29 @@ exercised in tests without starting a process. Those tests live in
 `internal/api` and drive the assembled router, so they cover the middleware
 stack and the routing as well as the handlers.
 
-### There is no client in this repository
+### The client is a web page, and only reads and writes text
 
-The assistant was spoken to through a Flutter client, on a phone and in a browser.
-Voice now arrives through a Home Assistant voice satellite instead, so the
-client was removed and this file no longer describes it.
+`client/` is a Flutter web app: the sessions, the transcript inside one, a box
+to ask something, and a settings page for the account and the clients holding
+a token. Nothing else. Voice arrives through the Home Assistant satellite, so
+the client does not listen, does not speak, and has no wake word.
 
-What it recorded is not lost: the design system, the Android build, the wake
-word, the always-awake foreground service, and the measurements comparing
-Whisper against the platform recogniser on the owner's accent are all in the
-history, at the commit before the one that deleted it. `git revert` brings
-the code back.
+It is not the client that was removed in `6255778`. That one was built around
+voice — a wake word, Whisper on the device, a foreground service to stay
+awake — and twenty-five of its fifty-eight files were that machinery. Reviving
+it would have brought back a voice stack that the satellite replaced, under
+the name the rename removed.
+
+What was worth keeping was taken from that commit rather than written again:
+the design system in `client/lib/design`, and the API client in
+`client/lib/api`, which already covers every endpoint the server has. Both
+were renamed on the way in. The rest is still in the history for anyone who
+wants the Android build or the accent measurements.
+
+Web only, and no build step beyond Flutter's. The bundle is meant to be served
+by the assistant itself, so the page's own origin is the server's address and
+nothing has to be configured; during development `--dart-define=ASSISTANT_URL`
+points it somewhere else and the loopback CORS rule lets it through.
 
 ### Comments
 
