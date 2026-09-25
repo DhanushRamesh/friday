@@ -353,16 +353,24 @@ show what is about to happen and wait. So anything destructive, anything that
 spends money, and anything that leaves the house belongs to the channels that
 can ask properly.
 
-A chat therefore records the channel it arrived by, `voice` or `direct`, set
-by the handler that accepted it. Nothing downstream could work it out
-otherwise: the runner, which is what would enforce a tool set, is handed a
-chat and nothing else, and by then the request is over.
+**A client declares its channel when it registers**, and every chat it submits
+records it. `voice` or `direct`, and omitting it means direct — the answer that
+grants less, so something with a microphone has to say so.
 
-The channel rather than the client. What matters is whether there was a way to
-confirm before acting, and a client identifier answers a different question —
-wrongly, the moment one client serves both. Rows written before the column
-existed are backfilled as `direct`, which is the guess that grants less, since
-nothing has yet been decided about what voice may not do.
+The client, not the endpoint. `/api/chat` speaks Ollama's wire format, and a
+format says nothing about how the words were produced: anything able to speak
+it can call it, and one day something typed will. What does know is the thing
+holding the token, because a token is issued to one thing and that thing either
+has a way to confirm before acting or it has not.
+
+The chat carries a copy rather than a reference to the client, because the
+runner — which is what would enforce a tool set — is handed a chat and nothing
+else, and by then the request is over.
+
+Rows written before the columns existed default to `direct`. The voice
+satellite's was corrected by hand, not inferred from its name: a name is
+something a person can edit, and reading a permission out of one is the same
+mistake as reading it out of an endpoint.
 
 ### A failure is said one way and recorded another
 

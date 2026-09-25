@@ -224,9 +224,11 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Everything reaching this handler was spoken: it exists only so that
-	// Home Assistant's voice pipeline has somewhere to send a turn.
-	t, err := chat.New(sessionID, chat.ChannelVoice, prompt)
+	// From the caller, not from this endpoint. This one speaks Ollama's wire
+	// format, and a format says nothing about how the words were produced:
+	// anything able to speak it can call it, and one day something typed
+	// will.
+	t, err := chat.New(sessionID, caller.Client.Channel, prompt)
 	switch {
 	case errors.Is(err, chat.ErrEmptyPrompt):
 		httpx.WriteError(ctx, w, http.StatusBadRequest, "A question is required.")

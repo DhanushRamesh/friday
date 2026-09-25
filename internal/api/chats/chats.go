@@ -127,7 +127,8 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sessionID, err := h.sessionFor(ctx, authn.Of(ctx), req.SessionID)
+	caller := authn.Of(ctx)
+	sessionID, err := h.sessionFor(ctx, caller, req.SessionID)
 	if err != nil {
 		if errors.Is(err, chat.ErrNotFound) || errors.Is(err, chat.ErrNotOwned) {
 			httpx.WriteError(ctx, w, http.StatusNotFound, "No such session.")
@@ -142,9 +143,9 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	// answers cannot be listened to at once.
 	h.supersede(ctx, sessionID)
 
-	// Typed, by the web client or anything else holding a token. Whatever
-	// it is, it can show what is about to happen before it happens.
-	t, err := chat.New(sessionID, chat.ChannelDirect, req.Prompt)
+	// From the caller, as on the other endpoint. Which endpoint was used
+	// says nothing about whether there was a way to confirm before acting.
+	t, err := chat.New(sessionID, caller.Client.Channel, req.Prompt)
 	switch {
 	case errors.Is(err, chat.ErrEmptyPrompt):
 		httpx.WriteError(ctx, w, http.StatusBadRequest, "A prompt is required.")

@@ -241,22 +241,41 @@ func TestChatIsCancelledWhenHomeAssistantHangsUp(t *testing.T) {
 	t.Errorf("chat status = %q, want %q", got.Status, chat.StatusCancelled)
 }
 
-// The channel is what decides, later, which tools a prompt may reach. It is
-// recorded here rather than inferred downstream, because nothing after this
-// handler can tell a spoken turn from a typed one.
-func TestAVoiceTurnIsRecordedAsVoice(t *testing.T) {
+// The channel says how the words were produced, and this endpoint cannot
+// know that: it is Ollama's wire format, and a format is not a microphone.
+// So it comes from the client holding the token, and this endpoint records
+// whatever that client is.
+func TestTheOllamaEndpointDoesNotMakeAPromptVoice(t *testing.T) {
 	e := apitest.New(t)
 
 	e.Do(t, http.MethodPost, "/api/chat",
-		`{"model":"assistant","messages":[{"role":"user","content":"what is the time"}]}`)
+		`{"model":"assistant","messages":[{"role":"user","content":"typed at the ollama endpoint"}]}`)
 
-	rec := e.Do(t, http.MethodGet, "/v1/chats", "")
+	if got := lastChannel(t, e, e.Token); got != string(chat.ChannelDirect) {
+		t.Errorf("channel = %q, want direct: the endpoint decided instead of the client", got)
+	}
+}
+
+func TestAClientThatSaidItIsVoiceRecordsVoice(t *testing.T) {
+	e := apitest.New(t)
+	satellite := e.LoginOn(t, "the satellite", string(chat.ChannelVoice))
+
+	e.AsBody(t, satellite.Token, http.MethodPost, "/api/chat",
+		`{"model":"assistant","messages":[{"role":"user","content":"spoken aloud"}]}`)
+
+	if got := lastChannel(t, e, satellite.Token); got != string(chat.ChannelVoice) {
+		t.Errorf("channel = %q, want voice", got)
+	}
+}
+
+// lastChannel : The channel of the most recent chat a token can see.
+func lastChannel(t *testing.T, e *apitest.Env, token string) string {
+	t.Helper()
+	rec := e.As(t, token, http.MethodGet, "/v1/chats")
 	var list chats.ListResponse
 	e.Decode(t, rec, &list)
 	if len(list.Chats) == 0 {
-		t.Fatal("the voice turn was not recorded at all")
+		t.Fatal("nothing was recorded at all")
 	}
-	if got := list.Chats[0].Channel; got != string(chat.ChannelVoice) {
-		t.Errorf("channel = %q, want voice", got)
-	}
+	return list.Chats[0].Channel
 }

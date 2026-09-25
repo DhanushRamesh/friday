@@ -53,6 +53,13 @@ type LoginRequest struct {
 	// ClientName : What to call the client being logged in from, such as
 	// "my phone". Optional.
 	ClientName string `json:"client_name,omitempty"`
+	// Channel : How this client's prompts will arrive, "voice" or "direct".
+	//
+	// Declared once, here, because it is a property of the thing holding the
+	// token rather than of any request it later makes. Omitted means direct,
+	// which is the answer that grants less: something with a microphone has
+	// to say so.
+	Channel string `json:"channel,omitempty"`
 }
 
 // LoginResponse : What logging in returns.
@@ -126,9 +133,19 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, err := chat.NewClient(user.ID, req.ClientName, tokenHash)
+	channel := chat.Channel(req.Channel)
+	if req.Channel == "" {
+		channel = chat.ChannelDirect
+	}
+
+	client, err := chat.NewClient(user.ID, req.ClientName, tokenHash, channel)
 	if errors.Is(err, chat.ErrClientNameTooLong) {
 		httpx.WriteError(ctx, w, http.StatusBadRequest, "That client name is too long.")
+		return
+	}
+	if errors.Is(err, chat.ErrUnknownChannel) {
+		httpx.WriteError(ctx, w, http.StatusBadRequest,
+			`The channel must be "voice" or "direct".`)
 		return
 	}
 	if err != nil {

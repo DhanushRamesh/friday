@@ -2,6 +2,7 @@ package chat
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -41,6 +42,15 @@ type Client struct {
 	UserID string
 	// Name : What to call it in a listing. May be empty.
 	Name string
+
+	// Channel : How this client's prompts arrive, and so what the assistant
+	// may do about them.
+	//
+	// Declared when the client registers, because it is a property of the
+	// thing holding the token and not of the endpoint it calls. A satellite
+	// with a microphone cannot show what is about to happen and wait; a
+	// client with a screen can, whatever wire format it speaks.
+	Channel Channel
 	// TokenHash : The stored form of the token this client authenticates
 	// with. The token itself exists only at the moment of logging in.
 	TokenHash string
@@ -56,9 +66,12 @@ type Client struct {
 
 // NewClient : Creates a client belonging to a user, authenticating with the
 // given token hash. The name is optional and is trimmed.
-func NewClient(userID, name, tokenHash string) (*Client, error) {
+func NewClient(userID, name, tokenHash string, channel Channel) (*Client, error) {
 	if userID == "" {
 		return nil, errors.New("chat: a client must belong to a user")
+	}
+	if !channel.Valid() {
+		return nil, fmt.Errorf("%w: %q", ErrUnknownChannel, channel)
 	}
 	name = strings.TrimSpace(name)
 	if utf8.RuneCountInString(name) > MaxClientNameRunes {
@@ -70,6 +83,7 @@ func NewClient(userID, name, tokenHash string) (*Client, error) {
 		ID:        NewClientID(),
 		UserID:    userID,
 		Name:      name,
+		Channel:   channel,
 		TokenHash: tokenHash,
 		CreatedAt: registered,
 		UpdatedAt: registered,

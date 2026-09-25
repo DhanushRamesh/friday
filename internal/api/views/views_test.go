@@ -97,14 +97,15 @@ func TestUserNeverPublishesTheHash(t *testing.T) {
 // The token is never published with a client: only its hash is stored, and
 // the one time the token itself appears is the login response.
 func TestClientNeverPublishesTheToken(t *testing.T) {
-	client, err := chat.NewClient(chat.NewUserID(), "my phone", "a-token-hash")
+	client, err := chat.NewClient(chat.NewUserID(), "my phone", "a-token-hash", chat.ChannelDirect)
 	if err != nil {
 		t.Fatalf("chat.NewClient: %v", err)
 	}
 	client.ActiveSessionID = chat.NewSessionID()
 
 	assertKeys(t, views.OfClient(*client, true),
-		"id", "name", "current", "revoked", "active_session_id", "created_at")
+		"id", "name", "channel", "current", "revoked", "active_session_id",
+		"created_at")
 
 	raw, _ := json.Marshal(views.OfClient(*client, true))
 	if strings.Contains(string(raw), "a-token-hash") {
@@ -115,7 +116,7 @@ func TestClientNeverPublishesTheToken(t *testing.T) {
 // Revoked is published even when false, so a client that is fine is visibly
 // fine rather than merely silent about it.
 func TestClientAlwaysStatesWhetherRevoked(t *testing.T) {
-	client, _ := chat.NewClient(chat.NewUserID(), "", "hash")
+	client, _ := chat.NewClient(chat.NewUserID(), "", "hash", chat.ChannelDirect)
 
 	got := keys(t, views.OfClient(*client, false))
 	if !got["revoked"] || !got["current"] {

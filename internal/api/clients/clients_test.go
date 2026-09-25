@@ -68,7 +68,7 @@ func TestAClientCannotRevokeAnotherUsers(t *testing.T) {
 
 	stranger, _ := chat.NewUser("stranger", "hash")
 	_ = e.Repo.CreateUser(t.Context(), stranger)
-	theirClient, _ := chat.NewClient(stranger.ID, "theirs", "their-hash")
+	theirClient, _ := chat.NewClient(stranger.ID, "theirs", "their-hash", chat.ChannelDirect)
 	_ = e.Repo.CreateClient(t.Context(), theirClient)
 
 	rec := e.As(t, mine.Token, http.MethodDelete, "/v1/clients/"+theirClient.ID)
@@ -131,7 +131,7 @@ func TestClientListingIsScopedToTheUser(t *testing.T) {
 
 	stranger, _ := chat.NewUser("stranger", "hash")
 	_ = e.Repo.CreateUser(t.Context(), stranger)
-	theirClient, _ := chat.NewClient(stranger.ID, "theirs", "their-hash")
+	theirClient, _ := chat.NewClient(stranger.ID, "theirs", "their-hash", chat.ChannelDirect)
 	_ = e.Repo.CreateClient(t.Context(), theirClient)
 
 	rec := e.Get(t, "/v1/clients")

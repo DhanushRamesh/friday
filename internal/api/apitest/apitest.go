@@ -197,7 +197,7 @@ func (e *Env) register(t *testing.T) {
 	if err != nil {
 		t.Fatalf("auth.NewToken: %v", err)
 	}
-	client, err := chat.NewClient(user.ID, "test client", tokenHash)
+	client, err := chat.NewClient(user.ID, "test client", tokenHash, chat.ChannelDirect)
 	if err != nil {
 		t.Fatalf("chat.NewClient: %v", err)
 	}
@@ -243,6 +243,16 @@ func (e *Env) Anonymous(t *testing.T, method, path, authorization string) *httpt
 	return e.Serve(e.request(method, path, "", authorization))
 }
 
+// AsBody : Issues a request with a body as the holder of the given token.
+//
+// Separate from As rather than an optional argument, because most calls have
+// no body and threading an empty string through every one of them reads
+// worse than two functions.
+func (e *Env) AsBody(t *testing.T, token, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	return e.Serve(e.request(method, path, body, "Bearer "+token))
+}
+
 // As : Issues a request as the holder of the given token.
 func (e *Env) As(t *testing.T, token, method, path string) *httptest.ResponseRecorder {
 	t.Helper()
@@ -281,11 +291,20 @@ func (e *Env) LoginRaw(t *testing.T, body string) *httptest.ResponseRecorder {
 	return e.Serve(e.request(http.MethodPost, "/v1/auth/login", body, ""))
 }
 
-// Login : Logs the test account in from a newly named client.
+// Login : Logs the test account in from a newly named client, which speaks
+// for itself as a direct one.
 func (e *Env) Login(t *testing.T, clientName string) authn.LoginResponse {
+	t.Helper()
+	return e.LoginOn(t, clientName, "")
+}
+
+// LoginOn : Logs in declaring a channel, so a test can hold a token that
+// belongs to something with a microphone.
+func (e *Env) LoginOn(t *testing.T, clientName, channel string) authn.LoginResponse {
 	t.Helper()
 	body, _ := json.Marshal(map[string]string{
 		"username": Username, "password": Password, "client_name": clientName,
+		"channel": channel,
 	})
 	rec := e.LoginRaw(t, string(body))
 	if rec.Code != http.StatusCreated {

@@ -249,6 +249,7 @@ func (r *Repository) CreateClient(ctx context.Context, d *chat.Client) error {
 		ID:              d.ID,
 		UserID:          nullable(d.UserID),
 		Name:            d.Name,
+		Channel:         string(d.Channel),
 		TokenHash:       nullable(d.TokenHash),
 		ActiveSessionID: nullable(d.ActiveSessionID),
 		CreatedAt:       d.CreatedAt,

@@ -94,6 +94,7 @@ type clientRow struct {
 	ID              string     `gorm:"column:id;primaryKey"`
 	UserID          *string    `gorm:"column:user_id"`
 	Name            string     `gorm:"column:name"`
+	Channel         string     `gorm:"column:channel"`
 	TokenHash       *string    `gorm:"column:token_hash"`
 	ActiveSessionID *string    `gorm:"column:active_session_id"`
 	RevokedAt       *time.Time `gorm:"column:revoked_at"`
@@ -110,6 +111,7 @@ func (r *clientRow) toClient() *chat.Client {
 		ID:              r.ID,
 		UserID:          value(r.UserID),
 		Name:            r.Name,
+		Channel:         chat.Channel(r.Channel),
 		TokenHash:       value(r.TokenHash),
 		ActiveSessionID: value(r.ActiveSessionID),
 		RevokedAt:       utc(r.RevokedAt),

@@ -132,8 +132,10 @@ func OfUser(u *chat.User) User {
 
 // Client : A client as the API returns it.
 type Client struct {
-	ID              string     `json:"id"`
-	Name            string     `json:"name,omitempty"`
+	ID   string `json:"id"`
+	Name string `json:"name,omitempty"`
+	// Channel : How this client's prompts arrive, "voice" or "direct".
+	Channel         string     `json:"channel,omitempty"`
 	Current         bool       `json:"current"`
 	Revoked         bool       `json:"revoked"`
 	RevokedAt       *time.Time `json:"revoked_at,omitempty"`
@@ -147,6 +149,7 @@ func OfClient(d chat.Client, current bool) Client {
 	return Client{
 		ID:              d.ID,
 		Name:            d.Name,
+		Channel:         string(d.Channel),
 		Current:         current,
 		Revoked:         d.Revoked(),
 		RevokedAt:       d.RevokedAt,
