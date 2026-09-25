@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../api/client.dart';
+import '../api/remembered_client.dart';
 
 /// Turn : One exchange — what was asked, and what came back.
 ///
@@ -64,9 +65,20 @@ class Turn {
 /// sending, reload after creating — in one file instead of spread across
 /// the widgets that happen to trigger it.
 class AppState extends ChangeNotifier {
-  AppState({required this.api});
+  AppState({required this.api, RememberedClient? remembered})
+    : _remembered = remembered ?? RememberedClient();
 
   final AssistantApi api;
+
+  /// _remembered : What this browser called itself last time. It outlives the
+  /// token, so signing out does not turn this into an unknown browser.
+  final RememberedClient _remembered;
+
+  String? _clientName;
+
+  /// clientName : The name to sign in under, when one is already known.
+  /// Null means this install has never signed in and has to be asked.
+  String? get clientName => _clientName;
 
   /// signedIn : Whether there is a token and an identity behind it.
   bool get signedIn => _identity != null;
@@ -114,7 +126,11 @@ class AppState extends ChangeNotifier {
   /// left to fail the first real call, so the app opens on the login screen
   /// instead of on an empty one that errors.
   Future<bool> start() async {
-    if (!await api.restore()) return false;
+    _clientName = await _remembered.read();
+    if (!await api.restore()) {
+      notifyListeners();
+      return false;
+    }
     try {
       _identity = await api.me();
       await _loadSessions();
@@ -140,6 +156,10 @@ class AppState extends ChangeNotifier {
         clientName: clientName,
       );
       _identity = Identity(user: result.user, client: result.client);
+      // Remembered after the server accepted it, not before: a name kept from
+      // a sign-in that failed would be a name nothing is registered under.
+      _clientName = result.client.name.isEmpty ? clientName : result.client.name;
+      if (_clientName != null) await _remembered.write(_clientName!);
       await _loadSessions();
       return true;
     } on Object catch (e) {
@@ -150,7 +170,17 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// forgetClientName : Lets this browser be named again on the next sign-in.
+  Future<void> forgetClientName() async {
+    await _remembered.forget();
+    _clientName = null;
+    notifyListeners();
+  }
+
   /// signOut : Forgets the token and everything it was showing.
+  ///
+  /// The name this browser registered under is kept. Signing out does not
+  /// make this a different browser.
   Future<void> signOut() async {
     await api.logout();
     _identity = null;
