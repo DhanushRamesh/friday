@@ -473,6 +473,39 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### A tool is a shape, not a paragraph
+
+Prose quality cannot be enforced and structure can, so a tool is described in
+fixed parts: what it does, when to reach for it, when not to, and worked
+examples. The descriptions that go wrong are the ones saying what a tool is
+without saying when it applies, and the repair is always the same — the
+description grows louder until it is shouting IMPORTANT at the model. Ulaa's
+tab delegate does exactly that, and its sub-prompt then has to spell out that
+identifiers need quotation marks. A place for "use when" is what makes the
+shouting unnecessary.
+
+Registration refuses a tool that cannot be described: no purpose, no use-when,
+no channel, an argument with no description or no type, a required argument
+the tool does not take. All of it is findable at startup, and finding it out
+instead from a wrong answer costs far more.
+
+The schema is a typed structure that renders itself as JSON Schema, rather
+than a raw string. A malformed schema then cannot be written, and a test can
+walk the properties to check every one is described.
+
+### The channel is checked twice, and the refusal is spoken
+
+`For` decides which tools the model is told about; `Call` decides which
+actually run. That looks like the same check twice and is not: the first is a
+prompt, and a prompt is not a boundary. A model that has been told wrongly,
+that invents a name, or that repeats a call from earlier in a conversation
+that arrived by another channel, is stopped by the second.
+
+A refused tool says so rather than quietly doing nothing. Told nothing, a
+model invents a reason for the failure, and it invents a plausible one. The
+same is true of a name that does not exist, which is answered with the names
+that do, so the model can correct itself instead of guessing again.
+
 ### A message is words, tool calls or tool results, and never two
 
 A turn that calls a tool produces two more messages: the assistant asking for
