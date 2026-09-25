@@ -288,6 +288,28 @@ func (r *Runner) prompt() string {
 	return persona.Prompt(id, r.assistantName)
 }
 
+// promptFor : The system prompt, with where this chat is being answered.
+//
+// The manner does not change per chat and the whereabouts do, so they are
+// joined here rather than in the persona. Asked which conversation this is,
+// an assistant that has not been told answers from whatever it remembers
+// doing, and remembering having switched somewhere is not the same as being
+// there.
+func (r *Runner) promptFor(ctx context.Context, t *chat.Chat) string {
+	prompt := r.prompt()
+	if t.ConversationID == "" || r.repo == nil {
+		return prompt
+	}
+
+	c, err := r.repo.GetConversation(ctx, t.ConversationID)
+	if err != nil {
+		r.logger.ErrorContext(ctx, "cannot tell the assistant where it is",
+			slog.Any("error", err))
+		return prompt
+	}
+	return prompt + " " + conversation.Whereabouts(c.ID, c.Title)
+}
+
 // limitsFor : The ceilings a chat's history is held under.
 //
 // The count and the byte budget are the same for every chat. The context

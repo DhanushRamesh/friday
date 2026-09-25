@@ -473,6 +473,24 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### The assistant is told where it is
+
+Asked which conversation it was in, it named one it had switched away from
+earlier. It had no way to know: nothing told it, so it answered from what it
+remembered doing, and remembering having switched somewhere is not the same as
+being there. A fact that cannot be looked up is a fact that gets invented.
+
+The system prompt now carries the conversation's name and identifier, composed
+per chat since it changes per chat while the manner does not. An unnamed
+conversation is said to be unnamed rather than left out, because a gap is what
+invites a guess.
+
+It is one sentence against a whole transcript, and the transcript can win. In
+a conversation already containing the earlier wrong answer, the model repeated
+itself rather than reading the prompt. A conversation with nothing to copy
+answers exactly. Being told where it is removes the reason to guess; it does
+not overrule what it has already said.
+
 ### A tool that half-obeys has to say so
 
 Asked to make a conversation, switch to it and answer there, the assistant did

@@ -94,3 +94,37 @@ func TestTheAnnouncementNamesIt(t *testing.T) {
 		t.Errorf("announcement = %q, want it to end on a full stop so the microphone is not reopened", got)
 	}
 }
+
+// The assistant has to be told where it is. Asked outright and not told, it
+// answers from what it remembers doing, and having switched somewhere is not
+// the same as being there.
+func TestWhereaboutsNamesTheConversation(t *testing.T) {
+	got := conversation.Whereabouts("conv_01M3D477HXQ4YNQX7BNXJZZCV0", "Dhoni Test")
+
+	for _, want := range []string{"Dhoni Test", "conv_01M3D477HXQ4YNQX7BNXJZZCV0"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("whereabouts = %q, want it to contain %q", got, want)
+		}
+	}
+}
+
+// An unnamed conversation is said to be unnamed rather than left blank, since
+// a gap is what invites a guess.
+func TestWhereaboutsSaysWhenThereIsNoName(t *testing.T) {
+	got := conversation.Whereabouts("conv_01M3D477HXQ4YNQX7BNXJZZCV0", "  ")
+
+	if !strings.Contains(got, "no name yet") {
+		t.Errorf("whereabouts = %q, want it to say the conversation is unnamed", got)
+	}
+	if !strings.Contains(got, "do not guess") {
+		t.Errorf("whereabouts = %q, want it told not to invent a name", got)
+	}
+}
+
+// A chat belonging to no conversation says nothing, rather than describing a
+// conversation that is not there.
+func TestWhereaboutsIsSilentWithoutAConversation(t *testing.T) {
+	if got := conversation.Whereabouts("", "Dhoni Test"); got != "" {
+		t.Errorf("whereabouts = %q, want nothing", got)
+	}
+}

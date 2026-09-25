@@ -80,6 +80,25 @@ func CleanTitle(answer string) string {
 	return title
 }
 
+// Whereabouts : What the assistant is told about the conversation it is
+// answering in.
+//
+// Without it the assistant has no way to know where it is, and asked
+// outright it answers from whatever it remembers doing -- which is how it
+// came to name a conversation it had switched away from. A fact it cannot
+// look up is a fact it will invent.
+func Whereabouts(id, title string) string {
+	if id == "" {
+		return ""
+	}
+	if strings.TrimSpace(title) == "" {
+		return "You are answering in a conversation that has no name yet, with the identifier " +
+			id + ". Say so if asked which conversation this is; do not guess at a name."
+	}
+	return "You are answering in the conversation titled " + title +
+		", with the identifier " + id + "."
+}
+
 // AnnounceTitlesSetting : What the choice to hear a new name is stored under.
 const AnnounceTitlesSetting = "announce_titles"
 

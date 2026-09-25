@@ -88,7 +88,7 @@ func (r *Runner) consume(runCtx, ctx context.Context, t *chat.Chat) {
 			Model:   t.Model.ID,
 			Tools:   tools,
 
-			SystemPrompt: r.prompt(),
+			SystemPrompt: r.promptFor(ctx, t),
 		})
 		if err != nil {
 			r.logger.ErrorContext(ctx, "environment would not start", slog.Any("error", err))
