@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DhanushRamesh/personal-assistant/internal/catalog"
 	"github.com/DhanushRamesh/personal-assistant/internal/failure"
 	"github.com/DhanushRamesh/personal-assistant/internal/logging"
 	"github.com/DhanushRamesh/personal-assistant/internal/provider"
@@ -646,5 +647,24 @@ func TestNoAssistantNameIsHardcodedInSpokenText(t *testing.T) {
 				t.Errorf("%q is hardcoded in %q", forbidden, s)
 			}
 		}
+	}
+}
+
+// Every model the endpoint is said to answer with has to be one the
+// catalogue describes, or it is offered to nobody: the two lists are joined
+// on vendor and identifier, and a typo in either silently drops an entry.
+func TestEveryRoutedModelIsCatalogued(t *testing.T) {
+	for _, ref := range platformai.Models() {
+		if _, ok := catalog.Find(ref.Vendor, ref.ID); !ok {
+			t.Errorf("%s/%s is routed but not in the catalogue", ref.Vendor, ref.ID)
+		}
+	}
+}
+
+// The list is not empty, since an empty one offers no choice at all and would
+// look exactly like the feature working.
+func TestSomeModelsAreRouted(t *testing.T) {
+	if len(platformai.Models()) == 0 {
+		t.Error("no models are routed")
 	}
 }

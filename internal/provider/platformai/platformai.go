@@ -73,12 +73,31 @@ const (
 	DefaultModel       = "claude-sonnet-4-6"
 )
 
-// Vendors : The model vendors this endpoint can reach.
+// ModelRef : One model this endpoint will answer with.
+type ModelRef struct{ Vendor, ID string }
+
+// Models : The models this endpoint is known to answer with.
 //
-// Named here rather than inferred from a catalogue, because what this service
-// will route to is its own business and does not change when a model is added
-// to a list somewhere else.
-func Vendors() []string { return []string{"anthropic", "openai", "google"} }
+// Named one by one rather than by vendor, because a vendor the service speaks
+// to is not the set of models it routes: it reaches Anthropic and refuses
+// claude-haiku-4-5, while answering to the dated identifier for the same
+// model. Every one of these was verified by asking it, and a model absent
+// here is one nobody has tried rather than one known to fail.
+//
+// Google is not listed at all: the endpoint rejects the vendor outright.
+func Models() []ModelRef {
+	return []ModelRef{
+		{"anthropic", "claude-sonnet-4-6"},
+		{"anthropic", "claude-sonnet-4-5"},
+		{"anthropic", "claude-opus-4-5"},
+		{"anthropic", "claude-haiku-4-5-20251001"},
+		{"openai", "gpt-4o"},
+		{"openai", "gpt-4o-mini"},
+		{"openai", "gpt-4.1"},
+		{"openai", "gpt-4.1-mini"},
+		{"openai", "gpt-4.1-nano"},
+	}
+}
 
 // SystemPromptFor : Returns the instructions for an assistant called name.
 //

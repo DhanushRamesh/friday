@@ -213,15 +213,23 @@ func buildProvider(cfg config.Config, logger *slog.Logger) (provider.Provider, e
 // reachableModels : The models the configured provider can call, which are
 // the ones a client may be set to answer with.
 //
-// Which vendors a provider reaches is the provider's own business, so the
-// list is chosen here alongside it rather than filtered by the catalogue.
+// The provider says which models it will answer with and the catalogue says
+// what each one holds. Neither knows the other: a model the endpoint routes
+// but nobody has catalogued is left out, since there would be nothing to
+// tell a person about it.
 func reachableModels(cfg config.Config) []catalog.Model {
-	switch cfg.Provider.Name {
-	case config.ProviderPlatformAI:
-		return catalog.ByVendors(platformai.Vendors()...)
-	default:
+	if cfg.Provider.Name != config.ProviderPlatformAI {
 		return nil
 	}
+
+	refs := platformai.Models()
+	out := make([]catalog.Model, 0, len(refs))
+	for _, ref := range refs {
+		if m, ok := catalog.Find(ref.Vendor, ref.ID); ok {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // historyLimits : The ceilings the conversation sent to the provider is held

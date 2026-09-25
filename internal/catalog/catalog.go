@@ -39,10 +39,16 @@ var registry = []Model{
 	{ID: "claude-sonnet-4-6", Name: "Claude Sonnet 4.6", Vendor: "anthropic", ContextTokens: 200_000, SupportsTools: true},
 	{ID: "claude-sonnet-4-5", Name: "Claude Sonnet 4.5", Vendor: "anthropic", ContextTokens: 200_000, SupportsTools: true},
 	{ID: "claude-opus-4-5", Name: "Claude Opus 4.5", Vendor: "anthropic", ContextTokens: 200_000, SupportsTools: true},
-	{ID: "claude-haiku-4-5", Name: "Claude Haiku 4.5", Vendor: "anthropic", ContextTokens: 200_000, SupportsTools: true},
+	// The dated identifier, because the bare alias is not routed and the
+	// endpoint answers "Model is not supported" to it.
+	{ID: "claude-haiku-4-5-20251001", Name: "Claude Haiku 4.5", Vendor: "anthropic", ContextTokens: 200_000, SupportsTools: true},
 
 	// OpenAI.
 	{ID: "gpt-4o", Name: "GPT-4o", Vendor: "openai", ContextTokens: 128_000, SupportsTools: true},
+	{ID: "gpt-4o-mini", Name: "GPT-4o mini", Vendor: "openai", ContextTokens: 128_000, SupportsTools: true},
+	{ID: "gpt-4.1", Name: "GPT-4.1", Vendor: "openai", ContextTokens: 1_047_576, SupportsTools: true},
+	{ID: "gpt-4.1-mini", Name: "GPT-4.1 mini", Vendor: "openai", ContextTokens: 1_047_576, SupportsTools: true},
+	{ID: "gpt-4.1-nano", Name: "GPT-4.1 nano", Vendor: "openai", ContextTokens: 1_047_576, SupportsTools: true},
 
 	// Ollama, on this machine. These windows are what the model ships with;
 	// a Modelfile can lower them, and num_ctx at run time decides in the end.
@@ -82,23 +88,3 @@ func ContextTokens(vendor, id string) int {
 
 // All : Every known model, in the order they are listed.
 func All() []Model { return append([]Model(nil), registry...) }
-
-// ByVendors : Every known model made by one of the given vendors, in the
-// order they are listed.
-//
-// A provider reaches some vendors and not others, so offering a person the
-// whole catalogue would be offering models the server cannot call. No vendors
-// at all returns nothing, which is the honest answer for a provider that
-// reaches none of these.
-func ByVendors(vendors ...string) []Model {
-	out := make([]Model, 0, len(registry))
-	for _, m := range registry {
-		for _, v := range vendors {
-			if strings.EqualFold(m.Vendor, v) {
-				out = append(out, m)
-				break
-			}
-		}
-	}
-	return out
-}

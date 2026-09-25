@@ -473,6 +473,28 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### A vendor an endpoint speaks to is not a model it routes
+
+The model picker first offered every model whose vendor the endpoint reaches.
+That inference is wrong, and wrong in the direction that breaks things: this
+endpoint talks to Anthropic and refuses `claude-haiku-4-5`, while answering
+happily to `claude-haiku-4-5-20251001`, which is the same model under its
+dated name. It rejects Google as a vendor outright. Choosing a refused model
+left that client failing every prompt afterwards, which is how it was found —
+by breaking voice.
+
+So the endpoint names the models it answers with, one by one, and the
+catalogue says what each one holds. Neither list knows the other; they are
+joined on vendor and identifier, and a test fails if a routed model is not
+catalogued, because the join would otherwise drop it in silence.
+
+Every entry was verified by asking the endpoint through the real provider
+code. Doing that with curl gave 401s, since a handmade request is missing
+whatever the client sends; driving the provider itself was both easier and
+the only way to test what actually runs. One model reported rejected on the
+first attempt and answered on the second, the first failure having been in
+minting the token rather than in the model. One probe is not proof.
+
 ### A session is a conversation
 
 Migration 00007 renamed conversations to sessions. This renames them back,
