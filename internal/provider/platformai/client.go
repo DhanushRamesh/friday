@@ -167,6 +167,19 @@ func (p *Provider) chat(ctx context.Context, ask provider.Request) (string, erro
 
 // attemptChat : One try, returning the HTTP status alongside the failure
 // so the caller can tell a refused token from anything else.
+// withSummary : The system prompt with the condensed earlier conversation
+// appended, or unchanged when there is none.
+//
+// It goes here rather than among the messages because this endpoint keeps the
+// system prompt in a field of its own, and because a condensation is not
+// something either side said.
+func withSummary(prompt, summary string) string {
+	if strings.TrimSpace(summary) == "" {
+		return prompt
+	}
+	return prompt + "\n\nEarlier in this conversation, summarised:\n" + summary
+}
+
 func (p *Provider) attemptChat(ctx context.Context, ask provider.Request) (string, int, error) {
 	token, err := p.accessToken(ctx)
 	if err != nil {
@@ -190,7 +203,7 @@ func (p *Provider) attemptChat(ctx context.Context, ask provider.Request) (strin
 	body, err := json.Marshal(chatRequest{
 		Vendor:   p.cfg.Vendor,
 		Model:    p.cfg.Model,
-		Context:  p.cfg.SystemPrompt,
+		Context:  withSummary(p.cfg.SystemPrompt, ask.Summary),
 		Messages: messages,
 	})
 	if err != nil {

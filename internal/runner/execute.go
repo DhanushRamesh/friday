@@ -43,6 +43,12 @@ func (r *Runner) execute(ctx, lifeCtx context.Context, t *chat.Chat) {
 	r.logger.InfoContext(ctx, "chat started")
 
 	r.consume(runCtx, ctx, t)
+
+	// After the answer is recorded and announced, so that maintaining the
+	// session's memory is never in front of the person waiting for it. The
+	// slot is still held, which keeps this from competing with the next
+	// chat for the same provider.
+	r.condense(ctx, t.SessionID)
 }
 
 // consume : Reads the provider's stream and records what it produces.
@@ -51,9 +57,11 @@ func (r *Runner) execute(ctx, lifeCtx context.Context, t *chat.Chat) {
 // it and is used for the final write, because a cancelled context cannot be
 // used to record that the chat was cancelled.
 func (r *Runner) consume(runCtx, ctx context.Context, t *chat.Chat) {
+	window := r.history(ctx, t)
 	stream, err := r.provider.Run(runCtx, provider.Request{
 		Prompt:  t.Prompt,
-		History: r.history(ctx, t),
+		History: toProviderTurns(window.Messages),
+		Summary: window.Summary,
 	})
 	if err != nil {
 		r.logger.ErrorContext(ctx, "provider would not start", slog.Any("error", err))
@@ -104,9 +112,9 @@ func (r *Runner) consume(runCtx, ctx context.Context, t *chat.Chat) {
 // again as the prompt. Neither failure is worth abandoning the chat for: an
 // unrecorded question costs the next turn its context, and an unread history
 // leaves the prompt to make sense on its own, which it usually does.
-func (r *Runner) history(ctx context.Context, t *chat.Chat) []provider.Turn {
+func (r *Runner) history(ctx context.Context, t *chat.Chat) session.Window {
 	if t.SessionID == "" {
-		return nil
+		return session.Window{}
 	}
 
 	asked, err := r.messages.Append(ctx, session.Said(t.SessionID, t.Prompt, t.CreatedAt))
@@ -117,11 +125,18 @@ func (r *Runner) history(ctx context.Context, t *chat.Chat) []provider.Turn {
 	said, err := r.messages.Before(ctx, t.SessionID, asked.Seq)
 	if err != nil {
 		r.logger.ErrorContext(ctx, "cannot read session history", slog.Any("error", err))
-		return nil
+		return session.Window{}
 	}
 
-	window := session.Plan(said, session.Summary{}, r.historyLimits)
-	return toProviderTurns(window.Messages)
+	// A session with no summary yet reads as the zero one, which Plan treats
+	// as nothing condensed. Failing to read it costs the turn its oldest
+	// context, not the turn itself.
+	summary, err := r.messages.Summary(ctx, t.SessionID)
+	if err != nil {
+		r.logger.ErrorContext(ctx, "cannot read session summary", slog.Any("error", err))
+	}
+
+	return session.Plan(said, summary, r.historyLimits)
 }
 
 // toProviderTurns : Converts a session's messages into the form a provider

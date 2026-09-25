@@ -31,9 +31,11 @@ type Repository struct {
 	// said : Each session's conversation, in the order it was said.
 	said          map[string][]session.Message
 	appendSaidErr error
-	sessions      map[string]chat.Session
-	clients       map[string]chat.Client
-	users         map[string]chat.User
+	// summaries : Each session's condensed earlier conversation.
+	summaries map[string]session.Summary
+	sessions  map[string]chat.Session
+	clients   map[string]chat.Client
+	users     map[string]chat.User
 
 	// Fault injection, for exercising the paths a caller takes when storage
 	// misbehaves. A real repository fails; one that never does lets those
@@ -50,11 +52,12 @@ type Repository struct {
 // New : Returns an empty repository.
 func New() *Repository {
 	return &Repository{
-		chats:    map[string]*chat.Chat{},
-		said:     map[string][]session.Message{},
-		sessions: map[string]chat.Session{},
-		clients:  map[string]chat.Client{},
-		users:    map[string]chat.User{},
+		chats:     map[string]*chat.Chat{},
+		said:      map[string][]session.Message{},
+		summaries: map[string]session.Summary{},
+		sessions:  map[string]chat.Session{},
+		clients:   map[string]chat.Client{},
+		users:     map[string]chat.User{},
 	}
 }
 

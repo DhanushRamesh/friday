@@ -65,3 +65,26 @@ func (m *Repository) Said(sessionID string) []session.Message {
 	defer m.mu.Unlock()
 	return append([]session.Message(nil), m.said[sessionID]...)
 }
+
+// Summary : Returns the session's condensed earlier conversation.
+func (m *Repository) Summary(_ context.Context, sessionID string) (session.Summary, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, ok := m.sessions[sessionID]; !ok {
+		return session.Summary{}, session.ErrNoSession
+	}
+	return m.summaries[sessionID], nil
+}
+
+// SetSummary : Replaces the session's condensed earlier conversation.
+func (m *Repository) SetSummary(_ context.Context, sessionID string, s session.Summary) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, ok := m.sessions[sessionID]; !ok {
+		return session.ErrNoSession
+	}
+	m.summaries[sessionID] = s
+	return nil
+}

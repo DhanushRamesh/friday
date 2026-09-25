@@ -30,6 +30,11 @@ const (
 	// staying pending until a slot frees.
 	DefaultMaxConcurrent = 4
 
+	// DefaultCondenseTimeout : How long condensing an old conversation may
+	// take. Shorter than a chat, because nobody is waiting for it and a slow
+	// one delays the next chat for no benefit.
+	DefaultCondenseTimeout = 2 * time.Minute
+
 	// interruptedReason : Recorded against chats found still running at
 	// startup, which no process is working on any more.
 	interruptedReason = "The server restarted while this was running, so it did not finish."
@@ -72,19 +77,23 @@ type Options struct {
 	// held under. A zero size selects session.DefaultBudget, and a zero
 	// count means the provider accepts any number of messages.
 	HistoryLimits session.Limits
+	// CondenseTimeout : How long condensing an old conversation may take.
+	// Zero selects DefaultCondenseTimeout.
+	CondenseTimeout time.Duration
 }
 
 // Runner : Executes chats in the background.
 //
 // It is safe for concurrent use.
 type Runner struct {
-	repo          chat.Repository
-	messages      session.Repository
-	provider      provider.Provider
-	publisher     Publisher
-	logger        *slog.Logger
-	chatTimeout   time.Duration
-	historyLimits session.Limits
+	repo            chat.Repository
+	messages        session.Repository
+	provider        provider.Provider
+	publisher       Publisher
+	logger          *slog.Logger
+	chatTimeout     time.Duration
+	historyLimits   session.Limits
+	condenseTimeout time.Duration
 
 	// slots : Limits how many chats run at once. A chat holds one for the
 	// whole of its run.
@@ -130,20 +139,24 @@ func New(opts Options) (*Runner, error) {
 	if opts.MaxConcurrent <= 0 {
 		opts.MaxConcurrent = DefaultMaxConcurrent
 	}
+	if opts.CondenseTimeout <= 0 {
+		opts.CondenseTimeout = DefaultCondenseTimeout
+	}
 
 	base, stop := context.WithCancel(context.Background())
 	return &Runner{
-		repo:          opts.Repository,
-		messages:      opts.Messages,
-		provider:      opts.Provider,
-		publisher:     opts.Publisher,
-		logger:        opts.Logger,
-		chatTimeout:   opts.ChatTimeout,
-		historyLimits: opts.HistoryLimits,
-		slots:         make(chan struct{}, opts.MaxConcurrent),
-		base:          base,
-		stopBase:      stop,
-		active:        map[string]*activeChat{},
+		repo:            opts.Repository,
+		messages:        opts.Messages,
+		provider:        opts.Provider,
+		publisher:       opts.Publisher,
+		logger:          opts.Logger,
+		chatTimeout:     opts.ChatTimeout,
+		historyLimits:   opts.HistoryLimits,
+		condenseTimeout: opts.CondenseTimeout,
+		slots:           make(chan struct{}, opts.MaxConcurrent),
+		base:            base,
+		stopBase:        stop,
+		active:          map[string]*activeChat{},
 	}, nil
 }
 

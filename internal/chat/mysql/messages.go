@@ -139,3 +139,81 @@ func (r *Repository) messages(ctx context.Context, sessionID string, seq int) ([
 	}
 	return messages, nil
 }
+
+// sessionSummaryRow : The condensation columns of the sessions table.
+//
+// Separate from sessionRow because that one is written with an explicit list
+// of columns, and a field added there but forgotten in the list is stored
+// nowhere. These two are read and written on their own.
+type sessionSummaryRow struct {
+	Summary    *string `gorm:"column:summary"`
+	ThroughSeq int     `gorm:"column:summarised_through_seq"`
+}
+
+// Summary : Returns the session's condensed earlier conversation.
+func (r *Repository) Summary(ctx context.Context, sessionID string) (session.Summary, error) {
+	if sessionID == "" {
+		return session.Summary{}, session.ErrNoSession
+	}
+
+	var row sessionSummaryRow
+	err := r.db.WithContext(ctx).
+		Model(&sessionRow{}).
+		Select("summary", "summarised_through_seq").
+		Where("id = ?", sessionID).
+		Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return session.Summary{}, session.ErrNoSession
+	}
+	if err != nil {
+		return session.Summary{}, fmt.Errorf(
+			"session: reading the summary of %s: %w", sessionID, err)
+	}
+
+	return session.Summary{Text: value(row.Summary), ThroughSeq: row.ThroughSeq}, nil
+}
+
+// SetSummary : Replaces the session's condensed earlier conversation.
+func (r *Repository) SetSummary(ctx context.Context, sessionID string, s session.Summary) error {
+	if sessionID == "" {
+		return session.ErrNoSession
+	}
+
+	// A map names the columns at the point of writing, so there is no
+	// separate list to keep in step with it.
+	res := r.db.WithContext(ctx).
+		Model(&sessionRow{}).
+		Where("id = ?", sessionID).
+		Updates(map[string]any{
+			"summary":                nullable(s.Text),
+			"summarised_through_seq": s.ThroughSeq,
+		})
+	if res.Error != nil {
+		return fmt.Errorf("session: writing the summary of %s: %w", sessionID, res.Error)
+	}
+	if res.RowsAffected > 0 {
+		return nil
+	}
+
+	// MySQL counts rows it changed, not rows it matched, so writing the same
+	// summary twice affects none. Only a session that is not there is an
+	// error.
+	return r.sessionExists(ctx, sessionID)
+}
+
+// sessionExists : Reports ErrNoSession when the session is not there, and nil
+// when it is.
+func (r *Repository) sessionExists(ctx context.Context, sessionID string) error {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&sessionRow{}).
+		Where("id = ?", sessionID).
+		Count(&count).Error
+	if err != nil {
+		return fmt.Errorf("session: looking for %s: %w", sessionID, err)
+	}
+	if count == 0 {
+		return session.ErrNoSession
+	}
+	return nil
+}

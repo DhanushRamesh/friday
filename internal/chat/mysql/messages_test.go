@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	"github.com/DhanushRamesh/personal-assistant/internal/session"
 )
 
@@ -144,5 +145,95 @@ func TestAppendRefusesAMessageTooLarge(t *testing.T) {
 	_, err := r.Append(context.Background(), session.Said(id, huge, time.Now().UTC()))
 	if !errors.Is(err, session.ErrTooLarge) {
 		t.Errorf("err = %v, want ErrTooLarge", err)
+	}
+}
+
+// A session with nothing condensed reports the zero summary rather than an
+// error: having no summary yet is the ordinary case.
+func TestSummaryOfAnUncondensedSession(t *testing.T) {
+	r := newRepository(t)
+	id := storedSession(t, r)
+
+	got, err := r.Summary(context.Background(), id)
+	if err != nil {
+		t.Fatalf("Summary: %v", err)
+	}
+	if got.Text != "" || got.ThroughSeq != 0 {
+		t.Errorf("Summary = %+v, want the zero one", got)
+	}
+}
+
+// Both columns survive the round trip. A field added to a row but left out of
+// the write is stored nowhere, and only the database says so.
+func TestSummarySurvivesStorage(t *testing.T) {
+	r := newRepository(t)
+	ctx := context.Background()
+	id := storedSession(t, r)
+
+	want := session.Summary{Text: "they agreed on the roof", ThroughSeq: 42}
+	if err := r.SetSummary(ctx, id, want); err != nil {
+		t.Fatalf("SetSummary: %v", err)
+	}
+
+	got, err := r.Summary(ctx, id)
+	if err != nil {
+		t.Fatalf("Summary: %v", err)
+	}
+	if got != want {
+		t.Errorf("Summary = %+v, want %+v", got, want)
+	}
+}
+
+// Condensing again replaces what was there, rather than adding to it.
+func TestSummaryIsReplaced(t *testing.T) {
+	r := newRepository(t)
+	ctx := context.Background()
+	id := storedSession(t, r)
+
+	first := session.Summary{Text: "the first part", ThroughSeq: 20}
+	if err := r.SetSummary(ctx, id, first); err != nil {
+		t.Fatalf("SetSummary: %v", err)
+	}
+	second := session.Summary{Text: "the first and second parts", ThroughSeq: 60}
+	if err := r.SetSummary(ctx, id, second); err != nil {
+		t.Fatalf("SetSummary: %v", err)
+	}
+
+	got, err := r.Summary(ctx, id)
+	if err != nil {
+		t.Fatalf("Summary: %v", err)
+	}
+	if got != second {
+		t.Errorf("Summary = %+v, want %+v", got, second)
+	}
+}
+
+// Writing the same summary twice is not mistaken for a session that is not
+// there. MySQL counts rows it changed, not rows it matched.
+func TestSummaryWrittenTwiceIsNotAMissingSession(t *testing.T) {
+	r := newRepository(t)
+	ctx := context.Background()
+	id := storedSession(t, r)
+
+	same := session.Summary{Text: "unchanged", ThroughSeq: 7}
+	if err := r.SetSummary(ctx, id, same); err != nil {
+		t.Fatalf("first SetSummary: %v", err)
+	}
+	if err := r.SetSummary(ctx, id, same); err != nil {
+		t.Errorf("second SetSummary: %v", err)
+	}
+}
+
+// A session that does not exist is an error rather than a silent no-op.
+func TestSummaryOfAMissingSession(t *testing.T) {
+	r := newRepository(t)
+	ctx := context.Background()
+
+	if _, err := r.Summary(ctx, chat.NewSessionID()); !errors.Is(err, session.ErrNoSession) {
+		t.Errorf("Summary error = %v, want ErrNoSession", err)
+	}
+	err := r.SetSummary(ctx, chat.NewSessionID(), session.Summary{Text: "x", ThroughSeq: 1})
+	if !errors.Is(err, session.ErrNoSession) {
+		t.Errorf("SetSummary error = %v, want ErrNoSession", err)
 	}
 }

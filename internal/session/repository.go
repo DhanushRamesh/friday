@@ -22,4 +22,11 @@ type Repository interface {
 
 	// All : Returns everything said in a session, oldest first.
 	All(ctx context.Context, sessionID string) ([]Message, error)
+
+	// Summary : Returns the session's condensed earlier conversation. A
+	// session with none yields the zero Summary and no error.
+	Summary(ctx context.Context, sessionID string) (Summary, error)
+
+	// SetSummary : Replaces the session's condensed earlier conversation.
+	SetSummary(ctx context.Context, sessionID string, s Summary) error
 }

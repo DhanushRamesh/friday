@@ -108,6 +108,14 @@ type Request struct {
 	// excluding this prompt. Without it a correction such as "no, make it
 	// four" reaches the model with nothing to make four.
 	History []Turn
+	// Summary : The part of the session too old to send in full, condensed.
+	// Empty when the whole session fits.
+	//
+	// Not a Turn, because nobody said it. Where it belongs in a request is
+	// the provider's to decide: alongside the system prompt for one that
+	// takes a separate field, as a leading system message for one that does
+	// not.
+	Summary string
 }
 
 // Provider : An engine that answers a prompt as a stream of messages.

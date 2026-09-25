@@ -473,6 +473,29 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### The summary is the session's, and the transcript is untouched
+
+The condensation lives on the session as `summary` and
+`summarised_through_seq`, not as a message. Nobody said it, so putting it in
+the transcript would mean hiding it from the person, giving it a position in
+a sequence it was never spoken in, and superseding one message with another
+every time it is rewritten. As a column it is plainly derived: droppable,
+rebuildable, and it leaves `messages` a record of what was actually said.
+
+Condensing runs after the turn is recorded and announced, never before the
+next one. The person is waiting on the answer, not on the housekeeping, and on
+voice a summariser in front of the reply would be heard as the assistant
+hanging. It still holds the runner's slot, so it competes with nothing.
+
+Every failure in it is logged and dropped. A summary that could not be written
+costs the next turn its oldest context and nothing else, and the turn after
+tries again.
+
+The provider is given the summary as `Request.Summary`, not as a leading
+`Turn`. Where it belongs in a request is the provider's business: this one
+has a field for the system prompt and it goes there, while a service without
+one would render it as a leading system message.
+
 ### Three ceilings, and condensing before any of them is reached
 
 A long conversation used to lose its early half in silence: the history was
