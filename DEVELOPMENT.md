@@ -473,6 +473,27 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### Whether a description works is measurable
+
+`make evals` asks a real model what it would do with fifteen things a person
+might say, and checks which tool it reaches for and what it fills in. Behind a
+build tag, because it costs real calls.
+
+Everything else in the suite checks that the machinery runs. This checks the
+only thing that decides whether the assistant is any good, and it cannot be
+asserted against a stub: a stub has no opinion about a description. A failure
+here is usually a description to fix rather than code.
+
+A third of the cases expect no tool at all. A model that reaches for one at
+every question is as wrong as one that never does, and only the negative cases
+catch it.
+
+Several tools can be right for one thing said, so a case lists the acceptable
+ones. That was learnt from the first run: asked to delete something by name
+the model called `conversation_find` where the case expected
+`conversation_list`, and looking the name up is the better of the two. The
+expectation was wrong, not the model.
+
 ### The loop, and what stops it
 
 A turn is no longer one call. The model is asked, and if it asks for tools

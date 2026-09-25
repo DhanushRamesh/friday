@@ -88,6 +88,15 @@ func (r *Runner) announceTitle(ctx context.Context, t *chat.Chat, name string) {
 		return
 	}
 
+	// Useful the first time and tiresome by the twentieth, so it can be
+	// turned off. Unset means on, since somebody who cannot see a listing has
+	// no other way of knowing what a conversation is called.
+	if r.repo != nil {
+		if got, err := r.repo.Setting(ctx, conversation.AnnounceTitlesSetting); err == nil && got == "off" {
+			return
+		}
+	}
+
 	if err := r.announcer.Say(ctx, conversation.TitleAnnouncement(name)); err != nil {
 		r.logger.WarnContext(ctx, "cannot announce the conversation's name",
 			slog.Any("error", err))

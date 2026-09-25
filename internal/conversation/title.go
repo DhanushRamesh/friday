@@ -80,6 +80,9 @@ func CleanTitle(answer string) string {
 	return title
 }
 
+// AnnounceTitlesSetting : What the choice to hear a new name is stored under.
+const AnnounceTitlesSetting = "announce_titles"
+
 // TitleAnnouncement : What is said aloud when a conversation has been named,
 // so that somebody who cannot see a screen knows what it is called.
 func TitleAnnouncement(title string) string {

@@ -102,6 +102,10 @@ logs: ## Follow the local log
 test: ## Run the tests
 	@go test ./... -race
 
+.PHONY: evals
+evals: ## Ask a real model whether the tool descriptions work (costs API calls)
+	@go test ./internal/tool/evals/... -tags evals -count=1 -v
+
 .PHONY: check
 check: ## Everything that must pass before committing
 	@gofmt -l .

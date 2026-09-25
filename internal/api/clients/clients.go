@@ -6,6 +6,7 @@
 package clients
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/api/httpx"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/views"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
 	"github.com/DhanushRamesh/personal-assistant/internal/llm"
 	"github.com/DhanushRamesh/personal-assistant/internal/persona"
 )
@@ -54,11 +56,17 @@ type ModelRequest struct {
 type PersonasResponse struct {
 	Personas []views.Persona `json:"personas"`
 	Current  string          `json:"current"`
+	// AnnounceTitles : Whether a conversation's new name is said aloud on
+	// voice. On unless it has been turned off.
+	AnnounceTitles bool `json:"announce_titles"`
 }
 
 // PersonaRequest : Choosing the manner the assistant answers in.
 type PersonaRequest struct {
 	Persona string `json:"persona"`
+	// AnnounceTitles : Whether a conversation's new name is said aloud.
+	// Absent leaves it as it was.
+	AnnounceTitles *bool `json:"announce_titles,omitempty"`
 }
 
 // Handler : Serves the client endpoints.
@@ -314,8 +322,9 @@ func (h *Handler) Personas(w http.ResponseWriter, r *http.Request) {
 		out = append(out, views.OfPersona(p))
 	}
 	httpx.WriteJSON(r.Context(), w, http.StatusOK, PersonasResponse{
-		Personas: out,
-		Current:  h.current(),
+		Personas:       out,
+		Current:        h.current(),
+		AnnounceTitles: h.announcingTitles(r.Context()),
 	})
 }
 
@@ -329,6 +338,23 @@ func (h *Handler) SetPersona(w http.ResponseWriter, r *http.Request) {
 	var req PersonaRequest
 	if err := httpx.DecodeJSON(w, r, &req); err != nil {
 		httpx.WriteError(ctx, w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if req.AnnounceTitles != nil {
+		value := "on"
+		if !*req.AnnounceTitles {
+			value = "off"
+		}
+		if err := h.repo.SetSetting(ctx, conversation.AnnounceTitlesSetting, value); err != nil {
+			h.Logger.ErrorContext(ctx, "cannot store whether to announce names", slog.Any("error", err))
+		}
+	}
+
+	// Changing only the announcement is allowed: an empty persona then means
+	// "leave the manner alone" rather than "choose nothing".
+	if req.Persona == "" && req.AnnounceTitles != nil {
+		h.Personas(w, r)
 		return
 	}
 
@@ -356,4 +382,17 @@ func (h *Handler) current() string {
 		return persona.Default
 	}
 	return h.persona.Current()
+}
+
+// announcingTitles : Whether a conversation's new name is said aloud.
+//
+// On unless it has been turned off, and on when the setting cannot be read:
+// somebody who cannot see a listing has no other way of learning the name.
+func (h *Handler) announcingTitles(ctx context.Context) bool {
+	got, err := h.repo.Setting(ctx, conversation.AnnounceTitlesSetting)
+	if err != nil {
+		h.Logger.ErrorContext(ctx, "cannot read whether to announce names", slog.Any("error", err))
+		return true
+	}
+	return got != "off"
 }
