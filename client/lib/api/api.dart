@@ -259,7 +259,14 @@ class AssistantApi {
   ///
   /// Sending a prompt supersedes whatever is still running in the same
   /// conversation, so a correction cancels the question it corrects.
-  Stream<AnswerChunk> ask(String prompt, {String? conversationId}) async* {
+  /// ask : Puts a prompt to the assistant and streams the answer back.
+  ///
+  /// The conversation is not named. Where a prompt lands is the server's to
+  /// decide from the client's active conversation, which is the same rule
+  /// voice follows and the only way a tool can move this client: naming one
+  /// here would override the move on the very next thing asked, so the switch
+  /// would report success and change nothing anybody could see.
+  Stream<AnswerChunk> ask(String prompt) async* {
     final token = _token;
     if (token == null) throw const NotAuthenticated();
 
@@ -277,7 +284,6 @@ class AssistantApi {
           'messages': [
             {'role': 'user', 'content': prompt},
           ],
-          if (conversationId != null && conversationId.isNotEmpty) 'conversation_id': conversationId,
         }),
       );
     } on Object catch (e) {
@@ -308,7 +314,6 @@ class AssistantApi {
   /// conversation, so a correction cancels the question it corrects.
   Future<Chat> createChat(
     String prompt, {
-    String? conversationId,
     Duration? wait,
   }) async => Chat.fromJson(
     await _send(
@@ -317,7 +322,6 @@ class AssistantApi {
       query: {if (wait != null) 'wait': _duration(wait)},
       body: {
         'prompt': prompt,
-        if (conversationId != null && conversationId.isNotEmpty) 'conversation_id': conversationId,
       },
       overrideTimeout: wait == null ? null : wait + _waitMargin,
     ),

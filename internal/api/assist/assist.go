@@ -275,6 +275,11 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 	// chat recovered after a restart goes to the model it was accepted for.
 	t.Model = caller.Client.Model
 
+	// Which client asked. A tool that acts on the client itself, such as
+	// switching which conversation it talks in, has no other way to know
+	// which one to act on.
+	t.ClientID = caller.Client.ID
+
 	if err := h.repo.Create(ctx, t); err != nil {
 		h.Fail(ctx, w, "storing chat", err)
 		return

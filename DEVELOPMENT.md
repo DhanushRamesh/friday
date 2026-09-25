@@ -473,6 +473,25 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### Where a prompt lands is the server's to decide
+
+The browser used to name the conversation on every prompt. That made
+`conversation_switch` useless there: the switch was real, and the very next
+message named the old conversation again and overrode it. The tool reported
+success truthfully and nothing anybody could see had changed, which is the
+exact failure the honest-outcome rule is meant to prevent -- a true statement
+that is worthless.
+
+So the browser names nothing. Where a prompt lands comes from the client's
+active conversation, which is the rule voice already followed, and clicking a
+conversation in the listing activates it as it always did. After a turn the
+client asks which conversation is now active and follows it, since a tool can
+move it while answering and the server is the only thing that knows.
+
+A chat also records which client sent it. The channel was recorded and the
+client was not, which was enough while a chat only produced words; a tool that
+acts on the client itself has no other way to know which one to act on.
+
 ### Whether a description works is measurable
 
 `make evals` asks a real model what it would do with fifteen things a person

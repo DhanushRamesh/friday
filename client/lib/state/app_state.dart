@@ -290,12 +290,28 @@ class AppState extends ChangeNotifier {
       // The conversation is named after its first prompt, so a new one only gets
       // a name once something has been asked in it.
       _conversations = await api.listConversations(archived: _showArchived);
+      await _followTheServer();
     } on Object catch (e) {
       _error = _explain(e);
       _replaceLast((t) => t.copyWith(status: ChatStatus.failed));
     } finally {
       _sending = false;
       notifyListeners();
+    }
+  }
+
+  /// _followTheServer : Moves to whichever conversation the server now says
+  /// is this client's.
+  ///
+  /// A tool can switch it while answering, and the server is the only thing
+  /// that knows: the prompt no longer names a conversation, so what is on
+  /// screen would otherwise stay where it was while everything said next
+  /// landed somewhere else.
+  Future<void> _followTheServer() async {
+    for (final c in _conversations) {
+      if (!c.active || c.id == _conversationId) continue;
+      await _open(c.id);
+      return;
     }
   }
 
@@ -522,7 +538,7 @@ class AppState extends ChangeNotifier {
   /// the piece that is new, not the answer so far.
   Future<void> _follow(String prompt, String? conversationId) async {
     var answer = '';
-    await for (final piece in api.ask(prompt, conversationId: conversationId)) {
+    await for (final piece in api.ask(prompt)) {
       if (piece.text.isNotEmpty) {
         answer += piece.text;
         _replaceLast((t) => t.copyWith(answer: answer, status: ChatStatus.running));
