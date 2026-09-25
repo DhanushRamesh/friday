@@ -473,6 +473,37 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### A message is words, tool calls or tool results, and never two
+
+A turn that calls a tool produces two more messages: the assistant asking for
+it, and the answer coming back. Both are kept. A model given a result without
+the call that produced it cannot tell what it looked up from what it guessed,
+and a person reading the transcript cannot tell what was done on their behalf.
+
+A message carries exactly one of the three. Carrying none is nothing worth
+storing; carrying two makes a transcript that says one thing while the model
+reads another, since an assistant that explains itself and acts in the same
+breath gives the person words that may not describe what happened. Ulaa draws
+the same line with `content?: never`.
+
+An outcome is `ok`, `failed` or `partial`. Three rather than two, because the
+middle one is where an assistant starts bluffing: four lights asked for, three
+turned off, one unreachable. Told only success or failure a model reports
+either "done" or "nothing happened", and both are untrue. A failure carries
+the real error verbatim, for the same reason a provider failure does.
+
+Two places already knew how to mangle this and had to be taught not to.
+`ForModel` dropped any message with no words in it, which is every tool call.
+It also joined consecutive messages from the same speaker, which would have
+run a call into the prose beside it. And a window trimmed by size cuts from
+the oldest end, which can take an assistant's tool calls away and leave the
+answers behind them: a service rejects a result that answers nothing, so the
+window now drops results whose call did not survive.
+
+The payloads are JSON columns rather than tables. They are read and written
+whole and never queried into, so a row per argument would buy nothing and cost
+a join on every turn.
+
 ### A conversation names itself, and says so out loud
 
 Every conversation was untitled, which made the listing useless and made

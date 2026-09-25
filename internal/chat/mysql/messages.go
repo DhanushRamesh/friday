@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -18,7 +19,9 @@ type conversationMessageRow struct {
 	Seq            int       `gorm:"column:seq"`
 	Kind           string    `gorm:"column:kind"`
 	Role           string    `gorm:"column:role"`
-	Content        string    `gorm:"column:content"`
+	Content        *string   `gorm:"column:content"`
+	ToolCalls      *string   `gorm:"column:tool_calls"`
+	ToolResults    *string   `gorm:"column:tool_results"`
 	Detail         *string   `gorm:"column:detail"`
 	CreatedAt      time.Time `gorm:"column:created_at;autoCreateTime:false"`
 }
@@ -34,7 +37,9 @@ func (r *conversationMessageRow) toMessage() conversation.Message {
 		Seq:            r.Seq,
 		Kind:           conversation.Kind(r.Kind),
 		Role:           conversation.Role(r.Role),
-		Content:        r.Content,
+		Content:        value(r.Content),
+		ToolCalls:      toToolCalls(r.ToolCalls),
+		ToolResults:    toToolResults(r.ToolResults),
 		Detail:         value(r.Detail),
 		At:             r.CreatedAt.UTC(),
 	}
@@ -81,7 +86,9 @@ func (r *Repository) Append(ctx context.Context, m conversation.Message) (conver
 			Seq:            m.Seq,
 			Kind:           string(m.Kind),
 			Role:           string(m.Role),
-			Content:        m.Content,
+			Content:        nullable(m.Content),
+			ToolCalls:      fromToolCalls(m.ToolCalls),
+			ToolResults:    fromToolResults(m.ToolResults),
 			Detail:         nullable(m.Detail),
 			CreatedAt:      m.At,
 		}
@@ -216,4 +223,62 @@ func (r *Repository) conversationExists(ctx context.Context, conversationID stri
 		return conversation.ErrNoConversation
 	}
 	return nil
+}
+
+// The tool payloads are stored as JSON and read and written whole. They are
+// never queried into, so a column holds them rather than a table of their
+// own: a row per argument would buy nothing and cost a join on every turn.
+
+// fromToolCalls : The calls as JSON, or nothing when there are none.
+func fromToolCalls(calls []conversation.ToolCall) *string {
+	if len(calls) == 0 {
+		return nil
+	}
+	return nullable(asJSON(calls))
+}
+
+// fromToolResults : The results as JSON, or nothing when there are none.
+func fromToolResults(results []conversation.ToolResult) *string {
+	if len(results) == 0 {
+		return nil
+	}
+	return nullable(asJSON(results))
+}
+
+// toToolCalls : The stored calls, or none.
+//
+// Unreadable JSON gives none rather than an error: a row written by another
+// build, or damaged, should leave the rest of the conversation legible rather
+// than make the whole of it unreadable.
+func toToolCalls(raw *string) []conversation.ToolCall {
+	var calls []conversation.ToolCall
+	readJSON(raw, &calls)
+	return calls
+}
+
+// toToolResults : The stored results, or none.
+func toToolResults(raw *string) []conversation.ToolResult {
+	var results []conversation.ToolResult
+	readJSON(raw, &results)
+	return results
+}
+
+// asJSON : Encodes a value, or empty when it somehow cannot be encoded.
+//
+// Only ever given slices of plain structs of strings, so the failing case is
+// unreachable; empty reads back as no calls, which is the safe direction.
+func asJSON(v any) string {
+	out, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return string(out)
+}
+
+// readJSON : Decodes into out, leaving it alone when there is nothing to read.
+func readJSON(raw *string, out any) {
+	if raw == nil || *raw == "" {
+		return
+	}
+	_ = json.Unmarshal([]byte(*raw), out)
 }

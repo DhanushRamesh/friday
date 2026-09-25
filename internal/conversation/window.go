@@ -131,7 +131,44 @@ func Plan(messages []Message, s Summary, l Limits) Window {
 		}
 	}
 
-	return Window{Summary: s.Text, Messages: turns}
+	return Window{Summary: s.Text, Messages: whole(turns)}
+}
+
+// whole : The messages with any orphaned tool results dropped from the front.
+//
+// Trimming takes from the oldest end, which can cut an assistant's tool calls
+// away and leave the answers behind them. A service rejects a result that
+// answers nothing, and a model reading one has been handed a fact with no
+// account of where it came from. The condenser already cuts on turn
+// boundaries for the same reason; this is the case it cannot see, where the
+// window is bounded by size rather than by where a turn began.
+func whole(messages []Message) []Message {
+	asked := map[string]bool{}
+	first := 0
+
+	for i, m := range messages {
+		if len(m.ToolCalls) > 0 {
+			for id := range m.asks() {
+				asked[id] = true
+			}
+			continue
+		}
+		if len(m.ToolResults) == 0 {
+			continue
+		}
+
+		// A result whose call did not survive the cut. Everything up to and
+		// including it goes: the pair is useless with half of it missing.
+		for id := range m.answers() {
+			if !asked[id] {
+				first = i + 1
+				break
+			}
+		}
+	}
+
+	return messages[first:]
+
 }
 
 // Due : Whether the earlier part of the conversation should be condensed, and the

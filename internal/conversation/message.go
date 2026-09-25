@@ -77,7 +77,21 @@ const (
 	User Role = "user"
 	// Assistant : The assistant answering.
 	Assistant Role = "assistant"
+	// Tool : A tool reporting back what it did.
+	Tool Role = "tool"
+	// System : An instruction to the model rather than anything anyone said.
+	//
+	// Nothing writes one yet: how the assistant is told to answer is composed
+	// per request and is not part of the transcript. It is here so that a
+	// stored one is recognised rather than refused, since a tool chain may
+	// one day need to leave a note mid-conversation.
+	System Role = "system"
 )
+
+// speaks : Whether this is a role the store will accept.
+func (r Role) speaks() bool {
+	return r == User || r == Assistant || r == Tool || r == System
+}
 
 // MessageIDPrefix : Marks an identifier as belonging to a message.
 const MessageIDPrefix = "msg_"
@@ -102,8 +116,14 @@ type Message struct {
 	Kind Kind
 	// Role : Who said it.
 	Role Role
-	// Content : What was said.
+	// Content : What was said. Empty for a message that carries tool calls
+	// or tool results instead.
 	Content string
+	// ToolCalls : What the assistant asked to be run. Set only on an
+	// assistant message, which then carries no words.
+	ToolCalls []ToolCall
+	// ToolResults : What those tools gave back. Set only on a Tool message.
+	ToolResults []ToolResult
 	// Detail : The exact error behind a Failure, kept out of Content so that
 	// what is read aloud stays short. Empty for everything else.
 	Detail string
@@ -169,23 +189,52 @@ func Failed(conversationID, content, detail string, at time.Time) Message {
 }
 
 // Valid : Reports whether a message can be stored, and why not if it cannot.
+//
+// A message carries exactly one of three things: words, tool calls, or tool
+// results. Carrying none is nothing worth storing, and carrying two makes a
+// transcript that says one thing and a model that reads another.
 func (m Message) Valid() error {
+	carries := 0
+	if strings.TrimSpace(m.Content) != "" {
+		carries++
+	}
+	if len(m.ToolCalls) > 0 {
+		carries++
+	}
+	if len(m.ToolResults) > 0 {
+		carries++
+	}
+
 	switch {
 	case m.ID == "":
 		return errors.New("conversation: a message needs an identifier")
 	case m.ConversationID == "":
 		return errors.New("conversation: a message needs a conversation")
-	case strings.TrimSpace(m.Content) == "":
+	case carries == 0:
 		return errors.New("conversation: a message needs something in it")
+	case carries > 1:
+		return errors.New("conversation: a message is words, tool calls or tool results, not two of them")
 	case len(m.Content) > maxContentBytes:
 		return ErrTooLarge
 	case !m.Kind.known():
 		return errors.New("conversation: a message needs a kind")
-	case m.Role != User && m.Role != Assistant:
+	case !m.Role.speaks():
 		return errors.New("conversation: a message needs a speaker")
+	case len(m.ToolCalls) > 0 && m.Role != Assistant:
+		return errors.New("conversation: only the assistant calls tools")
+	case len(m.ToolResults) > 0 && m.Role != Tool:
+		return errors.New("conversation: only a tool returns tool results")
 	}
-	return nil
+
+	return m.validTools()
 }
+
+var (
+	errToolCallNeedsID        = errors.New("conversation: a tool call needs an identifier")
+	errToolCallNeedsName      = errors.New("conversation: a tool call needs a tool")
+	errToolResultNeedsID      = errors.New("conversation: a tool result needs the call it answers")
+	errToolResultNeedsOutcome = errors.New("conversation: a tool result needs an outcome")
+)
 
 // ForModel : The messages a provider is given, oldest first.
 //
@@ -199,11 +248,17 @@ func (m Message) Valid() error {
 func ForModel(messages []Message) []Message {
 	kept := make([]Message, 0, len(messages))
 	for _, m := range messages {
-		if strings.TrimSpace(m.Content) == "" {
+		if m.empty() {
 			continue
 		}
 		m.Content = forModelContent(m)
-		if n := len(kept); n > 0 && kept[n-1].Role == m.Role {
+
+		// Only prose is joined. A message carrying tool calls or results has
+		// no words to append to and must not be merged into the message
+		// beside it: the call and its answer are a pair, and a model reading
+		// them run together cannot tell which answer belongs to which call.
+		n := len(kept)
+		if n > 0 && kept[n-1].Role == m.Role && kept[n-1].plain() && m.plain() {
 			// The joined message keeps the earlier time and position: that
 			// is when the speaker started saying all of it.
 			kept[n-1].Content += "\n\n" + m.Content
@@ -212,6 +267,16 @@ func ForModel(messages []Message) []Message {
 		kept = append(kept, m)
 	}
 	return kept
+}
+
+// plain : Whether this message is words and nothing else.
+func (m Message) plain() bool {
+	return len(m.ToolCalls) == 0 && len(m.ToolResults) == 0
+}
+
+// empty : Whether there is nothing in this message worth sending anywhere.
+func (m Message) empty() bool {
+	return strings.TrimSpace(m.Content) == "" && m.plain()
 }
 
 // forModelContent : What a message reads as when given to a model.
@@ -236,7 +301,7 @@ func forModelContent(m Message) string {
 func ForPerson(messages []Message) []Message {
 	shown := make([]Message, 0, len(messages))
 	for _, m := range messages {
-		if strings.TrimSpace(m.Content) == "" {
+		if m.empty() {
 			continue
 		}
 		shown = append(shown, m)

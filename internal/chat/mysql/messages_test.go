@@ -237,3 +237,75 @@ func TestSummaryOfAMissingConversation(t *testing.T) {
 		t.Errorf("SetSummary error = %v, want ErrNoConversation", err)
 	}
 }
+
+// Tool calls and results have to survive the round trip. A field added to a
+// row but left out of the insert is stored nowhere, and only the database
+// says so.
+func TestToolCallsSurviveStorage(t *testing.T) {
+	r := newRepository(t)
+	ctx := context.Background()
+	id := storedConversation(t, r)
+	at := time.Now().UTC().Truncate(time.Millisecond)
+
+	asked, err := r.Append(ctx, conversation.CalledTools(id, []conversation.ToolCall{
+		{ID: "call_1", Name: "conversation_list", Arguments: `{"limit":5}`},
+		{ID: "call_2", Name: "conversation_find", Arguments: `{"name":"roof"}`},
+	}, at))
+	if err != nil {
+		t.Fatalf("Append calls: %v", err)
+	}
+
+	back, err := r.Append(ctx, conversation.ToolsReturned(id, []conversation.ToolResult{
+		{ID: "call_1", Name: "conversation_list", Outcome: conversation.OutcomeOK, Content: "three"},
+		{ID: "call_2", Name: "conversation_find", Outcome: conversation.OutcomeFailed, Content: "nothing matched"},
+	}, at))
+	if err != nil {
+		t.Fatalf("Append results: %v", err)
+	}
+
+	said, err := r.All(ctx, id)
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if len(said) != 2 {
+		t.Fatalf("stored %d messages, want 2", len(said))
+	}
+
+	if len(said[0].ToolCalls) != 2 || said[0].ToolCalls[0].Name != "conversation_list" {
+		t.Errorf("calls came back as %+v", said[0].ToolCalls)
+	}
+	if said[0].ToolCalls[0].Arguments != `{"limit":5}` {
+		t.Errorf("arguments came back as %q, want them exactly as the model wrote them",
+			said[0].ToolCalls[0].Arguments)
+	}
+	if len(said[1].ToolResults) != 2 {
+		t.Fatalf("results came back as %+v", said[1].ToolResults)
+	}
+	if said[1].ToolResults[1].Outcome != conversation.OutcomeFailed {
+		t.Errorf("outcome came back as %q, want the failure kept", said[1].ToolResults[1].Outcome)
+	}
+	if said[1].ToolResults[1].Content != "nothing matched" {
+		t.Errorf("the exact error came back as %q", said[1].ToolResults[1].Content)
+	}
+
+	_ = asked
+	_ = back
+}
+
+// A message with no words is now storable, which it was not before: an
+// assistant asking for a tool says nothing while it does so.
+func TestAMessageWithNoWordsIsStorable(t *testing.T) {
+	r := newRepository(t)
+	ctx := context.Background()
+	id := storedConversation(t, r)
+
+	m, err := r.Append(ctx, conversation.CalledTools(id, []conversation.ToolCall{
+		{ID: "call_1", Name: "conversation_list", Arguments: "{}"},
+	}, time.Now().UTC()))
+	if err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	if m.Content != "" {
+		t.Errorf("Content = %q, want none", m.Content)
+	}
+}

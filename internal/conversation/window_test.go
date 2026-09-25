@@ -3,6 +3,7 @@ package conversation_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
 )
@@ -229,5 +230,66 @@ func TestDueTriggersOnTheContextWindow(t *testing.T) {
 
 	if _, due := conversation.Due(turns(60, 300), conversation.Summary{}, limits); !due {
 		t.Error("did not condense a conversation overrunning the model's window")
+	}
+}
+
+// A window trimmed by size can cut an assistant's tool calls away and leave
+// the answers behind them. A service rejects a result that answers nothing,
+// and a model reading one has a fact with no account of where it came from.
+func TestATrimmedWindowDropsOrphanedToolResults(t *testing.T) {
+	at := time.Now().UTC()
+	long := strings.Repeat("a", 400)
+
+	messages := []conversation.Message{
+		{Seq: 1, Kind: conversation.Chat, Role: conversation.User, Content: long},
+		conversation.CalledTools("conv_x", []conversation.ToolCall{
+			{ID: "c1", Name: "conversation_list", Arguments: "{}"}}, at),
+		conversation.ToolsReturned("conv_x", []conversation.ToolResult{
+			{ID: "c1", Name: "conversation_list", Outcome: conversation.OutcomeOK, Content: long}}, at),
+		{Seq: 4, Kind: conversation.Chat, Role: conversation.Assistant, Content: long},
+		{Seq: 5, Kind: conversation.Chat, Role: conversation.User, Content: long},
+	}
+	for i := range messages {
+		messages[i].Seq = i + 1
+		messages[i].ConversationID = "conv_x"
+	}
+
+	// Small enough that the front of the conversation, including the call, is
+	// cut away.
+	window := conversation.Plan(messages, conversation.Summary{}, conversation.Limits{Bytes: 900})
+
+	var asked, answered bool
+	for _, m := range window.Messages {
+		if len(m.ToolCalls) > 0 {
+			asked = true
+		}
+		if len(m.ToolResults) > 0 {
+			answered = true
+		}
+	}
+	if answered && !asked {
+		t.Error("a tool result was sent without the call that asked for it")
+	}
+}
+
+// When both survive, both are sent: dropping a pair that fits would lose the
+// only record of what the assistant actually did.
+func TestAWholeToolPairSurvives(t *testing.T) {
+	at := time.Now().UTC()
+	messages := []conversation.Message{
+		{Seq: 1, ConversationID: "conv_x", Kind: conversation.Chat, Role: conversation.User, Content: "what have we talked about"},
+		conversation.CalledTools("conv_x", []conversation.ToolCall{
+			{ID: "c1", Name: "conversation_list", Arguments: "{}"}}, at),
+		conversation.ToolsReturned("conv_x", []conversation.ToolResult{
+			{ID: "c1", Name: "conversation_list", Outcome: conversation.OutcomeOK, Content: "three"}}, at),
+	}
+	for i := range messages {
+		messages[i].Seq = i + 1
+	}
+
+	window := conversation.Plan(messages, conversation.Summary{}, conversation.Limits{})
+
+	if len(window.Messages) != 3 {
+		t.Fatalf("sent %d messages, want the question, the call and the answer", len(window.Messages))
 	}
 }
