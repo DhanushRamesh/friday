@@ -146,6 +146,12 @@ class _Sidebar extends StatelessWidget {
                   child: Text('Assistant', style: context.text.subtitle),
                 ),
                 IconButton(
+                  onPressed: state.busy ? null : state.refresh,
+                  icon: const Icon(Icons.refresh, size: 20),
+                  tooltip: 'Refresh',
+                  color: context.colors.textSecondary,
+                ),
+                IconButton(
                   onPressed: onSettings,
                   icon: const Icon(Icons.settings_outlined, size: 20),
                   tooltip: 'Settings',

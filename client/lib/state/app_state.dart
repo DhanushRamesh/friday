@@ -232,6 +232,28 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// refresh : Reads the sessions and the open transcript again.
+  ///
+  /// The voice satellite writes into the same sessions this is showing, so
+  /// what is on screen goes stale whenever something is said out loud. There
+  /// is nothing pushing that here — the only stream the client opens is for a
+  /// chat it started itself — so seeing it means asking.
+  Future<void> refresh() async {
+    if (_busy) return;
+    _set(busy: true, error: null);
+    try {
+      _sessions = await api.listSessions();
+      final open = _sessionId;
+      if (open != null && _sessions.any((s) => s.id == open)) {
+        await _open(open, keepVisible: true);
+      }
+    } on Object catch (e) {
+      _error = _explain(e);
+    } finally {
+      _set(busy: false);
+    }
+  }
+
   /// loadClients : Reads the clients holding a token, for the settings screen.
   Future<void> loadClients() async {
     try {
@@ -327,9 +349,12 @@ class AppState extends ChangeNotifier {
   /// are fetched one call per chat. They go together rather than in turn: a
   /// session of twenty chats would otherwise take twenty round trips end to
   /// end before anything appeared.
-  Future<void> _open(String id) async {
+  /// [keepVisible] leaves what is on screen in place while the new turns are
+  /// fetched, which is what a refresh of the session already open wants:
+  /// clearing first would blank a transcript only being brought up to date.
+  Future<void> _open(String id, {bool keepVisible = false}) async {
     _sessionId = id;
-    _turns = const [];
+    if (!keepVisible) _turns = const [];
     notifyListeners();
 
     final detail = await api.session(id);
