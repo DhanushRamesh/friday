@@ -257,6 +257,39 @@ func (r *Repository) ListClients(ctx context.Context, userID string) ([]chat.Cli
 	return out, nil
 }
 
+// ReissueClientToken : Replaces a client's token with a new one.
+func (r *Repository) ReissueClientToken(ctx context.Context, userID, clientID, tokenHash string) (*chat.Client, error) {
+	var row clientRow
+	err := r.db.WithContext(ctx).First(&row, "id = ?", clientID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, chat.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("chat: reading client %s: %w", clientID, err)
+	}
+	if value(row.UserID) != userID {
+		return nil, chat.ErrNotOwned
+	}
+	// A revoked client is gone as far as signing in is concerned. Reviving
+	// one by logging in would make revoking it mean nothing.
+	if row.RevokedAt != nil {
+		return nil, chat.ErrNotFound
+	}
+
+	now := time.Now().UTC().Truncate(chat.StoredPrecision)
+	err = r.db.WithContext(ctx).
+		Model(&clientRow{}).
+		Where("id = ?", clientID).
+		Updates(map[string]any{"token_hash": tokenHash, "updated_at": now}).Error
+	if err != nil {
+		return nil, fmt.Errorf("chat: reissuing token for %s: %w", clientID, err)
+	}
+
+	row.TokenHash = &tokenHash
+	row.UpdatedAt = now
+	return row.toClient(), nil
+}
+
 // SetClientChannel : Changes how a client's prompts are treated.
 //
 // This exists because a client cannot always say what it is when it

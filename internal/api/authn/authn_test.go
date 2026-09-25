@@ -160,3 +160,62 @@ func TestLoginRejectsBadRequests(t *testing.T) {
 		})
 	}
 }
+
+// Signing out and back in on the same install must not leave a trail of
+// clients, each holding a live token, all called the same thing.
+func TestSigningInAgainReusesTheClient(t *testing.T) {
+	e := apitest.New(t)
+	first := e.Login(t, "chrome-dhanush")
+
+	again := e.LoginAsClient(t, first.Client.ID, "chrome-dhanush")
+
+	if again.Client.ID != first.Client.ID {
+		t.Errorf("client = %s, want the same %s", again.Client.ID, first.Client.ID)
+	}
+	if again.Token == first.Token {
+		t.Error("the same token was handed out twice")
+	}
+
+	// One credential per client: the old token stops working, so a browser
+	// left open elsewhere does not keep the session it had.
+	rec := e.As(t, first.Token, http.MethodGet, "/v1/me")
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("old token: status = %d, want 401", rec.Code)
+	}
+	rec = e.As(t, again.Token, http.MethodGet, "/v1/me")
+	if rec.Code != http.StatusOK {
+		t.Errorf("new token: status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+}
+
+// A stale identifier in a browser's storage should cost a fresh registration,
+// not a refusal: the password is what authorises signing in.
+func TestAnUnknownClientIDRegistersANewOne(t *testing.T) {
+	e := apitest.New(t)
+
+	out := e.LoginAsClient(t, chat.NewClientID(), "a new browser")
+
+	if out.Client.ID == "" {
+		t.Fatal("no client was registered")
+	}
+	if out.Client.Name != "a new browser" {
+		t.Errorf("name = %q, want the one given", out.Client.Name)
+	}
+}
+
+// Reviving a revoked client by signing in would make revoking it mean
+// nothing.
+func TestARevokedClientIsNotRevivedBySigningIn(t *testing.T) {
+	e := apitest.New(t)
+	old := e.Login(t, "an old browser")
+
+	rec := e.Do(t, http.MethodDelete, "/v1/clients/"+old.Client.ID, "")
+	if rec.Code != http.StatusOK && rec.Code != http.StatusNoContent {
+		t.Fatalf("revoke: status %d: %s", rec.Code, rec.Body)
+	}
+
+	out := e.LoginAsClient(t, old.Client.ID, "an old browser")
+	if out.Client.ID == old.Client.ID {
+		t.Error("a revoked client was revived by signing in")
+	}
+}

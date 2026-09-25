@@ -176,9 +176,12 @@ func TestAClientsChannelCanBeCorrected(t *testing.T) {
 
 func TestAnInventedChannelIsRefused(t *testing.T) {
 	e := apitest.New(t)
+	// Another client, because a client may not change its own at all and
+	// would be refused before the channel was looked at.
+	other := e.Login(t, "somewhere else")
 
 	rec := e.Do(t, http.MethodPost,
-		"/v1/clients/"+e.Client.ID+"/channel", `{"channel":"shouting"}`)
+		"/v1/clients/"+other.Client.ID+"/channel", `{"channel":"shouting"}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400: %s", rec.Code, rec.Body)
 	}
@@ -196,5 +199,27 @@ func TestAnotherUsersClientChannelCannotBeChanged(t *testing.T) {
 		"/v1/clients/"+theirClient.ID+"/channel", `{"channel":"voice"}`)
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404: %s", rec.Code, rec.Body)
+	}
+}
+
+// The endpoint is authenticated by the very token whose privileges it would
+// raise, so a client that could set its own channel could promote itself out
+// of whatever the channel restricts.
+func TestAClientCannotPromoteItself(t *testing.T) {
+	e := apitest.New(t)
+
+	rec := e.Do(t, http.MethodPost,
+		"/v1/clients/"+e.Client.ID+"/channel", `{"channel":"voice"}`)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403: %s", rec.Code, rec.Body)
+	}
+
+	// Lowering its own is refused too. Allowing it would mean the rule
+	// depends on which direction the change goes, and a client that can
+	// write the field at all is one bug away from writing either value.
+	rec = e.Do(t, http.MethodPost,
+		"/v1/clients/"+e.Client.ID+"/channel", `{"channel":"direct"}`)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("lowering: status = %d, want 403: %s", rec.Code, rec.Body)
 	}
 }

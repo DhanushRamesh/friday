@@ -105,6 +105,18 @@ func (h *Handler) SetChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Not its own. This is authenticated by the very token whose privileges
+	// it would raise, so a client allowed to set its own channel could
+	// promote itself out of whatever the channel restricts — which defeats
+	// the point of having it. Correcting one is done from another client,
+	// which is the realistic flow anyway: Home Assistant cannot call this at
+	// all, and the browser is where its channel gets fixed.
+	if id == c.Client.ID {
+		httpx.WriteError(ctx, w, http.StatusForbidden,
+			"A client cannot change its own channel. Use another one.")
+		return
+	}
+
 	var req ChannelRequest
 	if err := httpx.DecodeJSON(w, r, &req); err != nil {
 		httpx.WriteError(ctx, w, http.StatusBadRequest, err.Error())

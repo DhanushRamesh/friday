@@ -53,6 +53,15 @@ type LoginRequest struct {
 	// ClientName : What to call the client being logged in from, such as
 	// "my phone". Optional.
 	ClientName string `json:"client_name,omitempty"`
+	// ClientID : The client this install registered as last time.
+	//
+	// Signing in again on the same install re-issues that client's token
+	// rather than registering another, so a browser signed out and back in
+	// stays one client instead of leaving a trail of them holding live
+	// tokens. Unknown, revoked or somebody else's is treated as absent: the
+	// password is the authority here, and a wrong identifier should cost a
+	// fresh registration rather than a refusal.
+	ClientID string `json:"client_id,omitempty"`
 	// Channel : How this client's prompts will arrive, "voice" or "direct".
 	//
 	// Declared once, here, because it is a property of the thing holding the
@@ -138,23 +147,22 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		channel = chat.ChannelDirect
 	}
 
-	client, err := chat.NewClient(user.ID, req.ClientName, tokenHash, channel)
-	if errors.Is(err, chat.ErrClientNameTooLong) {
+	client, reused, err := h.clientFor(ctx, user.ID, req, tokenHash, channel)
+	switch {
+	case errors.Is(err, chat.ErrClientNameTooLong):
 		httpx.WriteError(ctx, w, http.StatusBadRequest, "That client name is too long.")
 		return
-	}
-	if errors.Is(err, chat.ErrUnknownChannel) {
+	case errors.Is(err, chat.ErrUnknownChannel):
 		httpx.WriteError(ctx, w, http.StatusBadRequest,
 			`The channel must be "voice" or "direct".`)
 		return
-	}
-	if err != nil {
+	case err != nil:
 		h.Fail(ctx, w, "registering client", err)
 		return
 	}
-	if err := h.repo.CreateClient(ctx, client); err != nil {
-		h.Fail(ctx, w, "registering client", err)
-		return
+	if reused {
+		h.Logger.InfoContext(ctx, "client token reissued",
+			slog.String("client_id", client.ID))
 	}
 
 	// Somewhere to talk at once. A session belongs to the user, so a second
@@ -237,4 +245,41 @@ func (h *Handler) Require(next http.Handler) http.Handler {
 func Unauthorised(ctx context.Context, w http.ResponseWriter, message string) {
 	w.Header().Set("WWW-Authenticate", `Bearer realm="assistant"`)
 	httpx.WriteError(ctx, w, http.StatusUnauthorized, message)
+}
+
+// clientFor : The client this sign-in belongs to, and whether it already
+// existed.
+//
+// Presenting a client id re-issues that client's token; the previous one stops
+// working, because one client is one credential. An id that is unknown,
+// revoked or somebody else's falls through to registering a new client rather
+// than failing: the password is what authorises this, and a stale identifier
+// in a browser's storage should cost a fresh registration, not a sign-in.
+func (h *Handler) clientFor(
+	ctx context.Context,
+	userID string,
+	req LoginRequest,
+	tokenHash string,
+	channel chat.Channel,
+) (*chat.Client, bool, error) {
+	if chat.ValidClientID(req.ClientID) {
+		existing, err := h.repo.ReissueClientToken(ctx, userID, req.ClientID, tokenHash)
+		switch {
+		case err == nil:
+			return existing, true, nil
+		case errors.Is(err, chat.ErrNotFound), errors.Is(err, chat.ErrNotOwned):
+			// Falls through to a new one.
+		default:
+			return nil, false, err
+		}
+	}
+
+	client, err := chat.NewClient(userID, req.ClientName, tokenHash, channel)
+	if err != nil {
+		return nil, false, err
+	}
+	if err := h.repo.CreateClient(ctx, client); err != nil {
+		return nil, false, err
+	}
+	return client, false, nil
 }

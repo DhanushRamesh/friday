@@ -335,6 +335,27 @@ func (m *Repository) ListClients(_ context.Context, userID string) ([]chat.Clien
 	return out, nil
 }
 
+// ReissueClientToken : Replaces a stored client's token.
+func (m *Repository) ReissueClientToken(_ context.Context, userID, clientID, tokenHash string) (*chat.Client, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	d, ok := m.clients[clientID]
+	if !ok {
+		return nil, chat.ErrNotFound
+	}
+	if d.UserID != userID {
+		return nil, chat.ErrNotOwned
+	}
+	if d.Revoked() {
+		return nil, chat.ErrNotFound
+	}
+	d.TokenHash = tokenHash
+	m.clients[clientID] = d
+	out := d
+	return &out, nil
+}
+
 // SetClientChannel : Changes how a stored client's prompts are treated.
 func (m *Repository) SetClientChannel(_ context.Context, userID, clientID string, channel chat.Channel) error {
 	if !channel.Valid() {

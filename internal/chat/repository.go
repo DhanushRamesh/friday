@@ -112,6 +112,15 @@ type Repository interface {
 	// revoked ones so that a revocation is visible.
 	ListClients(ctx context.Context, userID string) ([]Client, error)
 
+	// ReissueClientToken : Replaces a client's token with a new one, so
+	// signing in again on the same install keeps one client rather than
+	// leaving a trail of them.
+	//
+	// The previous token stops working, which is the point: one client is one
+	// credential. It reports ErrNotFound if there is no such client or it has
+	// been revoked, and ErrNotOwned if it belongs to somebody else.
+	ReissueClientToken(ctx context.Context, userID, clientID, tokenHash string) (*Client, error)
+
 	// SetClientChannel : Changes how a client's prompts are treated. It
 	// reports ErrNotFound if there is no such client, ErrNotOwned if it
 	// belongs to somebody else, and ErrUnknownChannel for a channel that is

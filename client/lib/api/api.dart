@@ -73,6 +73,7 @@ class AssistantApi {
     required String username,
     required String password,
     String? clientName,
+    String? clientId,
   }) async {
     final body = await _send(
       'POST',
@@ -82,6 +83,7 @@ class AssistantApi {
         'password': password,
         if (clientName != null && clientName.isNotEmpty)
           'client_name': clientName,
+        if (clientId != null && clientId.isNotEmpty) 'client_id': clientId,
       },
       authenticated: false,
     );

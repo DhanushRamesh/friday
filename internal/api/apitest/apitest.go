@@ -298,6 +298,23 @@ func (e *Env) Login(t *testing.T, clientName string) authn.LoginResponse {
 	return e.LoginOn(t, clientName, "")
 }
 
+// LoginAsClient : Logs in presenting a client this install registered before,
+// so its token is re-issued rather than another client being made.
+func (e *Env) LoginAsClient(t *testing.T, clientID, clientName string) authn.LoginResponse {
+	t.Helper()
+	body, _ := json.Marshal(map[string]string{
+		"username": Username, "password": Password,
+		"client_name": clientName, "client_id": clientID,
+	})
+	rec := e.LoginRaw(t, string(body))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("login: status %d, want 201: %s", rec.Code, rec.Body)
+	}
+	var out authn.LoginResponse
+	e.Decode(t, rec, &out)
+	return out
+}
+
 // LoginOn : Logs in declaring a channel, so a test can hold a token that
 // belongs to something with a microphone.
 func (e *Env) LoginOn(t *testing.T, clientName, channel string) authn.LoginResponse {

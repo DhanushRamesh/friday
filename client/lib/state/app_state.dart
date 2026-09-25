@@ -75,6 +75,7 @@ class AppState extends ChangeNotifier {
   final RememberedClient _remembered;
 
   String? _clientName;
+  String? _clientId;
 
   /// clientName : The name to sign in under, when one is already known.
   /// Null means this install has never signed in and has to be asked.
@@ -126,7 +127,8 @@ class AppState extends ChangeNotifier {
   /// left to fail the first real call, so the app opens on the login screen
   /// instead of on an empty one that errors.
   Future<bool> start() async {
-    _clientName = await _remembered.read();
+    _clientName = await _remembered.name();
+    _clientId = await _remembered.id();
     if (!await api.restore()) {
       notifyListeners();
       return false;
@@ -154,12 +156,16 @@ class AppState extends ChangeNotifier {
         username: username,
         password: password,
         clientName: clientName,
+        clientId: _clientId,
       );
       _identity = Identity(user: result.user, client: result.client);
-      // Remembered after the server accepted it, not before: a name kept from
-      // a sign-in that failed would be a name nothing is registered under.
+      // Kept after the server accepted it, and taken from what it registered
+      // rather than what was typed: presenting a stale id gets a new client
+      // back, and this has to follow that rather than keep pointing at one
+      // that no longer exists.
       _clientName = result.client.name.isEmpty ? clientName : result.client.name;
-      if (_clientName != null) await _remembered.write(_clientName!);
+      _clientId = result.client.id;
+      await _remembered.remember(id: _clientId!, name: _clientName ?? '');
       await _loadSessions();
       return true;
     } on Object catch (e) {
@@ -174,6 +180,7 @@ class AppState extends ChangeNotifier {
   Future<void> forgetClientName() async {
     await _remembered.forget();
     _clientName = null;
+    _clientId = null;
     notifyListeners();
   }
 

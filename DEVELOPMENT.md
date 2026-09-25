@@ -341,6 +341,34 @@ client pointed at the session before the row goes. Left behind, it is an
 identifier nothing can resolve, and the next prompt fails on the chats foreign
 key instead of anything that explains itself.
 
+### A client is one credential, and cannot raise its own
+
+A client exists because a token exists. Signing in again on the same install
+presents the client id it kept and gets that client's token re-issued, so a
+browser signed out and back in stays one client rather than leaving a trail of
+them, each still holding a working token. The previous token stops working,
+which is the point: one client, one credential.
+
+An id that is unknown, revoked or somebody else's falls through to registering
+a new client rather than failing. The password is what authorises signing in,
+and a stale identifier in a browser's storage should cost a fresh registration,
+not a refusal. A revoked one is never revived — reviving it by signing in would
+make revoking it mean nothing.
+
+**A client cannot change its own channel.** The endpoint is authenticated by
+the very token whose privileges it would raise, so a client able to set its own
+could promote itself out of whatever the channel restricts. That was true when
+the endpoint was written and is the one thing that would have made the channel
+worthless as a gate. Correcting one is done from another client, which is the
+realistic flow anyway: Home Assistant cannot call the API at all, and the
+browser is where its channel gets fixed.
+
+Worth being plain about what the channel is and is not. Today it enforces
+nothing: it is read once per prompt, copied onto the chat, and never read back.
+The security in this system is the token and revocation. The channel becomes a
+control when tools arrive, which is why it has to be un-self-raisable before
+then rather than after.
+
 ### Tools will be reachable differently by voice and by hand
 
 Not built yet, recorded so the shape is not lost. When the assistant can call
