@@ -186,7 +186,11 @@ func (p *recordingProvider) history() []environment.Turn {
 }
 
 func (p *recordingProvider) Run(ctx context.Context, req environment.Request) (<-chan environment.Message, error) {
-	p.seen = append([]environment.Turn(nil), req.History...)
+	// Only what the person asked. Naming and condensing run after the answer
+	// and carry no history, so recording them would wipe what is asserted on.
+	if req.Purpose == environment.PurposeChat {
+		p.seen = append([]environment.Turn(nil), req.History...)
+	}
 
 	ch := make(chan environment.Message, 1)
 	if p.failWith != "" {

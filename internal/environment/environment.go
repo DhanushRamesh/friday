@@ -100,7 +100,25 @@ type Turn struct {
 	Text string
 }
 
-// Request : What a provider is asked to do.
+// Purpose : Why a request is being made.
+//
+// Most are the person's question. Some are the assistant's own housekeeping --
+// naming a conversation, condensing an old one -- which nobody is waiting on
+// and which could one day be sent to a cheaper model. Recorded so anything
+// downstream can tell them apart instead of guessing from the shape of the
+// prompt.
+type Purpose string
+
+const (
+	// PurposeChat : Answering the person. The default, and the zero value.
+	PurposeChat Purpose = ""
+	// PurposeTitle : Naming a conversation.
+	PurposeTitle Purpose = "title"
+	// PurposeCondense : Condensing the earlier part of a conversation.
+	PurposeCondense Purpose = "condense"
+)
+
+// Request : What an environment is asked to do.
 type Request struct {
 	// Prompt : What the user asked for.
 	Prompt string
@@ -108,6 +126,9 @@ type Request struct {
 	// excluding this prompt. Without it a correction such as "no, make it
 	// four" reaches the model with nothing to make four.
 	History []Turn
+	// Purpose : Why this is being asked. The zero value is the person's own
+	// question.
+	Purpose Purpose
 	// SystemPrompt : How the assistant is told to answer. Empty leaves it to
 	// whatever the environment is configured with.
 	//

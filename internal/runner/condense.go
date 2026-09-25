@@ -53,7 +53,8 @@ func (r *Runner) condense(ctx context.Context, t *chat.Chat) {
 	askCtx, cancel := context.WithTimeout(ctx, r.condenseTimeout)
 	defer cancel()
 
-	notes, err := r.ask(askCtx, t.Model, conversation.CondensePrompt(current.Text, fold))
+	notes, err := r.ask(askCtx, t.Model, environment.PurposeCondense,
+		conversation.CondensePrompt(current.Text, fold))
 	if err != nil {
 		r.logger.WarnContext(ctx, "cannot condense the conversation",
 			slog.String("conversation_id", conversationID), slog.Any("error", err))
@@ -89,11 +90,12 @@ func between(messages []conversation.Message, after, through int) []conversation
 //
 // Used for the assistant's own housekeeping rather than for a chat, so the
 // result is not recorded anywhere and no failure is shown to anyone.
-func (r *Runner) ask(ctx context.Context, model chat.Model, prompt string) (string, error) {
+func (r *Runner) ask(ctx context.Context, model chat.Model, why environment.Purpose, prompt string) (string, error) {
 	stream, err := r.environment.Run(ctx, environment.Request{
-		Prompt: prompt,
-		Vendor: model.Vendor,
-		Model:  model.ID,
+		Prompt:  prompt,
+		Purpose: why,
+		Vendor:  model.Vendor,
+		Model:   model.ID,
 	})
 	if err != nil {
 		return "", err

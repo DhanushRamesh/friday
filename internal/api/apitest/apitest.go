@@ -500,8 +500,13 @@ func (r *RecordingProvider) Name() string { return "recording" }
 // Run : Records the request's history and answers after Delay.
 func (r *RecordingProvider) Run(ctx context.Context, req environment.Request) (<-chan environment.Message, error) {
 	r.mu.Lock()
-	r.history = append([]environment.Turn(nil), req.History...)
-	r.prompt = req.Prompt
+	// The assistant's own housekeeping is not what a test means by the
+	// prompt, and it arrives after the answer, so recording it would
+	// overwrite the thing being asserted on.
+	if req.Purpose == environment.PurposeChat {
+		r.history = append([]environment.Turn(nil), req.History...)
+		r.prompt = req.Prompt
+	}
 	r.mu.Unlock()
 
 	ch := make(chan environment.Message)
@@ -530,6 +535,11 @@ func (r *RecordingProvider) LastHistory() []environment.Turn {
 }
 
 // LastPrompt : Returns the prompt given to the most recent run.
+// LastPrompt : The last question the person asked.
+//
+// Housekeeping the assistant does for itself -- naming a conversation,
+// condensing one -- is not recorded here, since a test asserting on what
+// reached the model means what the person said.
 func (r *RecordingProvider) LastPrompt() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()

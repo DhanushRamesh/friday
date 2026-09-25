@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/DhanushRamesh/personal-assistant/internal/announce"
+	"github.com/DhanushRamesh/personal-assistant/internal/announce/hass"
 	"github.com/DhanushRamesh/personal-assistant/internal/api"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	chatmysql "github.com/DhanushRamesh/personal-assistant/internal/chat/mysql"
@@ -147,6 +149,11 @@ func run() error {
 	// changes it. Held in memory because it is read on every prompt, and
 	// started from what was last chosen, falling back to configuration when
 	// nothing has been.
+	// Somewhere to say a thing nobody asked for. Silent unless Home
+	// Assistant is configured, which is not a fault: it is how the server
+	// behaved before it could speak first.
+	speaker := announcer(cfg, logger.Logger)
+
 	manner := persona.NewSetting(startingPersona(context.Background(), chats, cfg, logger.Logger))
 
 	chatRunner, err := runner.New(runner.Options{
@@ -158,6 +165,7 @@ func run() error {
 		HistoryLimits: historyLimits(cfg, logger.Logger),
 		AssistantName: cfg.Assistant.Name,
 		Persona:       manner,
+		Announcer:     speaker,
 	})
 	if err != nil {
 		return err
@@ -242,6 +250,30 @@ func reachableModels(cfg config.Config) []llm.Model {
 		}
 	}
 	return out
+}
+
+// announcer : Where the assistant says something without being asked.
+//
+// Home Assistant when it is configured, and nowhere otherwise. Nowhere is a
+// working server: it answers when spoken to, which is all it could ever do
+// before.
+func announcer(cfg config.Config, logger *slog.Logger) announce.Announcer {
+	speaker, err := hass.New(hass.Config{
+		URL:       cfg.HomeAssistant.URL,
+		Token:     cfg.HomeAssistant.Token,
+		Satellite: cfg.HomeAssistant.Satellite,
+	})
+	if err != nil {
+		if !errors.Is(err, hass.ErrNotConfigured) {
+			logger.Warn("cannot reach Home Assistant to speak through",
+				slog.Any("error", err))
+		}
+		return announce.Silent{Logger: logger}
+	}
+
+	logger.Info("announcing through Home Assistant",
+		slog.String("satellite", cfg.HomeAssistant.Satellite))
+	return speaker
 }
 
 // startingPersona : The manner to begin in.

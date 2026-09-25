@@ -54,13 +54,14 @@ func (e Environment) IsProduction() bool { return e == EnvProduction }
 
 // Config : The fully resolved configuration for one process.
 type Config struct {
-	Env        Environment
-	Server     Server
-	Log        Log
-	Database   Database
-	Assistant  Assistant
-	Provider   Provider
-	PlatformAI PlatformAI
+	Env           Environment
+	Server        Server
+	Log           Log
+	Database      Database
+	Assistant     Assistant
+	HomeAssistant HomeAssistant
+	Provider      Provider
+	PlatformAI    PlatformAI
 
 	// Source : The path of the file the configuration was read from, or
 	// empty if no file was read.
@@ -116,6 +117,28 @@ type Assistant struct {
 	// setting can be changed while the server runs and returns here when it
 	// restarts, so this is what a lasting choice is written into.
 	Persona string
+}
+
+// HomeAssistant : How to reach Home Assistant, for the things the assistant
+// says without having been asked.
+//
+// Entirely optional. Without it the server behaves as it did before there was
+// anything to announce with: it answers when spoken to and says nothing
+// otherwise.
+type HomeAssistant struct {
+	// URL : Where Home Assistant answers, such as http://192.168.0.102:8123.
+	URL string
+	// Token : A long-lived access token. It can control the whole house, so
+	// it is a Secret and never reaches a log.
+	Token logging.Secret
+	// Satellite : The entity to speak through, such as
+	// assist_satellite.laptop_lva_assist_satellite.
+	Satellite string
+}
+
+// Configured : Whether there is enough here to say anything.
+func (h HomeAssistant) Configured() bool {
+	return h.URL != "" && h.Token.Reveal() != "" && h.Satellite != ""
 }
 
 // Provider : Chooses which engine answers chats.
@@ -209,6 +232,11 @@ func (c Config) LogValue() slog.Value {
 		slog.Bool("database.auto_migrate", c.Database.AutoMigrate),
 		slog.String("environment.name", string(c.Provider.Name)),
 		slog.String("platformai.model", c.PlatformAI.Model),
+		slog.String("assistant.persona", c.Assistant.Persona),
+		// Whether, not where: the URL is harmless but the token beside it is
+		// not, and one line saying "configured" answers the only question
+		// anyone reads a log for.
+		slog.Bool("homeassistant.configured", c.HomeAssistant.Configured()),
 	)
 }
 
@@ -299,6 +327,11 @@ func Load(path string, lookup Lookup) (Config, error) {
 		Assistant: Assistant{
 			Name:    l.str("assistant", "name", ""),
 			Persona: l.str("assistant", "persona", ""),
+		},
+		HomeAssistant: HomeAssistant{
+			URL:       l.str("homeassistant", "url", ""),
+			Token:     logging.Secret(l.str("homeassistant", "token", "")),
+			Satellite: l.str("homeassistant", "satellite", ""),
 		},
 		Provider: Provider{
 			Name: ProviderName(l.str("provider", "name", string(ProviderStub))),

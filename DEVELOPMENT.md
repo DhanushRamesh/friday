@@ -473,6 +473,49 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### A conversation names itself, and says so out loud
+
+Every conversation was untitled, which made the listing useless and made
+switching by voice impossible: there was nothing to say and nothing to match
+against. So after the first complete exchange the model is asked for a label
+of two to four words, once, and never over a name somebody chose by hand.
+
+A model asked for a bare label decorates it anyway -- quotation marks, a full
+stop, "Title:" in front. That is stripped rather than asked for again. An
+answer that arrives as a sentence is refused outright: no name reads better in
+a listing than an apology does, and it will not be asked twice.
+
+Naming from the question alone was rejected. It labels a subject nobody has
+answered yet, and that is often not what the conversation turns out to be
+about.
+
+### Announcing interrupts, so it waits
+
+The server could only ever reply: something arrives, something goes back.
+Speaking first is a separate capability and is built as one, `internal/
+announce`, silent unless Home Assistant is configured. Naming a conversation
+is its first use and the least of them; a timer that has finished is the same
+machinery.
+
+`assist_satellite.announce` interrupts. Home Assistant drops whatever the
+satellite is playing and says the new thing instead, so an announcement
+following an answer cuts the answer off part-way. It was found the way such
+things are: a recitation stopped dead so the assistant could say what it had
+named the conversation.
+
+The satellite reports what it is doing, and `TTS_START` leaves it responding
+until the audio finishes, so announcing now waits for idle first. A satellite
+that never falls quiet is left alone and the announcement is dropped, which is
+the right outcome for anything incidental.
+
+### A request says why it is being made
+
+`Purpose` marks a request as the person's question, or as the assistant's own
+housekeeping. Nothing downstream could tell them apart, which surfaced as two
+tests asserting on "the last prompt the model was given" and getting the
+naming prompt that arrived after the answer. It is also how housekeeping could
+one day go to a cheaper model than the one answering.
+
 ### The manner is held in memory and stored beside it
 
 It is read on every prompt, so it lives in memory; it is expected to still be

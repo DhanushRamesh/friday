@@ -48,6 +48,10 @@ func (r *Runner) execute(ctx, lifeCtx context.Context, t *chat.Chat) {
 	// conversation's memory is never in front of the person waiting for it. The
 	// slot is still held, which keeps this from competing with the next
 	// chat for the same environment.
+	// Both run after the answer has been delivered, and both hold the slot
+	// so they cannot pile up. Naming first, since it is the shorter of the
+	// two and is the one somebody is waiting to hear.
+	r.title(ctx, t)
 	r.condense(ctx, t)
 }
 

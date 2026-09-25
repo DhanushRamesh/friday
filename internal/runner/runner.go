@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DhanushRamesh/personal-assistant/internal/announce"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
 	"github.com/DhanushRamesh/personal-assistant/internal/environment"
@@ -89,6 +90,9 @@ type Options struct {
 	// change takes effect without a restart. Nil leaves it answering
 	// plainly.
 	Persona *persona.Setting
+	// Announcer : Where something is said that nobody asked for, such as the
+	// name a conversation has just been given. Nil says nothing.
+	Announcer announce.Announcer
 }
 
 // Runner : Executes chats in the background.
@@ -105,6 +109,7 @@ type Runner struct {
 	condenseTimeout time.Duration
 	assistantName   string
 	persona         *persona.Setting
+	announcer       announce.Announcer
 
 	// slots : Limits how many chats run at once. A chat holds one for the
 	// whole of its run.
@@ -166,6 +171,7 @@ func New(opts Options) (*Runner, error) {
 		condenseTimeout: opts.CondenseTimeout,
 		assistantName:   opts.AssistantName,
 		persona:         opts.Persona,
+		announcer:       opts.Announcer,
 		slots:           make(chan struct{}, opts.MaxConcurrent),
 		base:            base,
 		stopBase:        stop,
