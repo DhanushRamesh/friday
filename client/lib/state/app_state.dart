@@ -130,13 +130,14 @@ class AppState extends ChangeNotifier {
   Future<bool> signIn({
     required String username,
     required String password,
+    required String clientName,
   }) async {
     _set(busy: true, error: null);
     try {
       final result = await api.login(
         username: username,
         password: password,
-        clientName: 'web',
+        clientName: clientName,
       );
       _identity = Identity(user: result.user, client: result.client);
       await _loadSessions();

@@ -23,11 +23,13 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _username = TextEditingController();
   final _password = TextEditingController();
+  final _client = TextEditingController();
 
   @override
   void dispose() {
     _username.dispose();
     _password.dispose();
+    _client.dispose();
     super.dispose();
   }
 
@@ -36,6 +38,7 @@ class _LoginScreenState extends State<LoginScreen> {
     await widget.state.signIn(
       username: _username.text.trim(),
       password: _password.text,
+      clientName: _client.text.trim(),
     );
   }
 
@@ -81,9 +84,25 @@ class _LoginScreenState extends State<LoginScreen> {
                   label: 'Password',
                   obscure: true,
                   enabled: !state.busy,
-                  textInputAction: TextInputAction.go,
+                  textInputAction: TextInputAction.next,
                   autofillHints: const [AutofillHints.password],
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                AppTextField(
+                  controller: _client,
+                  label: 'Name this browser',
+                  hint: 'chrome-dhanush',
+                  enabled: !state.busy,
+                  textInputAction: TextInputAction.go,
                   onSubmitted: (_) => _submit(),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  'Signing in registers this browser separately, so what you '
+                  'type here is not mistaken for what you say aloud.',
+                  style: context.text.caption.copyWith(
+                    color: context.colors.textMuted,
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.xl),
                 AppButton(
