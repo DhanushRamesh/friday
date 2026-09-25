@@ -178,6 +178,10 @@ const (
 // Request : What an environment is asked to do.
 type Request struct {
 	// Prompt : What the user asked for.
+	//
+	// Empty on a continuation, where tools have run and the model is being
+	// asked to go on from what they returned. The question is then already
+	// in History and repeating it would have the model answer it twice.
 	Prompt string
 	// History : What was said earlier in the same conversation, oldest first,
 	// excluding this prompt. Without it a correction such as "no, make it

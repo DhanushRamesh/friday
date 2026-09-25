@@ -67,6 +67,13 @@ type Chat struct {
 	// Prompt : What the user asked for.
 	Prompt string
 
+	// ClientID : Which client submitted it. Empty for a chat from before
+	// this was recorded, and for one submitted without a client.
+	//
+	// A tool that acts on the client itself, such as switching which
+	// conversation it talks in, has no other way to know which one to act on.
+	ClientID string
+
 	// Channel : How the prompt arrived, which decides what may be done
 	// about it.
 	Channel Channel

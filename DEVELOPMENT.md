@@ -473,6 +473,49 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### The loop, and what stops it
+
+A turn is no longer one call. The model is asked, and if it asks for tools
+they are run, both halves are written to the conversation, and it is asked
+again from what came back. The question is not repeated on the second round:
+it is in the history by then, and sending it again would have the model answer
+it twice.
+
+Five rounds at most. The last one is offered no tools at all, so a model that
+has run out has to answer from what it gathered rather than being cut off
+mid-chain. The person gets a reply either way, and the model has to say what
+it managed rather than what it intended.
+
+The call and its answer are written before the model is asked again. A chain
+cut in the middle -- a restart, a deadline, the person saying stop -- then
+reads as what was done rather than as a question nobody answered. That is the
+same reason an interruption is recorded rather than the prompt being deleted.
+
+### A wrong argument is answered, not refused
+
+A call whose arguments do not fit the schema is not run, and the model is told
+which argument, what was wrong with it and what was allowed. It corrects
+itself on the next round. One told only that the call was invalid guesses
+again. The correction costs a round trip and turns a wrong answer into a right
+one, which is the whole trade.
+
+Ulaa fights the same problem in prose, with a sub-prompt spelling out that
+identifiers need quotation marks and a worked example of the mistake. A schema
+and a correction make that unnecessary.
+
+### This endpoint wants tool results together, not apart
+
+Tool results go back as an array on one message, not as one message each
+carrying a tool_call_id. OpenAI's shape is the latter and this endpoint is not
+OpenAI, whatever the request otherwise looks like. Sent apart, the vendor
+behind it rejects the whole conversation: "tool_use ids were found without
+tool_result blocks immediately after".
+
+That message was only legible because the error parser now reads
+`error.api_error.message` before `error.message`. The outer one said "Error in
+AI API Request", which names nothing. It is the third time today that the
+useful half of a failure was being thrown away.
+
 ### Tool calls end a stream, they do not accompany an answer
 
 An environment now answers in one of three ways: words, a failure, or a

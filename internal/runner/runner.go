@@ -21,6 +21,7 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/llm"
 	"github.com/DhanushRamesh/personal-assistant/internal/logging"
 	"github.com/DhanushRamesh/personal-assistant/internal/persona"
+	"github.com/DhanushRamesh/personal-assistant/internal/tool"
 )
 
 const (
@@ -93,6 +94,9 @@ type Options struct {
 	// Announcer : Where something is said that nobody asked for, such as the
 	// name a conversation has just been given. Nil says nothing.
 	Announcer announce.Announcer
+	// Tools : What the assistant can do as well as say. Nil offers none, and
+	// a model offered none answers from what it knows.
+	Tools *tool.Registry
 }
 
 // Runner : Executes chats in the background.
@@ -110,6 +114,7 @@ type Runner struct {
 	assistantName   string
 	persona         *persona.Setting
 	announcer       announce.Announcer
+	tools           *tool.Registry
 
 	// slots : Limits how many chats run at once. A chat holds one for the
 	// whole of its run.
@@ -172,6 +177,7 @@ func New(opts Options) (*Runner, error) {
 		assistantName:   opts.AssistantName,
 		persona:         opts.Persona,
 		announcer:       opts.Announcer,
+		tools:           opts.Tools,
 		slots:           make(chan struct{}, opts.MaxConcurrent),
 		base:            base,
 		stopBase:        stop,

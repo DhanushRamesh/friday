@@ -16,6 +16,7 @@ import (
 // recorded and making a chat's own history disagree with the row.
 type chatRow struct {
 	ID             string     `gorm:"column:id;primaryKey"`
+	ClientID       *string    `gorm:"column:client_id"`
 	ConversationID *string    `gorm:"column:conversation_id"`
 	Prompt         string     `gorm:"column:prompt"`
 	Channel        string     `gorm:"column:channel"`
@@ -149,6 +150,7 @@ func toRow(t *chat.Chat) *chatRow {
 		ID:             t.ID,
 		ConversationID: nullable(t.ConversationID),
 		Prompt:         t.Prompt,
+		ClientID:       nullable(t.ClientID),
 		Channel:        string(t.Channel),
 		Vendor:         nullable(t.Model.Vendor),
 		Model:          nullable(t.Model.ID),
@@ -170,6 +172,7 @@ func (r *chatRow) toChat() *chat.Chat {
 		ID:             r.ID,
 		ConversationID: value(r.ConversationID),
 		Prompt:         r.Prompt,
+		ClientID:       value(r.ClientID),
 		Channel:        chat.Channel(r.Channel),
 		Model:          chat.NewModel(value(r.Vendor), value(r.Model)),
 		Status:         chat.Status(r.Status),

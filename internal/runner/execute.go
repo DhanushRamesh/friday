@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
@@ -62,55 +63,113 @@ func (r *Runner) execute(ctx, lifeCtx context.Context, t *chat.Chat) {
 // used to record that the chat was cancelled.
 func (r *Runner) consume(runCtx, ctx context.Context, t *chat.Chat) {
 	window := r.history(ctx, t)
-	stream, err := r.environment.Run(runCtx, environment.Request{
-		Prompt:  t.Prompt,
-		History: toProviderTurns(window.Messages),
-		Summary: window.Summary,
-		Vendor:  t.Model.Vendor,
-		Model:   t.Model.ID,
+	turns := toProviderTurns(window.Messages)
+	prompt := t.Prompt
 
-		SystemPrompt: r.prompt(),
-	})
-	if err != nil {
-		r.logger.ErrorContext(ctx, "provider would not start", slog.Any("error", err))
-		r.finishWith(ctx, t, func() error {
-			return t.Fail("I could not reach the service that answers this.")
+	for hop := 0; ; hop++ {
+		// The last round is offered nothing. A model that has run out of
+		// rounds must answer from what it gathered, and saying what it
+		// managed is better than being cut off mid-chain with nothing to
+		// show for the work that already ran.
+		tools := r.offered(t)
+		if hop >= MaxToolHops-1 {
+			if len(tools) > 0 {
+				r.logger.WarnContext(ctx, "the tool chain ran long, so the last round is asked without tools",
+					slog.Int("hops", hop))
+			}
+			tools = nil
+		}
+
+		stream, err := r.environment.Run(runCtx, environment.Request{
+			Prompt:  prompt,
+			History: turns,
+			Summary: window.Summary,
+			Vendor:  t.Model.Vendor,
+			Model:   t.Model.ID,
+			Tools:   tools,
+
+			SystemPrompt: r.prompt(),
 		})
-		return
-	}
+		if err != nil {
+			r.logger.ErrorContext(ctx, "environment would not start", slog.Any("error", err))
+			r.finishWith(ctx, t, func() error {
+				return t.Fail("I could not reach the service that answers this.")
+			})
+			return
+		}
 
+		final := r.drain(ctx, t, stream)
+
+		switch {
+		case final == nil:
+			// The stream closed with no terminal message, which the contract
+			// says means the run was stopped rather than finished.
+			r.finishStopped(ctx, t, runCtx.Err())
+			return
+
+		case final.Kind == environment.KindError:
+			if final.Code != "" && !failure.Known(failure.Code(final.Code)) {
+				r.logger.WarnContext(ctx, "environment sent an unknown failure code",
+					slog.String("code", final.Code))
+			}
+			r.finishWith(ctx, t, func() error {
+				return t.FailWith(final.Text, final.Code, final.Detail)
+			})
+			return
+
+		case final.Kind != environment.KindToolCalls:
+			r.complete(ctx, t, final.Text)
+			return
+		}
+
+		// Tools were asked for. Run them, remember both halves, and go round
+		// again with what they returned. The question is not repeated: it is
+		// in the history now, and asking it twice would have the model answer
+		// it twice.
+		turns = append(turns, asUserTurn(prompt)...)
+		turns = append(turns, r.runTools(ctx, t, final.ToolCalls)...)
+		prompt = ""
+
+		if runCtx.Err() != nil {
+			// Stopped while the tools were running. What ran, ran, and the
+			// transcript already says so.
+			r.finishStopped(ctx, t, runCtx.Err())
+			return
+		}
+	}
+}
+
+// asUserTurn : The question as a turn, or nothing when there is none.
+//
+// Added to the history the first time round, because from then on the request
+// carries no prompt and the question would otherwise be missing from what the
+// model reads.
+func asUserTurn(prompt string) []environment.Turn {
+	if strings.TrimSpace(prompt) == "" {
+		return nil
+	}
+	return []environment.Turn{{Role: environment.RoleUser, Text: prompt}}
+}
+
+// drain : Reads a stream to its end, returning its terminal message.
+//
+// Always read to completion, whatever arrives: the environment blocks on an
+// unread send, so abandoning a stream early leaves its goroutine stuck.
+func (r *Runner) drain(ctx context.Context, t *chat.Chat, stream <-chan environment.Message) *environment.Message {
 	var final *environment.Message
 	for msg := range stream {
 		switch msg.Kind {
 		case environment.KindUpdate:
 			r.announce(t.ID, msg)
-		case environment.KindFinal, environment.KindError:
-			// Keep a copy: the loop must run to completion so the provider's
-			// goroutine is not left blocked on a send.
+		case environment.KindFinal, environment.KindError, environment.KindToolCalls:
 			m := msg
 			final = &m
 		default:
-			r.logger.WarnContext(ctx, "provider sent an unknown message kind",
+			r.logger.WarnContext(ctx, "environment sent an unknown message kind",
 				slog.String("kind", string(msg.Kind)))
 		}
 	}
-
-	switch {
-	case final != nil && final.Kind == environment.KindError:
-		if final.Code != "" && !failure.Known(failure.Code(final.Code)) {
-			r.logger.WarnContext(ctx, "provider sent an unknown failure code",
-				slog.String("code", final.Code))
-		}
-		r.finishWith(ctx, t, func() error {
-			return t.FailWith(final.Text, final.Code, final.Detail)
-		})
-	case final != nil:
-		r.complete(ctx, t, final.Text)
-	default:
-		// The stream closed with no terminal message, which the provider
-		// contract says means the run was stopped rather than finished.
-		r.finishStopped(ctx, t, runCtx.Err())
-	}
+	return final
 }
 
 // history : Records the question and returns what was said before it.

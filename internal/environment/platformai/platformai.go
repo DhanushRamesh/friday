@@ -219,7 +219,11 @@ func (p *Environment) Name() string { return "platformai" }
 // provider has real progress to report, such as an agent loop naming the
 // tool it is using, that is what an update is for.
 func (p *Environment) Run(ctx context.Context, req environment.Request) (<-chan environment.Message, error) {
-	if strings.TrimSpace(req.Prompt) == "" {
+	// A continuation carries no new question: the person asked once, tools
+	// ran, and the model is being asked to go on from what came back. So an
+	// empty prompt is refused only when there is no history either, which is
+	// a request with nothing in it at all.
+	if strings.TrimSpace(req.Prompt) == "" && len(req.History) == 0 {
 		return nil, environment.ErrEmptyPrompt
 	}
 

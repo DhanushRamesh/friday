@@ -28,6 +28,8 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/persona"
 	"github.com/DhanushRamesh/personal-assistant/internal/runner"
 	"github.com/DhanushRamesh/personal-assistant/internal/storage"
+	"github.com/DhanushRamesh/personal-assistant/internal/tool"
+	"github.com/DhanushRamesh/personal-assistant/internal/tool/conversations"
 )
 
 // main : Runs the server, or the named command.
@@ -154,6 +156,15 @@ func run() error {
 	// behaved before it could speak first.
 	speaker := announcer(cfg, logger.Logger)
 
+	// What the assistant can do as well as say. A registry that will not
+	// build is a programming mistake, not a configuration one, so it stops
+	// the server rather than quietly offering nothing.
+	tools, err := tool.NewRegistry(conversations.All(chats)...)
+	if err != nil {
+		return err
+	}
+	logger.Info("tools registered", slog.Any("tools", tools.Names()))
+
 	manner := persona.NewSetting(startingPersona(context.Background(), chats, cfg, logger.Logger))
 
 	chatRunner, err := runner.New(runner.Options{
@@ -166,6 +177,7 @@ func run() error {
 		AssistantName: cfg.Assistant.Name,
 		Persona:       manner,
 		Announcer:     speaker,
+		Tools:         tools,
 	})
 	if err != nil {
 		return err

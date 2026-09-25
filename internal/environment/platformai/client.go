@@ -33,8 +33,21 @@ type chatMessage struct {
 	// ToolCalls : On an assistant message that asked for tools instead of
 	// answering. Carries no content when set.
 	ToolCalls []wireToolCall `json:"tool_calls,omitempty"`
-	// ToolCallID : On a tool message, which call it answers.
-	ToolCallID string `json:"tool_call_id,omitempty"`
+	// ToolResults : On a tool message, the answers it carries.
+	//
+	// An array on one message rather than OpenAI's one message per answer
+	// with a tool_call_id. This endpoint wants them together, and sending
+	// them apart makes the vendor behind it reject the whole conversation:
+	// "tool_use ids were found without tool_result blocks immediately
+	// after".
+	ToolResults []wireToolResult `json:"tool_results,omitempty"`
+}
+
+// wireToolResult : One answer, in the shape this endpoint expects.
+type wireToolResult struct {
+	ID      string `json:"id"`
+	Type    string `json:"type"`
+	Content string `json:"content"`
 }
 
 // wireToolCall : A tool call in the shape this endpoint uses, which is
@@ -228,10 +241,15 @@ func (p *Environment) attemptChat(ctx context.Context, ask environment.Request) 
 	for _, turn := range ask.History {
 		messages = append(messages, asWire(turn)...)
 	}
-	messages = append(messages, chatMessage{
-		Role:    string(environment.RoleUser),
-		Content: ask.Prompt,
-	})
+	// Only when there is one. A continuation after tools ran has no new
+	// question, and appending an empty user message would have the model
+	// answer a thing nobody said.
+	if strings.TrimSpace(ask.Prompt) != "" {
+		messages = append(messages, chatMessage{
+			Role:    string(environment.RoleUser),
+			Content: ask.Prompt,
+		})
+	}
 
 	vendor, model := p.cfg.Vendor, p.cfg.Model
 	if ask.Model != "" {
@@ -335,13 +353,23 @@ func contentText(raw json.RawMessage) string {
 // errorMessage : Reads the message out of the service's error envelope, or
 // returns empty if the body is not one.
 func errorMessage(body []byte) string {
-	// The chat endpoint nests it: {"error": {"message": "..."}}.
+	// The chat endpoint nests it: {"error": {"message": "..."}}, and nests it
+	// again when the failure came from the model's own vendor rather than
+	// from this service. The inner one says what is actually wrong with the
+	// request; the outer one says only that something was.
 	var nested struct {
 		Error struct {
-			Message string `json:"message"`
+			Message  string `json:"message"`
+			APIError struct {
+				Type    string `json:"type"`
+				Message string `json:"message"`
+			} `json:"api_error"`
 		} `json:"error"`
 	}
 	if json.Unmarshal(body, &nested) == nil {
+		if msg := strings.TrimSpace(nested.Error.APIError.Message); msg != "" {
+			return msg
+		}
 		if msg := strings.TrimSpace(nested.Error.Message); msg != "" {
 			return msg
 		}
@@ -408,20 +436,21 @@ type tokenState struct {
 
 // asWire : One remembered turn as the messages this endpoint expects.
 //
-// A turn carrying tool results becomes one message per result, because the
-// endpoint matches an answer to its call by the identifier on the message
-// rather than by anything inside it.
+// A turn carrying tool results becomes a single message holding all of them,
+// which is what this endpoint wants. Splitting them across a message each, as
+// OpenAI's shape does, leaves the vendor behind it complaining that a
+// tool_use had no tool_result after it.
 func asWire(turn environment.Turn) []chatMessage {
 	if len(turn.ToolResults) > 0 {
-		out := make([]chatMessage, 0, len(turn.ToolResults))
+		msg := chatMessage{Role: "tool"}
 		for _, r := range turn.ToolResults {
-			out = append(out, chatMessage{
-				Role:       "tool",
-				ToolCallID: r.ID,
-				Content:    r.Content,
+			msg.ToolResults = append(msg.ToolResults, wireToolResult{
+				ID:      r.ID,
+				Type:    "function",
+				Content: r.Content,
 			})
 		}
-		return out
+		return []chatMessage{msg}
 	}
 
 	msg := chatMessage{Role: string(turn.Role), Content: turn.Text}

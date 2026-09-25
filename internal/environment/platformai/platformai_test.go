@@ -831,15 +831,19 @@ func TestARememberedToolExchangeIsSentBack(t *testing.T) {
 
 	var sent struct {
 		Messages []struct {
-			Role       string `json:"role"`
-			Content    string `json:"content"`
-			ToolCallID string `json:"tool_call_id"`
-			ToolCalls  []struct {
+			Role      string `json:"role"`
+			Content   string `json:"content"`
+			ToolCalls []struct {
 				ID       string `json:"id"`
 				Function struct {
 					Name string `json:"name"`
 				} `json:"function"`
 			} `json:"tool_calls"`
+			ToolResults []struct {
+				ID      string `json:"id"`
+				Type    string `json:"type"`
+				Content string `json:"content"`
+			} `json:"tool_results"`
 		} `json:"messages"`
 	}
 	body, _ := f.lastChatBody.Load().(string)
@@ -852,10 +856,19 @@ func TestARememberedToolExchangeIsSentBack(t *testing.T) {
 		if len(m.ToolCalls) > 0 && m.ToolCalls[0].ID == "call_1" {
 			sawCall = true
 		}
-		if m.Role == "tool" && m.ToolCallID == "call_1" {
-			sawResult = true
-			if !strings.Contains(m.Content, "ok:") {
-				t.Errorf("the result reached the model as %q, without its outcome", m.Content)
+		// One message holding every answer, which is this endpoint's shape.
+		// Splitting them one per message, as OpenAI does, makes the vendor
+		// behind it reject the conversation for a tool_use with no
+		// tool_result after it.
+		if m.Role == "tool" {
+			for _, r := range m.ToolResults {
+				if r.ID != "call_1" {
+					continue
+				}
+				sawResult = true
+				if !strings.Contains(r.Content, "ok:") {
+					t.Errorf("the result reached the model as %q, without its outcome", r.Content)
+				}
 			}
 		}
 	}

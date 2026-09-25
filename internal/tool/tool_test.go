@@ -180,3 +180,77 @@ func TestTheDescriptionSaysWhenToUseIt(t *testing.T) {
 		}
 	}
 }
+
+// A wrong argument is answered with what was wrong and what was allowed, so
+// the model can correct itself rather than guess again.
+func TestAWrongArgumentIsExplained(t *testing.T) {
+	x := usable()
+	x.Params = tool.Schema{
+		Properties: map[string]tool.Property{
+			"conversation_id": {Type: "string", Description: "An identifier.", Pattern: "^conv_"},
+			"limit":           {Type: "integer", Description: "How many.", Minimum: tool.Bound(1), Maximum: tool.Bound(50)},
+			"archived":        {Type: "boolean", Description: "Put-away ones."},
+			"order":           {Type: "string", Description: "Which way.", Enum: []string{"newest", "oldest"}},
+		},
+		Required: []string{"conversation_id"},
+	}
+	r, err := tool.NewRegistry(x)
+	if err != nil {
+		t.Fatalf("NewRegistry: %v", err)
+	}
+
+	cases := map[string]string{
+		`{}`:                                              "required",
+		`{"conversation_id":"roof"}`:                      "not the right shape",
+		`{"conversation_id":"conv_1","limit":0}`:          "least allowed",
+		`{"conversation_id":"conv_1","limit":99}`:         "most allowed",
+		`{"conversation_id":"conv_1","limit":"five"}`:     "must be a number",
+		`{"conversation_id":"conv_1","archived":"yes"}`:   "true or false",
+		`{"conversation_id":"conv_1","order":"sideways"}`: "must be one of",
+		`{"conversation_id":"conv_1","colour":"red"}`:     "not an argument",
+		`not json at all`:                                 "not a JSON object",
+	}
+
+	for args, want := range cases {
+		got := r.Call(context.Background(), x.Name, tool.Invocation{
+			Caller: tool.Caller{Channel: chat.ChannelDirect},
+			Args:   []byte(args),
+		})
+		if got.Outcome != conversation.OutcomeFailed {
+			t.Errorf("%s was accepted", args)
+			continue
+		}
+		if !strings.Contains(got.Content, want) {
+			t.Errorf("%s gave %q, want it to mention %q", args, got.Content, want)
+		}
+	}
+}
+
+// Arguments that are right are passed through untouched, since what the model
+// wrote is what a tool has to act on.
+func TestGoodArgumentsReachTheTool(t *testing.T) {
+	var seen string
+	x := usable()
+	x.Params = tool.Schema{
+		Properties: map[string]tool.Property{
+			"limit": {Type: "integer", Description: "How many.", Minimum: tool.Bound(1)},
+		},
+	}
+	x.Run = func(_ context.Context, in tool.Invocation) tool.Result {
+		seen = string(in.Args)
+		return tool.OK("listed")
+	}
+
+	r, _ := tool.NewRegistry(x)
+	got := r.Call(context.Background(), x.Name, tool.Invocation{
+		Caller: tool.Caller{Channel: chat.ChannelDirect},
+		Args:   []byte(`{"limit":5}`),
+	})
+
+	if got.Outcome != conversation.OutcomeOK {
+		t.Fatalf("outcome = %q: %s", got.Outcome, got.Content)
+	}
+	if seen != `{"limit":5}` {
+		t.Errorf("the tool saw %q, want the arguments as the model wrote them", seen)
+	}
+}

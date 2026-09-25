@@ -140,5 +140,13 @@ func (r *Registry) Call(ctx context.Context, name string, in Invocation) Result 
 			name))
 	}
 
+	// Checked before running, and answered rather than refused. A model told
+	// which argument was wrong and what was allowed corrects itself on the
+	// next hop; one told only that the call was invalid guesses again.
+	if err := Validate(t.Params, in.Args); err != nil {
+		return Failed(fmt.Sprintf("%s was not called correctly: %s. Call it again with that fixed.",
+			name, err))
+	}
+
 	return t.Run(ctx, in)
 }
