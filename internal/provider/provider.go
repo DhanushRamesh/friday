@@ -49,6 +49,12 @@ type Message struct {
 	// Text : What to show the user. For KindError this is the explanation
 	// they see, so it is written in plain language.
 	Text string
+	// Code : For KindError, which kind of failure it was, as a failure.Code.
+	// Empty otherwise.
+	Code string
+	// Detail : For KindError, what the service actually said, kept exactly.
+	// Empty otherwise, and never the thing shown without being asked for.
+	Detail string
 	// At : When the provider produced the message.
 	At time.Time
 }
@@ -64,8 +70,18 @@ func Final(text string) Message {
 }
 
 // Failure : Returns the message ending a run that could not produce a result.
-func Failure(text string) Message {
-	return Message{Kind: KindError, Text: text, At: time.Now().UTC()}
+//
+// [code] and [detail] carry what kind of failure it was and what the service
+// actually said. Both may be empty when a caller knows no more than the
+// sentence.
+func Failure(text, code, detail string) Message {
+	return Message{
+		Kind:   KindError,
+		Text:   text,
+		Code:   code,
+		Detail: detail,
+		At:     time.Now().UTC(),
+	}
 }
 
 // Role : Who said something in a session.

@@ -8,6 +8,7 @@ import (
 
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	"github.com/DhanushRamesh/personal-assistant/internal/events"
+	"github.com/DhanushRamesh/personal-assistant/internal/failure"
 	"github.com/DhanushRamesh/personal-assistant/internal/provider"
 	"github.com/DhanushRamesh/personal-assistant/internal/session"
 )
@@ -80,7 +81,13 @@ func (r *Runner) consume(runCtx, ctx context.Context, t *chat.Chat) {
 
 	switch {
 	case final != nil && final.Kind == provider.KindError:
-		r.finishWith(ctx, t, func() error { return t.Fail(final.Text) })
+		if final.Code != "" && !failure.Known(failure.Code(final.Code)) {
+			r.logger.WarnContext(ctx, "provider sent an unknown failure code",
+				slog.String("code", final.Code))
+		}
+		r.finishWith(ctx, t, func() error {
+			return t.FailWith(final.Text, final.Code, final.Detail)
+		})
 	case final != nil:
 		r.complete(ctx, t, final.Text)
 	default:
@@ -151,7 +158,7 @@ func (r *Runner) recordOutcome(ctx context.Context, t *chat.Chat) {
 	case t.Response != "":
 		written = append(written, session.Answered(t.SessionID, t.Response, *said))
 	case t.Error != "":
-		written = append(written, session.Failed(t.SessionID, t.Error, *said))
+		written = append(written, session.Failed(t.SessionID, t.Error, t.ErrorDetail, *said))
 	}
 
 	// Whatever it managed to say, a turn the person stopped is marked as

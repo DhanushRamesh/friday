@@ -14,10 +14,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
+	"github.com/DhanushRamesh/personal-assistant/internal/failure"
 	"github.com/DhanushRamesh/personal-assistant/internal/logging"
 	"github.com/DhanushRamesh/personal-assistant/internal/provider"
 )
@@ -232,7 +232,8 @@ func (p *Provider) Run(ctx context.Context, req provider.Request) (<-chan provid
 			p.logger.ErrorContext(ctx, "platform ai call failed",
 				slog.Duration("after", time.Since(started)),
 				slog.Any("error", err))
-			send(ctx, ch, provider.Failure(userFacing(err)))
+			f := classify(err)
+			send(ctx, ch, provider.Failure(f.Sentence(), string(f.Code), f.Full()))
 			return
 		}
 
@@ -245,44 +246,22 @@ func (p *Provider) Run(ctx context.Context, req provider.Request) (<-chan provid
 	return ch, nil
 }
 
-// codeLike : A machine code rather than a sentence — SHOUTING_SNAKE_CASE
-// with no spaces, as an API returns.
-var codeLike = regexp.MustCompile(`^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$`)
-
-// isCode : Reports whether a message is a code rather than words.
-func isCode(message string) bool {
-	return codeLike.MatchString(strings.TrimSpace(message))
-}
-
-// userFacing : Turns a failure into something that can be read aloud.
+// classify : Sorts a failure into a code, keeping what the service said.
 //
-// A message the service wrote is passed on, since it was written to be read.
-// Anything else is described in general terms, because transport and decoding
-// errors mean nothing to a listener and can carry internal detail.
-func userFacing(err error) string {
+// The sentence a listener hears comes from the code, not from the service.
+// A service's own words are frequently a code rather than a sentence —
+// INVALID_OAUTHTOKEN means nothing read aloud to somebody waiting — and even
+// when they are prose they are written for whoever integrates with it. What
+// they are good for is the detail, where being exact is the whole point.
+func classify(err error) *failure.Error {
 	var apiErr *APIError
-	if errors.As(err, &apiErr) && apiErr.Message != "" {
-		// A sentence the service wrote is passed on, because it was
-		// written to be read. A code was not: INVALID_OAUTHTOKEN is for
-		// whoever runs the server and means nothing said aloud to
-		// somebody waiting for an answer.
-		if !isCode(apiErr.Message) {
-			return apiErr.Message
-		}
-		switch apiErr.Status {
-		case http.StatusUnauthorized, http.StatusForbidden:
-			return "I am not allowed to reach the model. " +
-				"Its credentials need renewing."
-		case http.StatusTooManyRequests:
-			return "The model is busy. Ask me again in a moment."
-		default:
-			return "The model refused that."
-		}
+	if errors.As(err, &apiErr) {
+		return failure.FromStatus(apiErr.Status, apiErr.Message, err)
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return "The service did not answer in time."
+		return failure.New(failure.Timeout, err.Error(), err)
 	}
-	return "I could not reach the service that answers this."
+	return failure.New(failure.Unreachable, err.Error(), err)
 }
 
 // send : Delivers a message, reporting false if ctx ends before the caller

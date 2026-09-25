@@ -315,6 +315,33 @@ by the assistant itself, so the page's own origin is the server's address and
 nothing has to be configured; during development `--dart-define=ASSISTANT_URL`
 points it somewhere else and the loopback CORS rule lets it through.
 
+### A failure is said one way and recorded another
+
+Two audiences want different things from the same failure. Somebody waiting
+for an answer wants one sentence telling them whether to try again; whoever
+is fixing it wants the exact words the service used and the status it used
+them with. One line for both is either useless aloud or leaks internals into
+a room.
+
+So `internal/failure` maps a code to a fixed sentence and keeps the service's
+own words beside it as the detail. The sentence is spoken and shown; the
+detail waits behind "more info". The code is stored too, so the wording can
+change later without the stored rows disagreeing with the live ones, and so
+failures can be counted — "how often is this rate limiting" is a question
+about codes, not about prose.
+
+The shape is taken from the error module in `ulaa-ai-assistant`: a map of
+codes to messages, an HTTP status table, a fallback that logs rather than
+guesses, and the exact error carried alongside as `envError`.
+
+**A failure is now given to the model, which it was not before.** The reason
+it was withheld still stands on its own: a bare "something went wrong" read
+back as conversation makes the model explain an outage it had no part in and
+invent detail to fill the gap. What closes that gap is the detail. With the
+exact error present there is nothing left to invent, and asking out loud what
+precisely failed is answerable rather than a guess. That was the point of
+keeping it.
+
 ### A stopped turn is marked, not erased
 
 Saying "stop" cancels the turn. What stays behind is the question, whatever

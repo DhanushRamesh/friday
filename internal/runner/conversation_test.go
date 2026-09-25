@@ -98,9 +98,14 @@ func TestTheEarlierExchangeReachesTheModel(t *testing.T) {
 
 // A failure is written down, because the person saw it and a correction
 // refers to it — but it is never handed back to a model.
-func TestAFailureIsRecordedButNotSentOn(t *testing.T) {
-	const reason = "I could not reach the service that answers this."
-	recorder := &recordingProvider{failWith: reason}
+func TestAFailureIsRecordedAndSentOnWithItsDetail(t *testing.T) {
+	const reason = "The service could not complete the request."
+	const detail = "INVALID_OAUTHTOKEN (HTTP 401)"
+	recorder := &recordingProvider{
+		failWith:   reason,
+		failCode:   "unauthorised",
+		failDetail: detail,
+	}
 	h := newHarness(t, recorder, runner.Options{})
 
 	first := h.submit(t, "what is the time")
@@ -118,10 +123,17 @@ func TestAFailureIsRecordedButNotSentOn(t *testing.T) {
 	second := h.submit(t, "try again")
 	h.await(t, second.ID, chat.StatusCompleted, chat.StatusFailed)
 
+	// The failure is given to the model, and with the exact error, so that
+	// "what went wrong?" is answerable. Withholding it is what used to make
+	// the model invent an explanation for an outage it had no part in.
+	var sawDetail bool
 	for _, turn := range recorder.history() {
-		if strings.Contains(turn.Text, reason) {
-			t.Errorf("the failure was sent to the model: %q", turn.Text)
+		if strings.Contains(turn.Text, detail) {
+			sawDetail = true
 		}
+	}
+	if !sawDetail {
+		t.Errorf("the exact error never reached the model: %v", recorder.history())
 	}
 }
 
@@ -150,8 +162,10 @@ func TestACancelledChatStillLeavesItsQuestion(t *testing.T) {
 // recordingProvider : Answers, and keeps the history it was given so a test
 // can check what a model would actually have seen.
 type recordingProvider struct {
-	failWith string
-	seen     []provider.Turn
+	failWith   string
+	failCode   string
+	failDetail string
+	seen       []provider.Turn
 }
 
 func (p *recordingProvider) Name() string { return "recording" }
@@ -165,7 +179,7 @@ func (p *recordingProvider) Run(ctx context.Context, req provider.Request) (<-ch
 
 	ch := make(chan provider.Message, 1)
 	if p.failWith != "" {
-		ch <- provider.Failure(p.failWith)
+		ch <- provider.Failure(p.failWith, p.failCode, p.failDetail)
 	} else {
 		ch <- provider.Final("an answer")
 	}

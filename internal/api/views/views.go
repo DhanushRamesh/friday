@@ -16,31 +16,39 @@ import (
 
 // Chat : A chat as the API returns it.
 type Chat struct {
-	ID         string     `json:"id"`
-	SessionID  string     `json:"session_id,omitempty"`
-	Prompt     string     `json:"prompt"`
-	Status     string     `json:"status"`
-	Response   string     `json:"response,omitempty"`
-	Error      string     `json:"error,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
-	StartedAt  *time.Time `json:"started_at,omitempty"`
-	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	ID        string `json:"id"`
+	SessionID string `json:"session_id,omitempty"`
+	Prompt    string `json:"prompt"`
+	Status    string `json:"status"`
+	Response  string `json:"response,omitempty"`
+	Error     string `json:"error,omitempty"`
+	// ErrorCode : Which kind of failure it was. A client keys off this rather
+	// than matching on the sentence, which is prose and will change.
+	ErrorCode string `json:"error_code,omitempty"`
+	// ErrorDetail : Exactly what the service said. Shown behind "more info",
+	// never in place of Error.
+	ErrorDetail string     `json:"error_detail,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	StartedAt   *time.Time `json:"started_at,omitempty"`
+	FinishedAt  *time.Time `json:"finished_at,omitempty"`
 }
 
 // OfChat : Renders a chat for the API.
 func OfChat(t *chat.Chat) Chat {
 	return Chat{
-		ID:         t.ID,
-		SessionID:  t.SessionID,
-		Prompt:     t.Prompt,
-		Status:     string(t.Status),
-		Response:   t.Response,
-		Error:      t.Error,
-		CreatedAt:  t.CreatedAt,
-		UpdatedAt:  t.UpdatedAt,
-		StartedAt:  t.StartedAt,
-		FinishedAt: t.FinishedAt,
+		ID:          t.ID,
+		SessionID:   t.SessionID,
+		Prompt:      t.Prompt,
+		Status:      string(t.Status),
+		Response:    t.Response,
+		Error:       t.Error,
+		ErrorCode:   t.ErrorCode,
+		ErrorDetail: t.ErrorDetail,
+		CreatedAt:   t.CreatedAt,
+		UpdatedAt:   t.UpdatedAt,
+		StartedAt:   t.StartedAt,
+		FinishedAt:  t.FinishedAt,
 	}
 }
 
@@ -51,6 +59,7 @@ type Summary struct {
 	Prompt     string     `json:"prompt"`
 	Status     string     `json:"status"`
 	Error      string     `json:"error,omitempty"`
+	ErrorCode  string     `json:"error_code,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
 	UpdatedAt  time.Time  `json:"updated_at"`
 	StartedAt  *time.Time `json:"started_at,omitempty"`
@@ -65,6 +74,7 @@ func OfSummary(s chat.Summary) Summary {
 		Prompt:     s.Prompt,
 		Status:     string(s.Status),
 		Error:      s.Error,
+		ErrorCode:  s.ErrorCode,
 		CreatedAt:  s.CreatedAt,
 		UpdatedAt:  s.UpdatedAt,
 		StartedAt:  s.StartedAt,

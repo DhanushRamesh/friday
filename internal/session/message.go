@@ -37,10 +37,12 @@ const (
 
 	// Failure : The assistant reporting that it could not answer.
 	//
-	// It is shown to the user, because they watched it happen and a
-	// correction refers to it. It is never sent to a model: read back as
-	// conversation it becomes the model explaining an outage it had no part
-	// in, and inventing detail to fill the gap.
+	// It is given to a model as well as shown, which it was not before. The
+	// reason it was withheld was that a bare "something went wrong" read back
+	// as conversation makes the model explain an outage it had no part in and
+	// invent detail to fill the gap. What closes that gap is Detail: with the
+	// exact error present there is nothing left to invent, and "what exactly
+	// failed?" becomes answerable out loud.
 	Failure Kind = "error"
 
 	// Interruption : The turn was stopped part-way by the person.
@@ -78,6 +80,9 @@ type Message struct {
 	Role Role
 	// Content : What was said.
 	Content string
+	// Detail : The exact error behind a Failure, kept out of Content so that
+	// what is read aloud stays short. Empty for everything else.
+	Detail string
 	// At : When it was said.
 	At time.Time
 }
@@ -121,10 +126,14 @@ func Interrupted(sessionID string, at time.Time) Message {
 }
 
 // Failed : The assistant reporting that it could not answer.
-func Failed(sessionID, content string, at time.Time) Message {
+//
+// [detail] is what the service actually said, and may be empty when nothing
+// more is known than the sentence.
+func Failed(sessionID, content, detail string, at time.Time) Message {
 	return Message{
 		SessionID: sessionID,
 		Kind:      Failure,
+		Detail:    strings.TrimSpace(detail),
 		Role:      Assistant,
 		Content:   content,
 		At:        at,
@@ -150,7 +159,9 @@ func (m Message) Valid() error {
 
 // ForModel : The messages a provider is given, oldest first.
 //
-// Failures are dropped: see Failure. Interruptions are not: see Interruption. Consecutive messages by the same speaker
+// Everything is given, failures included: see Failure for why they no longer
+// are not. A failure is rendered with its detail appended, because the
+// sentence alone is what made a model invent the rest. Consecutive messages by the same speaker
 // are joined, because a question that was superseded contributes no answer
 // and two questions would otherwise sit side by side — which providers that
 // require the roles to alternate reject, and which reads correctly joined
@@ -158,9 +169,10 @@ func (m Message) Valid() error {
 func ForModel(messages []Message) []Message {
 	kept := make([]Message, 0, len(messages))
 	for _, m := range messages {
-		if m.Kind == Failure || strings.TrimSpace(m.Content) == "" {
+		if strings.TrimSpace(m.Content) == "" {
 			continue
 		}
+		m.Content = forModelContent(m)
 		if n := len(kept); n > 0 && kept[n-1].Role == m.Role {
 			// The joined message keeps the earlier time and position: that
 			// is when the speaker started saying all of it.
@@ -170,6 +182,19 @@ func ForModel(messages []Message) []Message {
 		kept = append(kept, m)
 	}
 	return kept
+}
+
+// forModelContent : What a message reads as when given to a model.
+//
+// A failure carries its exact error inline, marked as the detail it is. The
+// model is being told what the service said, not being handed something to
+// repeat: a spoken answer should still be the sentence, and the detail is
+// there so that asking for it gets the truth.
+func forModelContent(m Message) string {
+	if m.Kind != Failure || m.Detail == "" {
+		return m.Content
+	}
+	return m.Content + "\n\n[Exact error, for reference if asked: " + m.Detail + "]"
 }
 
 // ForPerson : The messages a person sees, oldest first.

@@ -33,7 +33,7 @@ func TestMessageConstructors(t *testing.T) {
 	}{
 		{provider.Update("working"), provider.KindUpdate},
 		{provider.Final("done"), provider.KindFinal},
-		{provider.Failure("GitLab did not respond in time."), provider.KindError},
+		{provider.Failure("GitLab did not respond in time.", "timeout", ""), provider.KindError},
 	}
 
 	for _, tc := range cases {

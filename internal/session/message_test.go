@@ -94,26 +94,41 @@ func TestForModelKeepsTheEarlierTime(t *testing.T) {
 
 // A failure is shown to the person but never sent back to a model: read as
 // conversation it becomes the model explaining an outage it had no part in.
-func TestForModelDropsFailuresAndForPersonKeepsThem(t *testing.T) {
+func TestForModelIsGivenFailuresWithTheirDetail(t *testing.T) {
 	messages := []session.Message{
 		{Kind: session.Chat, Role: session.User, Content: "what is the time"},
-		{Kind: session.Failure, Role: session.Assistant, Content: "I could not reach the service."},
-		{Kind: session.Chat, Role: session.User, Content: "try again"},
+		{
+			Kind:    session.Failure,
+			Role:    session.Assistant,
+			Content: "The service could not complete the request.",
+			Detail:  "INVALID_OAUTHTOKEN (HTTP 401)",
+		},
+		{Kind: session.Chat, Role: session.User, Content: "what exactly went wrong"},
 	}
 
 	forModel := session.ForModel(messages)
-	for _, m := range forModel {
-		if m.Kind == session.Failure {
-			t.Errorf("a failure reached the model: %q", m.Content)
-		}
+
+	// Three, not two joined into one: the failure separates the questions, so
+	// the model can see that the first was answered with an outage and that
+	// the second is asking about it.
+	if len(forModel) != 3 {
+		t.Fatalf("model saw %d messages, want all three", len(forModel))
 	}
-	// The two questions are now adjacent, so they are joined into one.
-	if len(forModel) != 1 {
-		t.Errorf("model saw %d messages, want the two questions joined", len(forModel))
+	if !strings.Contains(forModel[1].Content, "INVALID_OAUTHTOKEN") {
+		t.Errorf("the exact error was withheld from the model: %q", forModel[1].Content)
 	}
 
-	if len(session.ForPerson(messages)) != 3 {
-		t.Errorf("the person was not shown all three messages")
+	// The person is shown the sentence and not the detail; the detail is
+	// carried beside it for a client to reveal when asked.
+	shown := session.ForPerson(messages)
+	if len(shown) != 3 {
+		t.Fatalf("the person saw %d messages, want all three", len(shown))
+	}
+	if strings.Contains(shown[1].Content, "INVALID_OAUTHTOKEN") {
+		t.Errorf("the raw error leaked into what is read aloud: %q", shown[1].Content)
+	}
+	if shown[1].Detail != "INVALID_OAUTHTOKEN (HTTP 401)" {
+		t.Errorf("detail = %q, want it kept beside the sentence", shown[1].Detail)
 	}
 }
 

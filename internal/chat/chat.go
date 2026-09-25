@@ -72,6 +72,18 @@ type Chat struct {
 	// chat fails.
 	Error string
 
+	// ErrorCode : Which kind of failure it was, as a failure.Code. It is what
+	// chose Error, kept so the wording can change without the stored rows
+	// disagreeing with the live ones, and so failures can be counted.
+	ErrorCode string
+
+	// ErrorDetail : What the service actually said, kept exactly.
+	//
+	// Not for reading aloud. It is what "more info" shows, and what lets the
+	// model answer a question about precisely what failed rather than invent
+	// one.
+	ErrorDetail string
+
 	// CreatedAt : When the chat was accepted.
 	CreatedAt time.Time
 	// UpdatedAt : When the chat last changed.
@@ -150,12 +162,25 @@ func (t *Chat) Complete(response string) error {
 // Fail : Finishes the chat with an explanation.
 //
 // The reason is shown to the user, so it should describe what went wrong in
-// plain language rather than carry a raw internal error.
+// plain language rather than carry a raw internal error. Where the exact
+// error is known, FailWith keeps it as well.
 func (t *Chat) Fail(reason string) error {
+	return t.FailWith(reason, "", "")
+}
+
+// FailWith : Finishes the chat with an explanation and the exact error behind
+// it.
+//
+// Both are kept because they answer different questions. The reason is what a
+// listener hears; the detail is what somebody fixing it needs, and is shown
+// only when asked for.
+func (t *Chat) FailWith(reason string, code, detail string) error {
 	if err := t.transitionTo(StatusFailed); err != nil {
 		return err
 	}
 	t.Error = reason
+	t.ErrorCode = code
+	t.ErrorDetail = detail
 	return nil
 }
 

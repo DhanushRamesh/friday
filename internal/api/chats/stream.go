@@ -24,10 +24,15 @@ const heartbeatInterval = 15 * time.Second
 
 // Event : One event as it appears on the wire.
 type Event struct {
-	Kind string    `json:"kind"`
-	Seq  int       `json:"seq,omitempty"`
-	Text string    `json:"text,omitempty"`
-	At   time.Time `json:"at"`
+	Kind string `json:"kind"`
+	Seq  int    `json:"seq,omitempty"`
+	Text string `json:"text,omitempty"`
+	// Code : For an error, which kind of failure it was, as a failure.Code.
+	Code string `json:"code,omitempty"`
+	// Detail : For an error, exactly what the service said. A client shows it
+	// behind "more info"; it is never the thing read aloud.
+	Detail string    `json:"detail,omitempty"`
+	At     time.Time `json:"at"`
 }
 
 // Stream : Sends a chat's messages as they happen, as server-sent events, and
@@ -163,6 +168,7 @@ func outcomeOf(t *chat.Chat) Event {
 		ev.Kind, ev.Text = string(events.KindFinal), t.Response
 	case chat.StatusFailed:
 		ev.Kind, ev.Text = string(events.KindError), t.Error
+		ev.Code, ev.Detail = t.ErrorCode, t.ErrorDetail
 	default:
 		ev.Kind = string(events.KindCancelled)
 	}

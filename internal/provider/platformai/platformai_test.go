@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DhanushRamesh/personal-assistant/internal/failure"
 	"github.com/DhanushRamesh/personal-assistant/internal/logging"
 	"github.com/DhanushRamesh/personal-assistant/internal/provider"
 	"github.com/DhanushRamesh/personal-assistant/internal/provider/platformai"
@@ -311,8 +312,21 @@ func TestServiceErrorIsPassedOn(t *testing.T) {
 	if last.Kind != provider.KindError {
 		t.Fatalf("last kind = %q, want error", last.Kind)
 	}
-	if last.Text != "You have exceeded your quota for today." {
-		t.Errorf("error text = %q, want the service's own message", last.Text)
+	// The status decides what is said. The service's own wording is kept, but
+	// as the detail: it is written for whoever integrates with the service,
+	// and "You have exceeded your quota for today" is a sentence about an
+	// account that the person asking has no idea they have.
+	if last.Code != string(failure.RateLimited) {
+		t.Errorf("code = %q, want %q", last.Code, failure.RateLimited)
+	}
+	if last.Text != failure.Sentence(failure.RateLimited) {
+		t.Errorf("error text = %q, want the sentence for the code", last.Text)
+	}
+	if !strings.Contains(last.Detail, "You have exceeded your quota for today.") {
+		t.Errorf("detail = %q, want the service's own message kept", last.Detail)
+	}
+	if !strings.Contains(last.Detail, "429") {
+		t.Errorf("detail = %q, want the status in it", last.Detail)
 	}
 }
 

@@ -15,16 +15,18 @@ import (
 // otherwise overwrite them on every write, discarding the times the domain
 // recorded and making a chat's own history disagree with the row.
 type chatRow struct {
-	ID         string     `gorm:"column:id;primaryKey"`
-	SessionID  *string    `gorm:"column:session_id"`
-	Prompt     string     `gorm:"column:prompt"`
-	Status     string     `gorm:"column:status"`
-	Response   *string    `gorm:"column:response"`
-	Error      *string    `gorm:"column:error"`
-	CreatedAt  time.Time  `gorm:"column:created_at;autoCreateTime:false"`
-	UpdatedAt  time.Time  `gorm:"column:updated_at;autoUpdateTime:false"`
-	StartedAt  *time.Time `gorm:"column:started_at"`
-	FinishedAt *time.Time `gorm:"column:finished_at"`
+	ID          string     `gorm:"column:id;primaryKey"`
+	SessionID   *string    `gorm:"column:session_id"`
+	Prompt      string     `gorm:"column:prompt"`
+	Status      string     `gorm:"column:status"`
+	Response    *string    `gorm:"column:response"`
+	Error       *string    `gorm:"column:error"`
+	ErrorCode   string     `gorm:"column:error_code"`
+	ErrorDetail *string    `gorm:"column:error_detail"`
+	CreatedAt   time.Time  `gorm:"column:created_at;autoCreateTime:false"`
+	UpdatedAt   time.Time  `gorm:"column:updated_at;autoUpdateTime:false"`
+	StartedAt   *time.Time `gorm:"column:started_at"`
+	FinishedAt  *time.Time `gorm:"column:finished_at"`
 }
 
 // TableName : Names the table this row maps to.
@@ -38,6 +40,7 @@ type summaryRow struct {
 	Prompt     string     `gorm:"column:prompt"`
 	Status     string     `gorm:"column:status"`
 	Error      *string    `gorm:"column:error"`
+	ErrorCode  string     `gorm:"column:error_code"`
 	CreatedAt  time.Time  `gorm:"column:created_at"`
 	UpdatedAt  time.Time  `gorm:"column:updated_at"`
 	StartedAt  *time.Time `gorm:"column:started_at"`
@@ -47,7 +50,7 @@ type summaryRow struct {
 // summaryColumns : The columns a listing selects. Naming them is what keeps
 // response bodies out of a query that does not need them.
 var summaryColumns = []string{
-	"id", "session_id", "prompt", "status", "error",
+	"id", "session_id", "prompt", "status", "error", "error_code",
 	"created_at", "updated_at", "started_at", "finished_at",
 }
 
@@ -144,32 +147,36 @@ func (messageRow) TableName() string { return "chat_updates" }
 // that "produced nothing" and "not finished" read the same way in the table.
 func toRow(t *chat.Chat) *chatRow {
 	return &chatRow{
-		ID:         t.ID,
-		SessionID:  nullable(t.SessionID),
-		Prompt:     t.Prompt,
-		Status:     string(t.Status),
-		Response:   nullable(t.Response),
-		Error:      nullable(t.Error),
-		CreatedAt:  t.CreatedAt,
-		UpdatedAt:  t.UpdatedAt,
-		StartedAt:  t.StartedAt,
-		FinishedAt: t.FinishedAt,
+		ID:          t.ID,
+		SessionID:   nullable(t.SessionID),
+		Prompt:      t.Prompt,
+		Status:      string(t.Status),
+		Response:    nullable(t.Response),
+		Error:       nullable(t.Error),
+		ErrorCode:   t.ErrorCode,
+		ErrorDetail: nullable(t.ErrorDetail),
+		CreatedAt:   t.CreatedAt,
+		UpdatedAt:   t.UpdatedAt,
+		StartedAt:   t.StartedAt,
+		FinishedAt:  t.FinishedAt,
 	}
 }
 
 // toChat : Converts a stored row back into a chat.
 func (r *chatRow) toChat() *chat.Chat {
 	return &chat.Chat{
-		ID:         r.ID,
-		SessionID:  value(r.SessionID),
-		Prompt:     r.Prompt,
-		Status:     chat.Status(r.Status),
-		Response:   value(r.Response),
-		Error:      value(r.Error),
-		CreatedAt:  r.CreatedAt.UTC(),
-		UpdatedAt:  r.UpdatedAt.UTC(),
-		StartedAt:  utc(r.StartedAt),
-		FinishedAt: utc(r.FinishedAt),
+		ID:          r.ID,
+		SessionID:   value(r.SessionID),
+		Prompt:      r.Prompt,
+		Status:      chat.Status(r.Status),
+		Response:    value(r.Response),
+		Error:       value(r.Error),
+		ErrorCode:   r.ErrorCode,
+		ErrorDetail: value(r.ErrorDetail),
+		CreatedAt:   r.CreatedAt.UTC(),
+		UpdatedAt:   r.UpdatedAt.UTC(),
+		StartedAt:   utc(r.StartedAt),
+		FinishedAt:  utc(r.FinishedAt),
 	}
 }
 
@@ -181,6 +188,7 @@ func (r *summaryRow) toSummary() chat.Summary {
 		Prompt:     r.Prompt,
 		Status:     chat.Status(r.Status),
 		Error:      value(r.Error),
+		ErrorCode:  r.ErrorCode,
 		CreatedAt:  r.CreatedAt.UTC(),
 		UpdatedAt:  r.UpdatedAt.UTC(),
 		StartedAt:  utc(r.StartedAt),

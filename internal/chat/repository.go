@@ -54,6 +54,7 @@ type Summary struct {
 	Prompt     string
 	Status     Status
 	Error      string
+	ErrorCode  string
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 	StartedAt  *time.Time

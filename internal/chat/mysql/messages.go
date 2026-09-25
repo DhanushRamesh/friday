@@ -18,6 +18,7 @@ type sessionMessageRow struct {
 	Kind      string    `gorm:"column:kind"`
 	Role      string    `gorm:"column:role"`
 	Content   string    `gorm:"column:content"`
+	Detail    *string   `gorm:"column:detail"`
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime:false"`
 }
 
@@ -32,6 +33,7 @@ func (r *sessionMessageRow) toMessage() session.Message {
 		Kind:      session.Kind(r.Kind),
 		Role:      session.Role(r.Role),
 		Content:   r.Content,
+		Detail:    value(r.Detail),
 		At:        r.CreatedAt.UTC(),
 	}
 }
@@ -71,6 +73,7 @@ func (r *Repository) Append(ctx context.Context, m session.Message) (session.Mes
 			Kind:      string(m.Kind),
 			Role:      string(m.Role),
 			Content:   m.Content,
+			Detail:    nullable(m.Detail),
 			CreatedAt: m.At,
 		}
 

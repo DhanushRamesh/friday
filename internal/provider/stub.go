@@ -37,6 +37,10 @@ type Stub struct {
 	// FailWith : When set, the run ends with this text as a KindError message
 	// instead of a result, so that failure handling can be exercised.
 	FailWith string
+	// FailCode : The failure.Code a stubbed failure reports. Optional.
+	FailCode string
+	// FailDetail : The exact error a stubbed failure carries. Optional.
+	FailDetail string
 }
 
 // Name : Returns the provider's name.
@@ -68,7 +72,7 @@ func (s *Stub) Run(ctx context.Context, req Request) (<-chan Message, error) {
 		}
 
 		if s.FailWith != "" {
-			send(ctx, ch, Failure(s.FailWith))
+			send(ctx, ch, Failure(s.FailWith, s.FailCode, s.FailDetail))
 			return
 		}
 		send(ctx, ch, Final(fmt.Sprintf("You asked: %q. This is a stub response.", req.Prompt)))
