@@ -549,10 +549,7 @@ class _ClientRow extends StatelessWidget {
                         Flexible(child: Text(name, style: context.text.body)),
                         if (client.current) ...[
                           const SizedBox(width: AppSpacing.sm),
-                          _Tag(
-                            'you are signed in here',
-                            color: colors.accent,
-                          ),
+                          _Tag('you are signed in here', color: colors.accent),
                         ],
                         if (client.revoked) ...[
                           const SizedBox(width: AppSpacing.sm),
@@ -619,7 +616,8 @@ class _ClientRow extends StatelessWidget {
                         ),
                         for (final m in catalogue.models)
                           _Option(
-                            label: '${m.name}  \u00b7  '
+                            label:
+                                '${m.name}  \u00b7  '
                                 '${_thousands(m.contextTokens)} tokens',
                             selected: m.id == client.model,
                             onTap: () => onModel!(m),
@@ -658,8 +656,11 @@ const Map<String, String> _channels = {
 };
 
 /// _channelLabel : The short form, for the closed field.
-String _channelLabel(String channel) =>
-    switch (channel) { 'voice' => 'Spoken', 'direct' => 'Typed', _ => channel };
+String _channelLabel(String channel) => switch (channel) {
+  'voice' => 'Spoken',
+  'direct' => 'Typed',
+  _ => channel,
+};
 
 /// _Tag : A short word beside a name, such as which client you are using.
 class _Tag extends StatelessWidget {
@@ -785,7 +786,6 @@ class _Select extends StatelessWidget {
     );
   }
 }
-
 
 /// _thousands : A count with separators, so 200000 reads as a size rather
 /// than a string of noughts.

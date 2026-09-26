@@ -14,10 +14,7 @@ void main() {
   runApp(
     ClientApp(
       state: AppState(
-        api: AssistantApi(
-          baseUrl: resolveServerUrl(),
-          tokens: StoredToken(),
-        ),
+        api: AssistantApi(baseUrl: resolveServerUrl(), tokens: StoredToken()),
       ),
     ),
   );

@@ -329,10 +329,13 @@ class ConversationDetail {
   final List<ChatSummary> chats;
 
   /// fromJson : Parses a conversation detail as the API returns it.
-  factory ConversationDetail.fromJson(Map<String, dynamic> json) => ConversationDetail(
-    conversation: Conversation.fromJson(json['conversation'] as Map<String, dynamic>),
-    chats: _list(json['chats'], ChatSummary.fromJson),
-  );
+  factory ConversationDetail.fromJson(Map<String, dynamic> json) =>
+      ConversationDetail(
+        conversation: Conversation.fromJson(
+          json['conversation'] as Map<String, dynamic>,
+        ),
+        chats: _list(json['chats'], ChatSummary.fromJson),
+      );
 }
 
 /// Identity : Who is calling and from what.
@@ -556,5 +559,205 @@ class Personas {
         PersonaOption.fromJson(p as Map<String, dynamic>),
     ],
     current: json['current'] as String? ?? '',
+  );
+}
+
+/// AnswerStepKind : What kind of thing happened while an answer was made.
+enum AnswerStepKind {
+  asked,
+  recalled,
+  toolCall,
+  toolResult,
+  answered,
+  failed,
+  unknown;
+
+  /// parse : The kind the API named, or [unknown] for one added later.
+  static AnswerStepKind parse(String? wire) => switch (wire) {
+    'asked' => AnswerStepKind.asked,
+    'recalled' => AnswerStepKind.recalled,
+    'tool_call' => AnswerStepKind.toolCall,
+    'tool_result' => AnswerStepKind.toolResult,
+    'answered' => AnswerStepKind.answered,
+    'failed' => AnswerStepKind.failed,
+    _ => AnswerStepKind.unknown,
+  };
+}
+
+/// RecalledNote : One memory that was put in front of the model.
+class RecalledNote {
+  const RecalledNote({required this.id, required this.text, this.score = 0});
+
+  final String id;
+  final String text;
+
+  /// score : How near it was to the question. Zero for a memory that is
+  /// offered whatever is asked.
+  final double score;
+
+  factory RecalledNote.fromJson(Map<String, dynamic> json) => RecalledNote(
+    id: json['id'] as String? ?? '',
+    text: json['text'] as String? ?? '',
+    score: (json['score'] as num?)?.toDouble() ?? 0,
+  );
+}
+
+/// RecalledExchange : One past exchange that was put in front of the model.
+class RecalledExchange {
+  const RecalledExchange({
+    required this.messageId,
+    required this.conversationId,
+    required this.text,
+    required this.score,
+    this.at,
+  });
+
+  final String messageId;
+  final String conversationId;
+  final String text;
+  final double score;
+  final DateTime? at;
+
+  factory RecalledExchange.fromJson(Map<String, dynamic> json) =>
+      RecalledExchange(
+        messageId: json['message_id'] as String? ?? '',
+        conversationId: json['conversation_id'] as String? ?? '',
+        text: json['text'] as String? ?? '',
+        score: (json['score'] as num?)?.toDouble() ?? 0,
+        at: DateTime.tryParse(json['at'] as String? ?? '')?.toLocal(),
+      );
+}
+
+/// Recalled : Everything memory offered for one answer.
+class Recalled {
+  const Recalled({
+    this.always = const [],
+    this.notes = const [],
+    this.exchanges = const [],
+  });
+
+  /// always : The memories that go into every prompt.
+  final List<RecalledNote> always;
+
+  /// notes : The memories found by searching, nearest first.
+  final List<RecalledNote> notes;
+
+  /// exchanges : The past exchanges found by searching, nearest first.
+  final List<RecalledExchange> exchanges;
+
+  bool get isEmpty => always.isEmpty && notes.isEmpty && exchanges.isEmpty;
+
+  factory Recalled.fromJson(Map<String, dynamic> json) => Recalled(
+    always: _notes(json['always']),
+    notes: _notes(json['notes']),
+    exchanges: [
+      for (final e in (json['exchanges'] as List<dynamic>? ?? const []))
+        RecalledExchange.fromJson(e as Map<String, dynamic>),
+    ],
+  );
+
+  static List<RecalledNote> _notes(Object? raw) => [
+    for (final n in (raw as List<dynamic>? ?? const []))
+      RecalledNote.fromJson(n as Map<String, dynamic>),
+  ];
+}
+
+/// AnswerStep : One thing that happened while an answer was made.
+class AnswerStep {
+  const AnswerStep({
+    required this.kind,
+    this.at,
+    this.offsetMs,
+    this.text = '',
+    this.detail = '',
+    this.name = '',
+    this.arguments = '',
+    this.outcome = '',
+    this.content = '',
+    this.tookMs = 0,
+    this.recalled,
+    this.byWords = false,
+  });
+
+  final AnswerStepKind kind;
+  final DateTime? at;
+
+  /// offsetMs : Milliseconds after the answer started running.
+  final int? offsetMs;
+
+  final String text;
+  final String detail;
+
+  /// name : Which tool, for a call and its result.
+  final String name;
+  final String arguments;
+
+  /// outcome : ok, failed or partial.
+  final String outcome;
+  final String content;
+  final int tookMs;
+
+  /// recalled : What memory offered, for the recalled step.
+  final Recalled? recalled;
+
+  /// byWords : Whether memory matched wording rather than meaning, which
+  /// happens when the embedding server is away.
+  final bool byWords;
+
+  factory AnswerStep.fromJson(Map<String, dynamic> json) => AnswerStep(
+    kind: AnswerStepKind.parse(json['kind'] as String?),
+    at: DateTime.tryParse(json['at'] as String? ?? '')?.toLocal(),
+    offsetMs: (json['offset_ms'] as num?)?.toInt(),
+    text: json['text'] as String? ?? '',
+    detail: json['detail'] as String? ?? '',
+    name: json['name'] as String? ?? '',
+    arguments: json['arguments'] as String? ?? '',
+    outcome: json['outcome'] as String? ?? '',
+    content: json['content'] as String? ?? '',
+    tookMs: (json['took_ms'] as num?)?.toInt() ?? 0,
+    recalled: json['recalled'] == null
+        ? null
+        : Recalled.fromJson(json['recalled'] as Map<String, dynamic>),
+    byWords: json['by_words'] as bool? ?? false,
+  );
+}
+
+/// AnswerTimeline : How one answer was made.
+class AnswerTimeline {
+  const AnswerTimeline({
+    required this.chatId,
+    this.conversationId = '',
+    this.status = '',
+    this.tookMs = 0,
+    this.complete = false,
+    this.steps = const [],
+  });
+
+  final String chatId;
+  final String conversationId;
+  final String status;
+
+  /// tookMs : How long the whole answer took, once it had started.
+  final int tookMs;
+
+  /// complete : Whether the whole timeline is here. False for an answer
+  /// given before the server recorded which turn wrote what.
+  final bool complete;
+
+  final List<AnswerStep> steps;
+
+  /// tools : How many tools were called.
+  int get tools => steps.where((s) => s.kind == AnswerStepKind.toolCall).length;
+
+  factory AnswerTimeline.fromJson(Map<String, dynamic> json) => AnswerTimeline(
+    chatId: json['chat_id'] as String? ?? '',
+    conversationId: json['conversation_id'] as String? ?? '',
+    status: json['status'] as String? ?? '',
+    tookMs: (json['took_ms'] as num?)?.toInt() ?? 0,
+    complete: json['complete'] as bool? ?? false,
+    steps: [
+      for (final s in (json['steps'] as List<dynamic>? ?? const []))
+        AnswerStep.fromJson(s as Map<String, dynamic>),
+    ],
   );
 }

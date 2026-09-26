@@ -26,6 +26,12 @@ export 'models.dart'
         Chat,
         ChatStatus,
         ChatSummary,
+        AnswerTimeline,
+        AnswerStep,
+        AnswerStepKind,
+        Recalled,
+        RecalledNote,
+        RecalledExchange,
         User;
 export 'server_url.dart';
 export 'token_store.dart';

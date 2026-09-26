@@ -9,8 +9,11 @@
 /// them is written once.
 library;
 
+// The stub is the fallback, and it is also what dart:io gets: there is no
+// native implementation yet, and naming a file that does not exist made the
+// whole client fail to compile for anything but the browser, which is why
+// `flutter test` could not run at all.
 import 'byte_source_stub.dart'
-    if (dart.library.io) 'byte_source_io.dart'
     if (dart.library.js_interop) 'byte_source_web.dart'
     as platform;
 
@@ -40,7 +43,11 @@ abstract interface class ByteSource {
   /// post : The same, with a body. This is how a prompt is sent: the one
   /// endpoint that takes one answers as the words are produced, so the
   /// response has to be read while it is still arriving.
-  Future<StreamedResponse> post(Uri url, Map<String, String> headers, String body);
+  Future<StreamedResponse> post(
+    Uri url,
+    Map<String, String> headers,
+    String body,
+  );
 
   /// close : Releases whatever the implementation holds. A source is not
   /// usable afterwards.

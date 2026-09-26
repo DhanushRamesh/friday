@@ -139,7 +139,6 @@ class AppState extends ChangeNotifier {
   String? _error;
   String? get error => _error;
 
-
   /// start : Restores a kept token and loads what the screens need, returning
   /// whether there was a usable conversation.
   ///
@@ -193,7 +192,9 @@ class AppState extends ChangeNotifier {
       // rather than what was typed: presenting a stale id gets a new client
       // back, and this has to follow that rather than keep pointing at one
       // that no longer exists.
-      _clientName = result.client.name.isEmpty ? clientName : result.client.name;
+      _clientName = result.client.name.isEmpty
+          ? clientName
+          : result.client.name;
       _clientId = result.client.id;
       await _remembered.remember(id: _clientId!, name: _clientName ?? '');
       await _loadConversations();
@@ -255,13 +256,14 @@ class AppState extends ChangeNotifier {
       await api.activateConversation(id);
       await _open(id);
       _conversations = [
-        for (final s in _conversations) Conversation(
-          id: s.id,
-          title: s.title,
-          active: s.id == id,
-          createdAt: s.createdAt,
-          updatedAt: s.updatedAt,
-        ),
+        for (final s in _conversations)
+          Conversation(
+            id: s.id,
+            title: s.title,
+            active: s.id == id,
+            createdAt: s.createdAt,
+            updatedAt: s.updatedAt,
+          ),
       ];
     } on Object catch (e) {
       _error = _explain(e);
@@ -317,6 +319,13 @@ class AppState extends ChangeNotifier {
 
   /// cancel : Stops the turn that is still running, if there is one.
   ///
+  /// steps : How one answer was made.
+  ///
+  /// Not held in state. It is read when somebody opens it and forgotten when
+  /// they close it, because almost nobody opens it and it is larger than the
+  /// answer it explains.
+  Future<AnswerTimeline> steps(String chatId) => api.steps(chatId);
+
   /// The chat is found rather than remembered: the endpoint answers in
   /// Ollama's shape, which carries no identifier, so the only way to name
   /// what is running is to ask which chat is.
@@ -541,17 +550,23 @@ class AppState extends ChangeNotifier {
     await for (final piece in api.ask(prompt)) {
       if (piece.text.isNotEmpty) {
         answer += piece.text;
-        _replaceLast((t) => t.copyWith(answer: answer, status: ChatStatus.running));
+        _replaceLast(
+          (t) => t.copyWith(answer: answer, status: ChatStatus.running),
+        );
       }
       if (!piece.done) continue;
 
       switch (piece.doneReason) {
         case 'error':
-          _replaceLast((t) => t.copyWith(
-            status: ChatStatus.failed,
-            error: answer.isEmpty ? 'The service could not complete the request.' : answer,
-            detail: piece.errorDetail,
-          ));
+          _replaceLast(
+            (t) => t.copyWith(
+              status: ChatStatus.failed,
+              error: answer.isEmpty
+                  ? 'The service could not complete the request.'
+                  : answer,
+              detail: piece.errorDetail,
+            ),
+          );
         case 'cancelled':
           _replaceLast((t) => t.copyWith(status: ChatStatus.cancelled));
         default:

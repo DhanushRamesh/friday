@@ -144,7 +144,10 @@ class AppEmptyState extends StatelessWidget {
               ),
             ),
           ],
-          if (action != null) ...[const SizedBox(height: AppSpacing.lg), action!],
+          if (action != null) ...[
+            const SizedBox(height: AppSpacing.lg),
+            action!,
+          ],
         ],
       ),
     ),

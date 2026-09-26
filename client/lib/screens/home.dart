@@ -420,6 +420,16 @@ class _Conversation extends StatelessWidget {
                             detail: failed ? turn.detail : null,
                             transient: turn.isRunning,
                             stopped: stopped,
+                            // Only once it has finished, and only when the
+                            // chat is known: a turn still running has no
+                            // timeline yet, and one submitted before the
+                            // server recorded them has none at all.
+                            footer: turn.isRunning || turn.chatId.isEmpty
+                                ? null
+                                : AppTimelineButton(
+                                    chatId: turn.chatId,
+                                    load: state.steps,
+                                  ),
                           ),
                         const SizedBox(height: AppSpacing.lg),
                       ],
@@ -447,7 +457,8 @@ String _when(DateTime at) {
   String two(int n) => n.toString().padLeft(2, '0');
   final now = DateTime.now();
   final local = at.toLocal();
-  final sameDay = local.year == now.year &&
+  final sameDay =
+      local.year == now.year &&
       local.month == now.month &&
       local.day == now.day;
   return sameDay

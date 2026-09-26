@@ -17,6 +17,7 @@ export 'components/spinner.dart';
 export 'components/status.dart';
 export 'components/surface.dart';
 export 'components/text_field.dart';
+export 'components/timeline.dart';
 export 'components/turn.dart';
 export 'theme.dart';
 export 'tokens.dart';

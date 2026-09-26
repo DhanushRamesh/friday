@@ -320,10 +320,11 @@ class AppTokens extends ThemeExtension<AppTokens> {
       );
 
   @override
-  AppTokens copyWith({AppPalette? palette, AppTypography? typography}) => AppTokens(
-    palette: palette ?? this.palette,
-    typography: typography ?? this.typography,
-  );
+  AppTokens copyWith({AppPalette? palette, AppTypography? typography}) =>
+      AppTokens(
+        palette: palette ?? this.palette,
+        typography: typography ?? this.typography,
+      );
 
   /// lerp : Required by ThemeExtension. The palette is swapped rather than
   /// blended, because a half-way colour between the two themes is a colour

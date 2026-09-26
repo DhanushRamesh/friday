@@ -24,6 +24,7 @@ class AppTurn extends StatelessWidget {
     this.stopped = false,
     this.timestamp,
     this.trailing,
+    this.footer,
   });
 
   final AppSpeaker speaker;
@@ -59,6 +60,10 @@ class AppTurn extends StatelessWidget {
 
   /// trailing : An action for this turn, such as stop while it runs.
   final Widget? trailing;
+
+  /// footer : Something shown under the turn, such as how it was arrived at.
+  /// Below rather than beside, so it never competes with the answer.
+  final Widget? footer;
 
   @override
   Widget build(BuildContext context) {
@@ -128,6 +133,7 @@ class AppTurn extends StatelessWidget {
                   if (text.isNotEmpty) SelectableText(text, style: style),
                   if (stopped) _StoppedNote(spaced: text.isNotEmpty),
                   if ((detail ?? '').isNotEmpty) _MoreInfo(detail: detail!),
+                  ?footer,
                 ],
               ),
             ),

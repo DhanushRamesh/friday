@@ -110,11 +110,7 @@ class AssistantApi {
 
   /// listClients : Returns the user's clients, revoked ones included.
   Future<List<Client>> listClients({bool revoked = false}) async => parseList(
-    await _send(
-      'GET',
-      '/v1/clients',
-      query: {if (revoked) 'revoked': 'true'},
-    ),
+    await _send('GET', '/v1/clients', query: {if (revoked) 'revoked': 'true'}),
     'clients',
     Client.fromJson,
   );
@@ -124,16 +120,18 @@ class AssistantApi {
   /// A client says what it is when it registers, and some cannot: Home
   /// Assistant is handed a token through a screen with no field for it. This
   /// is how that is corrected.
-  Future<List<Client>> setClientChannel(String clientId, String channel) async =>
-      parseList(
-        await _send(
-          'POST',
-          '/v1/clients/$clientId/channel',
-          body: {'channel': channel},
-        ),
-        'clients',
-        Client.fromJson,
-      );
+  Future<List<Client>> setClientChannel(
+    String clientId,
+    String channel,
+  ) async => parseList(
+    await _send(
+      'POST',
+      '/v1/clients/$clientId/channel',
+      body: {'channel': channel},
+    ),
+    'clients',
+    Client.fromJson,
+  );
 
   /// listModels : Returns the models a client can be set to answer with.
   ///
@@ -181,20 +179,25 @@ class AssistantApi {
 
   /// createConversation : Starts a new thread. It becomes this client's active
   /// one unless [activate] says otherwise.
-  Future<Conversation> createConversation({String? title, bool activate = true}) async =>
-      Conversation.fromJson(
-        await _send(
-          'POST',
-          '/v1/conversations',
-          body: {
-            if (title != null && title.isNotEmpty) 'title': title,
-            'activate': activate,
-          },
-        ),
-      );
+  Future<Conversation> createConversation({
+    String? title,
+    bool activate = true,
+  }) async => Conversation.fromJson(
+    await _send(
+      'POST',
+      '/v1/conversations',
+      body: {
+        if (title != null && title.isNotEmpty) 'title': title,
+        'activate': activate,
+      },
+    ),
+  );
 
   /// listConversations : Returns conversations, most recently used first.
-  Future<List<Conversation>> listConversations({int? limit, bool archived = false}) async => parseList(
+  Future<List<Conversation>> listConversations({
+    int? limit,
+    bool archived = false,
+  }) async => parseList(
     await _send(
       'GET',
       '/v1/conversations',
@@ -209,19 +212,26 @@ class AssistantApi {
 
   /// conversation : Returns a conversation with its chats, oldest first.
   Future<ConversationDetail> conversation(String conversationId) async =>
-      ConversationDetail.fromJson(await _send('GET', '/v1/conversations/$conversationId'));
+      ConversationDetail.fromJson(
+        await _send('GET', '/v1/conversations/$conversationId'),
+      );
 
   /// activateConversation : Moves this client into a conversation. Other clients of
   /// the same user stay where they are.
   Future<Conversation> activateConversation(String conversationId) async =>
-      Conversation.fromJson(await _send('POST', '/v1/conversations/$conversationId/activate'));
+      Conversation.fromJson(
+        await _send('POST', '/v1/conversations/$conversationId/activate'),
+      );
 
   /// archiveConversation : Puts a conversation away, or brings it back.
   ///
   /// Archiving the conversation this client is in leaves it nowhere to talk, so the
   /// server starts a fresh one and returns it. Unarchiving returns the conversation
   /// itself, since nothing moved.
-  Future<Conversation> archiveConversation(String conversationId, {bool archived = true}) async {
+  Future<Conversation> archiveConversation(
+    String conversationId, {
+    bool archived = true,
+  }) async {
     final path = archived ? 'archive' : 'unarchive';
     final json = await _send('POST', '/v1/conversations/$conversationId/$path');
     return Conversation.fromJson(
@@ -243,12 +253,16 @@ class AssistantApi {
   ///
   /// An empty title clears the name rather than being refused, so a name
   /// given by mistake can be taken off without deleting the conversation.
-  Future<Conversation> renameConversation(String conversationId, String title) async =>
-      Conversation.fromJson(await _send(
-        'POST',
-        '/v1/conversations/$conversationId/rename',
-        body: {'title': title},
-      ));
+  Future<Conversation> renameConversation(
+    String conversationId,
+    String title,
+  ) async => Conversation.fromJson(
+    await _send(
+      'POST',
+      '/v1/conversations/$conversationId/rename',
+      body: {'title': title},
+    ),
+  );
 
   /// ask : Sends a prompt and reads the answer as it arrives.
   ///
@@ -312,24 +326,27 @@ class AssistantApi {
   }
 
   /// conversation, so a correction cancels the question it corrects.
-  Future<Chat> createChat(
-    String prompt, {
-    Duration? wait,
-  }) async => Chat.fromJson(
-    await _send(
-      'POST',
-      '/v1/chats',
-      query: {if (wait != null) 'wait': _duration(wait)},
-      body: {
-        'prompt': prompt,
-      },
-      overrideTimeout: wait == null ? null : wait + _waitMargin,
-    ),
-  );
+  Future<Chat> createChat(String prompt, {Duration? wait}) async =>
+      Chat.fromJson(
+        await _send(
+          'POST',
+          '/v1/chats',
+          query: {if (wait != null) 'wait': _duration(wait)},
+          body: {'prompt': prompt},
+          overrideTimeout: wait == null ? null : wait + _waitMargin,
+        ),
+      );
 
   /// chat : Returns one chat, including its answer once it has one.
   Future<Chat> chat(String chatId) async =>
       Chat.fromJson(await _send('GET', '/v1/chats/$chatId'));
+
+  /// steps : How one answer was made, in the order it happened.
+  ///
+  /// Everything in it was recorded while the answer was produced. Nothing is
+  /// worked out afterwards, so it says what the model was actually shown.
+  Future<AnswerTimeline> steps(String chatId) async =>
+      AnswerTimeline.fromJson(await _send('GET', '/v1/chats/$chatId/steps'));
 
   /// listChats : Returns recent chats, newest first, without their answers.
   Future<List<ChatSummary>> listChats({ChatStatus? status, int? limit}) async =>
