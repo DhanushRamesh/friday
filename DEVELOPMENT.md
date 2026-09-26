@@ -526,7 +526,11 @@ readings are both plausible and one of them destroys something, it asks.
 Charitable reading is right until a charitable reading deletes a conversation.
 
 Primed separately at the other end, in voice-setup, where the decoder had
-never been given the words the tools use.
+never been given the words the tools use. That priming is a list of words, not
+example sentences, and it holds no names: the words that repeat are worth the
+budget, and names are endless. It is drawn from the stored user messages, so
+it primes what has actually been said rather than what was imagined. The
+server is unaffected either way -- nothing here knows the decoder exists.
 
 ### The assistant is told where it is
 
