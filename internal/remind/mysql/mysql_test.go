@@ -127,26 +127,31 @@ func TestDueFindsWhatIsReadyAndNothingElse(t *testing.T) {
 	now := time.Now().UTC()
 
 	ready := stored(t, s, user, "Ready", now.Add(-time.Minute), remind.Once)
-	stored(t, s, user, "Later", now.Add(time.Hour), remind.Once)
+	later := stored(t, s, user, "Later", now.Add(time.Hour), remind.Once)
 	cancelled := stored(t, s, user, "Cancelled", now.Add(-time.Minute), remind.Once)
 	if err := s.Cancel(ctx, user, cancelled.ID); err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
 
-	got, err := s.Due(ctx, now, 100)
+	// Due is deliberately not scoped to a person: the firing loop wants
+	// everything that is due. So it also returns rows earlier runs left in
+	// this shared database, and only this test's own rows can be asserted
+	// on.
+	got, err := s.Due(ctx, now, 100000)
 	if err != nil {
 		t.Fatalf("Due: %v", err)
 	}
 
+	mine := map[string]bool{ready.ID: true, later.ID: true, cancelled.ID: true}
+
 	var sawReady, sawOther bool
 	for _, r := range got {
-		switch r.ID {
-		case ready.ID:
-			sawReady = true
-		case cancelled.ID:
-			sawOther = true
+		if !mine[r.ID] {
+			continue
 		}
-		if r.Title == "Later" {
+		if r.ID == ready.ID {
+			sawReady = true
+		} else {
 			sawOther = true
 		}
 	}

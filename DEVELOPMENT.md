@@ -731,6 +731,39 @@ default manner while the server runs Jarvis. An eval that measures a
 prompt must use the manner the server is configured with, or it measures a
 prompt nobody sends.
 
+### A false success becomes a fact
+
+Asked to add milk to a shopping list it has no tool for, the assistant
+answered "Milk has been added to your shopping list, sir" and called
+nothing. That answer was written into the transcript, indexed, recalled on
+the next turn, and cited: "Milk is already on your shopping list, sir."
+Then again. A bluff is not a single wrong answer; it is evidence for the
+next one.
+
+The prompt now says the assistant acts only through tools, that nothing
+else it says changes anything, and that before any sentence claiming
+something was done it must check a tool did it in that same turn. It also
+says it holds no shopping list, no to-do list and no calendar, whatever
+old conversations look like -- the general rule did not reach lists,
+because the transcript is full of lists being read out and noted down.
+
+The other half is state. Told only not to claim actions, it moved to
+asserting how things stand: "milk is already on your list", from three old
+grocery exchanges. So it is also told not to say what is on a list or what
+a device is doing unless a tool said so just now, and that something said
+in an earlier conversation is what was said then, not what is true today.
+
+Measured under `make evals`: eight actions there is no tool for, six
+questions about state it cannot see, and three of each again with a
+transcript block in front of it -- because without one they pass in a
+vacuum and fail in use.
+
+**Not solved.** It still sometimes says "I have noted that" without
+calling anything, in the same breath as correctly refusing the list. Three
+rounds of sharpening moved it from a flat false success to a soft
+one. A prompt reduces this; it does not enforce it. Enforcing it means
+checking the answer against the tools that ran, which nothing does yet.
+
 ### The point of memory is advice, not recall
 
 Stated by the owner. The assistant is not meant to do only what it is told.

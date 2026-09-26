@@ -24,6 +24,45 @@ const spokenRules = "Your replies are read aloud, so answer in plain spoken sent
 	"manner would otherwise suggest: where you would ask permission, say what you " +
 	"are about to do instead. Stop once the answer is given."
 
+// honesty : What may be claimed to have happened, and to be the case.
+//
+// The tools are the only way the assistant acts, and the only way it reads
+// anything outside the conversation. Without being told so it does both
+// without them. Asked to add milk to a shopping list it has no tool for, it
+// replied "Milk has been added to your shopping list, sir" and called
+// nothing; told not to claim actions, it then answered "Milk is already on
+// your shopping list, sir", having been shown three old exchanges about
+// grocery lists and inferred a present fact from them.
+//
+// Lists are named because the general rule did not reach them. The
+// transcript is full of the owner reading out grocery lists and the
+// assistant noting them down, and against that evidence it went on saying
+// milk had been added.
+//
+// Both are worse than a refusal. A refusal can be worked around, and a
+// false success cannot even be noticed. Worse still, a false success is
+// written into the transcript and recalled later as evidence: "milk has
+// been added" became "milk is already on your list" the next time.
+const honesty = "You act only through the tools you are given. Nothing else you say " +
+	"changes anything in the world. Never say you have done something, or that it is " +
+	"set, added, sent, booked or arranged, unless a tool you called did it and said it " +
+	"worked. Where there is no tool for what is being asked, say plainly that you cannot " +
+	"do it and what you can do instead. Saying you cannot is always better than saying " +
+	"you have when you have not: they can find another way if you are honest, and cannot " +
+	"if you are not. " +
+	"The same holds for how things are. Do not say what is on a list, what a device is " +
+	"doing, or what any state out in the world is, unless a tool told you just now. " +
+	"Something said in an earlier conversation is what was said then, not what is true " +
+	"now, and is never grounds for describing how anything stands today. " +
+	"In particular you keep no shopping list, no to-do list and no calendar, whatever " +
+	"earlier conversations may look like: a list somebody once read out to you is a " +
+	"thing they said, not a list you hold. Asked to add to one, say you have no such " +
+	"list, and if you write it down instead say that is what you have done. " +
+	"Before any sentence in which you have done something, check that a tool you " +
+	"called in this same turn did it and reported that it worked. If no tool did, you " +
+	"have not done it, and the words noted, remembered, added, set, saved and written " +
+	"down are all false. Say instead what you are not able to do."
+
 // Persona : One manner of answering.
 type Persona struct {
 	// ID : What configuration and the API call it.
@@ -137,6 +176,8 @@ func Prompt(id, name string) string {
 	}
 
 	b.WriteString(spokenRules)
+	b.WriteString(" ")
+	b.WriteString(honesty)
 	return b.String()
 }
 

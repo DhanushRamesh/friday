@@ -437,7 +437,8 @@ func (r *Runner) quoted(ctx context.Context, userID, question, conversationID st
 			At:             heard[i].Exchange.At,
 		})
 	}
-	return memory.Quoted(heard)
+	// The person's own zone, which is the one r.now already works in.
+	return memory.Quoted(heard, r.now().Location())
 }
 
 // recordRecalled : Stores what was put in front of the model.

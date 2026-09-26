@@ -143,3 +143,32 @@ func TestTheCharactersAreHeldToTheirManner(t *testing.T) {
 		}
 	}
 }
+
+// The tools are the only way it acts, and it has to be told so. Without
+// it, asked to add milk to a shopping list it has no tool for, it replied
+// that milk had been added and called nothing.
+func TestEveryPersonaIsToldItActsOnlyThroughTools(t *testing.T) {
+	for _, p := range persona.All() {
+		got := persona.Prompt(p.ID, "Jarvis")
+
+		for _, want := range []string{
+			"You act only through the tools you are given",
+			"Never say you have done something",
+			"say plainly that you cannot do it",
+		} {
+			if !strings.Contains(got, want) {
+				t.Errorf("%s is missing %q", p.ID, want)
+			}
+		}
+	}
+}
+
+// A refusal can be worked around; a false success cannot even be noticed.
+// The prompt says which is worse, because the model has to choose.
+func TestItIsToldWhichFailureIsWorse(t *testing.T) {
+	got := persona.Prompt(persona.Default, "Jarvis")
+
+	if !strings.Contains(got, "always better than saying you have when you have not") {
+		t.Errorf("the prompt does not say which way to err:\n%s", got)
+	}
+}

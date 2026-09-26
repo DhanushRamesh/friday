@@ -140,7 +140,7 @@ func TestAnsweringAndWarningAreSeparateInstructions(t *testing.T) {
 func TestTheTranscriptMayNotWarn(t *testing.T) {
 	got := memory.Quoted([]memory.Heard{{
 		Exchange: memory.Exchange{Text: "They said: something", At: time.Now()},
-	}})
+	}}, time.UTC)
 
 	if strings.Contains(got, "To warn with:") {
 		t.Errorf("the transcript was given the licence to warn:\n%s", got)

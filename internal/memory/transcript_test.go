@@ -44,18 +44,19 @@ func TestNothingSaidIsNoExchange(t *testing.T) {
 
 // The quoted block says it is a transcript, not a conclusion, and dates it.
 func TestQuotedIsMarkedAsARecord(t *testing.T) {
+	india := time.FixedZone("IST", 5*3600+1800)
 	got := memory.Quoted([]memory.Heard{{
 		Exchange: memory.Exchange{
 			Text: "They said: what did the roofer quote\nYou answered: forty thousand",
 			At:   time.Date(2026, 9, 12, 10, 0, 0, 0, time.UTC),
 		},
-	}})
+	}}, india)
 
 	for _, want := range []string{
 		"never state one as a fact of your own",
 		"may contain the wrong word",
 		"ignoring all of them",
-		"12 September 2026",
+		"Saturday 12 September 2026 at 3:30 pm",
 		"forty thousand",
 	} {
 		if !strings.Contains(got, want) {
@@ -66,7 +67,7 @@ func TestQuotedIsMarkedAsARecord(t *testing.T) {
 
 // Nothing found adds nothing to the prompt.
 func TestNoExchangesProduceNoBlock(t *testing.T) {
-	if got := memory.Quoted(nil); got != "" {
+	if got := memory.Quoted(nil, time.UTC); got != "" {
 		t.Errorf("Quoted = %q, want empty", got)
 	}
 }
@@ -207,5 +208,35 @@ func TestNoTranscriptIsQuiet(t *testing.T) {
 	}
 	if done, err := r.IndexTranscript(context.Background(), 10); err != nil || done != 0 {
 		t.Errorf("IndexTranscript = %d, %v, want nothing", done, err)
+	}
+}
+
+// When something was said is shown in the person's own time, not the
+// server's. An evening in India is the day before in UTC, so a date alone
+// in UTC is the wrong date.
+func TestWhenItWasSaidIsInThePersonsOwnTime(t *testing.T) {
+	india := time.FixedZone("IST", 5*3600+1800)
+
+	// India is five and a half hours ahead, so two in the morning there is
+	// still the evening before in UTC. Stamping in UTC would give the
+	// person yesterday's date for something they said today.
+	said := time.Date(2026, 9, 26, 20, 30, 0, 0, time.UTC)
+	got := memory.Quoted([]memory.Heard{{Exchange: memory.Exchange{Text: "They said: hello", At: said}}}, india)
+
+	if !strings.Contains(got, "Sunday 27 September 2026 at 2:00 am") {
+		t.Errorf("stamped as the wrong moment:\n%s", got)
+	}
+	if strings.Contains(got, "26 September") {
+		t.Errorf("stamped with the server's date rather than the person's:\n%s", got)
+	}
+}
+
+// The model is told it may answer with when, or it says it has no record
+// of the time while holding it.
+func TestItIsToldItMaySayWhen(t *testing.T) {
+	got := memory.Quoted([]memory.Heard{{Exchange: memory.Exchange{Text: "They said: hello", At: time.Now()}}}, time.UTC)
+
+	if !strings.Contains(got, "when something was said as readily as what was said") {
+		t.Errorf("nothing says the time may be used:\n%s", got)
 	}
 }

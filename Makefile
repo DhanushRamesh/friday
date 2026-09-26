@@ -107,7 +107,7 @@ test: ## Run the tests
 
 .PHONY: evals
 evals: ## Ask a real model whether the tool descriptions work (costs API calls)
-	@go test ./internal/tool/evals/... ./internal/embed/evals/... ./internal/memory/evals/... -tags evals -count=1 -v
+	@go test ./internal/tool/evals/... ./internal/embed/evals/... ./internal/memory/evals/... ./internal/persona/evals/... -tags evals -count=1 -v
 
 .PHONY: check
 check: ## Everything that must pass before committing

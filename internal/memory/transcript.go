@@ -75,12 +75,21 @@ func ExchangeText(said, reply string) string {
 
 // Quoted : What past exchanges look like in a system prompt.
 //
-// Kept apart from the curated memories, and dated. These are the record of
-// what happened, not something the assistant concluded, and they include
-// whatever speech-to-text got wrong, so they are quotable and never assertable.
-func Quoted(heard []Heard) string {
+// Kept apart from the curated memories, and stamped with when they were
+// said. These are the record of what happened, not something the assistant
+// concluded, and they include whatever speech-to-text got wrong, so they
+// are quotable and never assertable.
+//
+// The time matters as much as the words. Asked when it had been given a
+// list, the assistant answered that it held the list but no record of
+// when -- which was true, because only the day was passed and only in UTC,
+// so an evening in India read as the day before.
+func Quoted(heard []Heard, loc *time.Location) string {
 	if len(heard) == 0 {
 		return ""
+	}
+	if loc == nil {
+		loc = time.UTC
 	}
 
 	var b strings.Builder
@@ -89,10 +98,11 @@ func Quoted(heard []Heard) string {
 	b.WriteString("said and when, and never state one as a fact of your own. Some arrived through ")
 	b.WriteString("speech-to-text and may contain the wrong word. They were chosen for resembling ")
 	b.WriteString("the question, which is not the same as bearing on it, so ignoring all of them ")
-	b.WriteString("is often right.")
+	b.WriteString("is often right. Each is stamped with when it was said, in the person's own ")
+	b.WriteString("time, and you may say when something was said as readily as what was said.")
 	for i := range heard {
 		b.WriteString("\n\n[")
-		b.WriteString(heard[i].Exchange.At.Format("2 January 2006"))
+		b.WriteString(heard[i].Exchange.At.In(loc).Format("Monday 2 January 2006 at 3:04 pm"))
 		b.WriteString("]\n")
 		b.WriteString(heard[i].Exchange.Text)
 	}
