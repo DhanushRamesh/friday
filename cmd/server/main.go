@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"slices"
 	"sync"
 	"syscall"
 	"time"
@@ -38,6 +39,7 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/tool"
 	"github.com/DhanushRamesh/personal-assistant/internal/tool/conversations"
 	"github.com/DhanushRamesh/personal-assistant/internal/tool/memories"
+	"github.com/DhanushRamesh/personal-assistant/internal/tool/reminders"
 )
 
 // main : Runs the server, or the named command.
@@ -189,12 +191,18 @@ func run() error {
 	}
 	catchUpEmbeddings(context.Background(), remembering, logger.Logger)
 
+	// One store, shared by the tools that make reminders and the loop that
+	// says them.
+	reminderStore := remindmysql.New(db)
+	clock := reminders.Clock{Now: cfg.Assistant.Now, Location: cfg.Assistant.Location}
+
 	// What the assistant can do as well as say. A registry that will not
 	// build is a programming mistake, not a configuration one, so it stops
 	// the server rather than quietly offering nothing.
-	tools, err := tool.NewRegistry(append(
+	tools, err := tool.NewRegistry(slices.Concat(
 		conversations.All(chats),
-		memories.All(remembering)...,
+		memories.All(remembering),
+		reminders.All(reminderStore, clock),
 	)...)
 	if err != nil {
 		return err
@@ -229,23 +237,23 @@ func run() error {
 	// The first work here that happens because of the clock rather than
 	// because somebody asked. Stopped with the server, so a reminder is
 	// never half said during a shutdown.
-	reminders := &remind.Loop{
-		Store:    remindmysql.New(db),
+	reminding := &remind.Loop{
+		Store:    reminderStore,
 		Speaker:  remind.Everywhere{To: []remind.Speaker{remind.Aloud{Announcer: speaker}}, Logger: logger.Logger},
 		Location: cfg.Assistant.Location,
 		Logger:   logger.Logger,
 	}
 	remindCtx, stopReminders := context.WithCancel(context.Background())
 
-	var reminding sync.WaitGroup
-	reminding.Add(1)
+	var watching sync.WaitGroup
+	watching.Add(1)
 	go func() {
-		defer reminding.Done()
-		reminders.Run(remindCtx)
+		defer watching.Done()
+		reminding.Run(remindCtx)
 	}()
 	// Registered in this order so they run in the other: stop first, then
 	// wait for the pass in flight to finish.
-	defer reminding.Wait()
+	defer watching.Wait()
 	defer stopReminders()
 
 	logger.Info("watching for reminders",

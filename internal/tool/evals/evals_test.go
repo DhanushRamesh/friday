@@ -22,6 +22,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -34,9 +35,11 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/memory"
 	"github.com/DhanushRamesh/personal-assistant/internal/memory/inmemory"
 	"github.com/DhanushRamesh/personal-assistant/internal/persona"
+	remindmemory "github.com/DhanushRamesh/personal-assistant/internal/remind/inmemory"
 	"github.com/DhanushRamesh/personal-assistant/internal/tool"
 	"github.com/DhanushRamesh/personal-assistant/internal/tool/conversations"
 	"github.com/DhanushRamesh/personal-assistant/internal/tool/memories"
+	"github.com/DhanushRamesh/personal-assistant/internal/tool/reminders"
 )
 
 // eval : One thing a person might say, and what should happen.
@@ -103,6 +106,18 @@ var cases = []eval{
 	{Say: "forget what I told you about the roof",
 		Tool: []string{"memory_search", "memory_forget"}, Channel: chat.ChannelDirect},
 
+	// Reminders. A length of time goes to minutes_from_now so the
+	// arithmetic is the server's, and a time of day goes to at.
+	{Say: "set a timer for twenty minutes", Tool: []string{"reminder_set"}, Args: []string{"20"}},
+	{Say: "remind me in two hours to take the washing out", Tool: []string{"reminder_set"}, Args: []string{"120"}},
+	{Say: "wake me at seven every weekday", Tool: []string{"reminder_set"}, Args: []string{"weekdays"}},
+	{Say: "what timers do I have", Tool: []string{"reminder_list"}},
+	{Say: "cancel my timer", Tool: []string{"reminder_list"}},
+
+	// A note for later is remembered, not announced. The two are easy to
+	// confuse and only one of them speaks at you.
+	{Say: "note down that the roofer wants paying by Friday", Tool: []string{"memory_remember"}},
+
 	// Reaching for none. A model that calls a tool at every question is as
 	// wrong as one that never does.
 	{Say: "what is the capital of Australia"},
@@ -125,9 +140,11 @@ func TestTheModelReachesForTheRightTool(t *testing.T) {
 	// registry that cannot build measures nothing.
 	recall := &memory.Recall{Store: inmemory.New(), Embedder: embed.Fake{}}
 
-	registry, err := tool.NewRegistry(append(
+	clock := reminders.Clock{Location: time.UTC}
+	registry, err := tool.NewRegistry(slices.Concat(
 		conversations.All(nil),
-		memories.All(recall)...,
+		memories.All(recall),
+		reminders.All(remindmemory.New(), clock),
 	)...)
 	if err != nil {
 		t.Fatalf("NewRegistry: %v", err)

@@ -621,6 +621,22 @@ The browser therefore still goes stale when something is said out loud,
 which the client's own `refresh` comment already describes. That was going
 to be fixed by the same stream and now is not.
 
+### A length of time is the server's arithmetic, not the model's
+
+`reminder_set` takes either `minutes_from_now` or `at`, never both.
+
+Minutes exist so that "in twenty minutes" needs no arithmetic from the
+model: it is told the current time in the prompt, and asking it to add
+twenty minutes to that is a step that can go wrong silently. A time of day
+still has to be written out, and is read in the person's own zone.
+
+Several spellings of a written time are accepted, because a model writes
+the same moment several ways and refusing it over a missing "T" would be
+refusing the reminder. A time already gone is refused, and the refusal
+says what time it is now so the next attempt can be right -- except within
+two minutes, since the model works the time out from what it was told and
+a little passes while it does.
+
 ### The first work that happens because of the clock
 
 Everything in this server until now ran because somebody asked. The
