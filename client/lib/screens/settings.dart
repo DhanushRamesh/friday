@@ -46,6 +46,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     widget.state.loadReminders();
   }
 
+  /// _pick : Moves to a module, reading afresh what it is about to show.
+  ///
+  /// Reminders change without this screen being told: one set by voice
+  /// while the page is open would otherwise not appear until Refresh was
+  /// pressed, and an empty list reads as nothing to show rather than as
+  /// out of date.
+  void _pick(SettingsModule module) {
+    setState(() => _module = module);
+    if (module == SettingsModule.reminders) widget.state.loadReminders();
+    if (module == SettingsModule.clients) widget.state.loadClients();
+  }
+
   Future<void> _confirmRevoke(Client client) async {
     final self = client.current;
     final ok = await showDialog<bool>(
@@ -108,10 +120,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 if (!compact) ...[
                   SizedBox(
                     width: 200,
-                    child: _ModuleList(
-                      selected: _module,
-                      onPick: (m) => setState(() => _module = m),
-                    ),
+                    child: _ModuleList(selected: _module, onPick: _pick),
                   ),
                   const AppDivider(vertical: true),
                 ],
@@ -131,10 +140,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       // above the page: a column beside it would leave
                       // neither enough width to read.
                       if (compact) ...[
-                        _ModuleChips(
-                          selected: _module,
-                          onPick: (m) => setState(() => _module = m),
-                        ),
+                        _ModuleChips(selected: _module, onPick: _pick),
                         const SizedBox(height: AppSpacing.lg),
                       ],
                       switch (_module) {
