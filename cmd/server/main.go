@@ -212,6 +212,7 @@ func run() error {
 		Announcer:     speaker,
 		Tools:         tools,
 		Memory:        remembering,
+		Now:           cfg.Assistant.Now,
 	})
 	if err != nil {
 		return err

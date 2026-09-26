@@ -103,6 +103,10 @@ type Options struct {
 	// nothing, which is how it behaved before there was anywhere to keep
 	// anything.
 	Memory *memory.Recall
+
+	// Now : The time where the person is. Nil uses UTC, which is right
+	// nowhere anybody lives but is at least a real time.
+	Now func() time.Time
 }
 
 // Runner : Executes chats in the background.
@@ -122,6 +126,7 @@ type Runner struct {
 	announcer       announce.Announcer
 	tools           *tool.Registry
 	memory          *memory.Recall
+	now             func() time.Time
 
 	// slots : Limits how many chats run at once. A chat holds one for the
 	// whole of its run.
@@ -170,6 +175,9 @@ func New(opts Options) (*Runner, error) {
 	if opts.CondenseTimeout <= 0 {
 		opts.CondenseTimeout = DefaultCondenseTimeout
 	}
+	if opts.Now == nil {
+		opts.Now = func() time.Time { return time.Now().UTC() }
+	}
 
 	base, stop := context.WithCancel(context.Background())
 	return &Runner{
@@ -186,6 +194,7 @@ func New(opts Options) (*Runner, error) {
 		announcer:       opts.Announcer,
 		tools:           opts.Tools,
 		memory:          opts.Memory,
+		now:             opts.Now,
 		slots:           make(chan struct{}, opts.MaxConcurrent),
 		base:            base,
 		stopBase:        stop,
@@ -304,7 +313,7 @@ func (r *Runner) prompt() string {
 // doing, and remembering having switched somewhere is not the same as being
 // there.
 func (r *Runner) promptFor(ctx context.Context, t *chat.Chat) string {
-	standing := r.prompt() + heard(t)
+	standing := r.prompt() + " " + conversation.Now(r.now()) + heard(t)
 
 	// The conversation is read once: it carries both where the assistant is
 	// and whose memories these are.

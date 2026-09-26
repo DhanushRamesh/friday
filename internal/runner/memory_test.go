@@ -370,3 +370,16 @@ func TestEveryMessageSaysWhichChatWroteIt(t *testing.T) {
 		}
 	}
 }
+
+// The assistant is told the time on every turn. It cannot know it, and
+// nothing about a reminder or a date works until it does.
+func TestThePromptCarriesTheTime(t *testing.T) {
+	p := &recordingProvider{}
+	h := withMemories(t, p, nil)
+
+	h.ask(t, "what day is it")
+
+	if !strings.Contains(p.systemPrompt(), "The time where the person is") {
+		t.Errorf("the prompt does not say what time it is:\n%s", p.systemPrompt())
+	}
+}

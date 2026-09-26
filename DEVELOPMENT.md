@@ -587,6 +587,22 @@ An advisor needs both of the last two: something to reason from, and a
 record to check itself against. They must stay distinguishable in the
 prompt, because "you told me" and "I concluded" are not the same claim.
 
+### The assistant is told what time it is
+
+It had no way to know. A model answers "what day is it" from whenever it
+was trained, or refuses, and "in twenty minutes" has nothing to be twenty
+minutes after. Every prompt now carries the time, the day, the date and
+the zone.
+
+`[assistant] timezone` is an IANA name and everything stored stays UTC,
+including the database connection. This is not about storage: it is what
+"seven in the morning" means. A name the machine cannot load stops the
+server rather than quietly becoming UTC, because a reminder at the wrong
+hour every day is worse than a refusal that says why.
+
+Spoken, the time was already answered by Home Assistant, which handles it
+locally and never reaches here. Typed, there was nothing.
+
 ### A reminder only ever says something
 
 Owner's decision. A reminder carries words and speaks them: a timer that

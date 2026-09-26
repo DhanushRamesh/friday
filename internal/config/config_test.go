@@ -310,3 +310,47 @@ func TestExampleFileIsValid(t *testing.T) {
 		t.Errorf("example Addr = %q, want 127.0.0.1:8080", cfg.Server.Addr)
 	}
 }
+
+// A timezone is loaded, because "seven in the morning" means nothing
+// without one.
+func TestTheTimezoneIsLoaded(t *testing.T) {
+	cfg, err := config.Load(writeINI(t, "[assistant]\ntimezone = Asia/Kolkata\n"), env(nil))
+	if err != nil {
+		t.Fatalf("config: %v", err)
+	}
+
+	if cfg.Assistant.Location == nil {
+		t.Fatal("no location was loaded")
+	}
+	if got := cfg.Assistant.Location.String(); got != "Asia/Kolkata" {
+		t.Errorf("location = %q, want Asia/Kolkata", got)
+	}
+}
+
+// Nothing set is UTC rather than nil, so nobody has to check.
+func TestNoTimezoneIsUTC(t *testing.T) {
+	cfg, err := config.Load("", env(nil))
+	if err != nil {
+		t.Fatalf("config: %v", err)
+	}
+
+	if cfg.Assistant.Location != time.UTC {
+		t.Errorf("location = %v, want UTC", cfg.Assistant.Location)
+	}
+	if cfg.Assistant.Now().Location() != time.UTC {
+		t.Error("Now is not in UTC either")
+	}
+}
+
+// A name the machine cannot load stops the server rather than quietly
+// becoming UTC. A reminder at the wrong hour every day is worse than a
+// server that refuses to start and says why.
+func TestAnUnknownTimezoneIsRefused(t *testing.T) {
+	_, err := config.Load(writeINI(t, "[assistant]\ntimezone = Mars/Olympus\n"), env(nil))
+	if err == nil {
+		t.Fatal("an unknown timezone was accepted")
+	}
+	if !strings.Contains(err.Error(), "Mars/Olympus") {
+		t.Errorf("error = %v, want it to name what was wrong", err)
+	}
+}

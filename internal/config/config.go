@@ -118,6 +118,25 @@ type Assistant struct {
 	// setting can be changed while the server runs and returns here when it
 	// restarts, so this is what a lasting choice is written into.
 	Persona string
+
+	// Timezone : Where the person is, as an IANA name such as Asia/Kolkata.
+	// Empty means UTC.
+	//
+	// Everything stored is UTC, including the database connection, so this
+	// is not about storage. It is what "seven in the morning" means, and
+	// what the assistant is told the time is.
+	Timezone string
+
+	// Location : Timezone, loaded. Never nil; UTC when nothing is set.
+	Location *time.Location
+}
+
+// Now : The time where the person is.
+func (a Assistant) Now() time.Time {
+	if a.Location == nil {
+		return time.Now().UTC()
+	}
+	return time.Now().In(a.Location)
 }
 
 // Embedding : How to reach the server that turns text into vectors, which
@@ -254,6 +273,7 @@ func (c Config) LogValue() slog.Value {
 		// anyone reads a log for.
 		slog.Bool("homeassistant.configured", c.HomeAssistant.Configured()),
 		slog.Bool("embedding.configured", c.Embedding.Configured()),
+		slog.String("assistant.timezone", c.Assistant.Location.String()),
 	)
 }
 
@@ -342,8 +362,10 @@ func Load(path string, lookup Lookup) (Config, error) {
 			AutoMigrate:     l.boolean("database", "auto_migrate", true),
 		},
 		Assistant: Assistant{
-			Name:    l.str("assistant", "name", ""),
-			Persona: l.str("assistant", "persona", ""),
+			Name:     l.str("assistant", "name", ""),
+			Persona:  l.str("assistant", "persona", ""),
+			Timezone: l.str("assistant", "timezone", ""),
+			Location: l.location("assistant", "timezone"),
 		},
 		HomeAssistant: HomeAssistant{
 			URL:       l.str("homeassistant", "url", ""),
@@ -385,6 +407,26 @@ func Load(path string, lookup Lookup) (Config, error) {
 
 // validate : Records an error for each setting in cfg that is out of range or
 // missing.
+// location : The timezone named by a setting, or UTC.
+//
+// A name the machine cannot load is an error rather than a silent fall back
+// to UTC: a reminder at the wrong hour every day is worse than a server
+// that refuses to start and says why.
+func (l *loader) location(section, key string) *time.Location {
+	name := strings.TrimSpace(l.str(section, key, ""))
+	if name == "" {
+		return time.UTC
+	}
+
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		l.errorf("%s: %q is not a timezone this machine knows (want an IANA name such as Asia/Kolkata): %v",
+			l.where(section, key), name, err)
+		return time.UTC
+	}
+	return loc
+}
+
 func (l *loader) validate(cfg Config) {
 	if _, err := logging.ParseLevel(cfg.Log.Level); err != nil {
 		l.errorf("%s: %v", l.where("log", "level"), err)
