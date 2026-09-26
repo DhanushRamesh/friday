@@ -8,10 +8,13 @@ import (
 	"testing"
 	"time"
 
+	"encoding/json"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/apitest"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/chats"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/httpx"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/views"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
 	"github.com/DhanushRamesh/personal-assistant/internal/environment"
 )
 
@@ -184,5 +187,121 @@ func TestInternalFailureIsNotRevealed(t *testing.T) {
 		if !strings.Contains(e.Logs.String(), apitest.ErrStorage.Error()) {
 			t.Error("internal error not logged, so the failure is undiagnosable")
 		}
+	}
+}
+
+// The timeline of an answer carries what was recalled and every tool the
+// model asked for, in the order it happened.
+func TestStepsShowsHowTheAnswerWasMade(t *testing.T) {
+	e := apitest.New(t)
+	ctx := t.Context()
+
+	c := chat.NewConversation(e.User.ID, "Roof Quotes")
+	if err := e.Repo.CreateConversation(ctx, c); err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+	tk, _ := chat.New(c.ID, chat.ChannelDirect, "what did the roofer quote")
+	if err := e.Repo.Create(ctx, tk); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if err := e.Repo.SetRecalled(ctx, tk.ID, &chat.Recalled{
+		Notes:  []chat.RecalledNote{{ID: "mem_a", Text: "Roof quote: forty thousand", Score: 0.56}},
+		TookMS: 41,
+	}); err != nil {
+		t.Fatalf("SetRecalled: %v", err)
+	}
+
+	said := conversation.Said(c.ID, "what did the roofer quote", time.Now().UTC())
+	said.ChatID = tk.ID
+	call := conversation.CalledTools(c.ID, []conversation.ToolCall{
+		{ID: "call_1", Name: "memory_search", Arguments: `{"about":"the roof"}`},
+	}, time.Now().UTC())
+	call.ChatID = tk.ID
+	results := conversation.ToolsReturned(c.ID, []conversation.ToolResult{
+		{ID: "call_1", Name: "memory_search", Outcome: conversation.OutcomeOK,
+			Content: "mem_a  Roof quote: forty thousand", TookMS: 12},
+	}, time.Now().UTC())
+	results.ChatID = tk.ID
+	answered := conversation.Answered(c.ID, "He quoted forty thousand rupees.", time.Now().UTC())
+	answered.ChatID = tk.ID
+
+	for _, m := range []conversation.Message{said, call, results, answered} {
+		if _, err := e.Repo.Append(ctx, m); err != nil {
+			t.Fatalf("Append: %v", err)
+		}
+	}
+
+	rec := e.Get(t, "/v1/chats/"+tk.ID+"/steps")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+
+	var got views.Timeline
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decoding: %v", err)
+	}
+
+	var kinds []string
+	for _, s := range got.Steps {
+		kinds = append(kinds, s.Kind)
+	}
+	want := []string{views.StepAsked, views.StepRecalled, views.StepToolCall, views.StepToolResult, views.StepAnswered}
+	if len(kinds) != len(want) {
+		t.Fatalf("steps = %v, want %v", kinds, want)
+	}
+	for i := range want {
+		if kinds[i] != want[i] {
+			t.Errorf("step %d = %q, want %q", i, kinds[i], want[i])
+		}
+	}
+
+	for _, s := range got.Steps {
+		switch s.Kind {
+		case views.StepRecalled:
+			if s.Recalled == nil || len(s.Recalled.Notes) != 1 || s.Recalled.Notes[0].Score != 0.56 {
+				t.Errorf("the recalled step lost its notes: %+v", s.Recalled)
+			}
+		case views.StepToolCall:
+			if s.Name != "memory_search" || !strings.Contains(s.Arguments, "the roof") {
+				t.Errorf("tool call = %+v", s)
+			}
+		case views.StepToolResult:
+			if s.Outcome != "ok" || s.TookMS != 12 {
+				t.Errorf("tool result = %+v", s)
+			}
+		case views.StepAnswered:
+			if !strings.Contains(s.Text, "forty thousand") {
+				t.Errorf("answer = %q", s.Text)
+			}
+		}
+	}
+}
+
+// A chat from before messages recorded which turn wrote them says so,
+// rather than presenting an empty timeline as a complete one.
+func TestStepsSaysWhenTheTimelineIsIncomplete(t *testing.T) {
+	e := apitest.New(t)
+	ctx := t.Context()
+
+	c := chat.NewConversation(e.User.ID, "Old")
+	_ = e.Repo.CreateConversation(ctx, c)
+	tk, _ := chat.New(c.ID, chat.ChannelDirect, "something asked long ago")
+	_ = e.Repo.Create(ctx, tk)
+
+	rec := e.Get(t, "/v1/chats/"+tk.ID+"/steps")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	var got views.Timeline
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decoding: %v", err)
+	}
+	if got.Complete {
+		t.Error("an empty timeline was reported as complete")
+	}
+	if len(got.Steps) != 0 {
+		t.Errorf("steps = %v, want none", got.Steps)
 	}
 }

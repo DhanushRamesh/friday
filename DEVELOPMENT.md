@@ -586,6 +586,37 @@ An advisor needs both of the last two: something to reason from, and a
 record to check itself against. They must stay distinguishable in the
 prompt, because "you told me" and "I concluded" are not the same claim.
 
+### An answer records how it was made
+
+`messages.chat_id` says which turn wrote a message, and `chats.recalled`
+holds what memory offered and what it scored. `GET /v1/chats/{id}/steps`
+puts them in order: asked, recalled, each tool call and its result with a
+duration, answered.
+
+Nothing in it is re-derived. A search run now could disagree with the one
+the model was shown, and a timeline that disagrees with what happened is
+worse than none.
+
+It paid for itself on the first real answer. Asked "what did the builder
+charge for the upstairs work", the assistant replied "there is nothing on
+record" -- and the timeline showed the roof memory had been offered at
+0.588, then found again by `memory_search`, and refused twice. From the
+log alone that is indistinguishable from never having found it, which
+needs an entirely different fix.
+
+The cause was the answering rule: "use a note only if it contains what is
+being asked for, rather than merely a related subject". It was written to
+stop a near miss being read as an answer and it refused a direct hit,
+producing a false statement as well as a miss. It now says to judge
+whether it is the same thing rather than whether the words match, and
+never to say nothing is on record when a note is plainly about what was
+asked.
+
+The eval had passed throughout, because it composed the prompt with the
+default manner while the server runs Jarvis. An eval that measures a
+prompt must use the manner the server is configured with, or it measures a
+prompt nobody sends.
+
 ### The point of memory is advice, not recall
 
 Stated by the owner. The assistant is not meant to do only what it is told.

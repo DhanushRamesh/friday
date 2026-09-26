@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"sort"
 	"time"
 
 	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
@@ -53,6 +54,27 @@ func (m *Repository) All(ctx context.Context, conversationID string) ([]conversa
 
 // FailAppendingSaid : Makes every Append fail with err, so a caller's
 // handling of an unwritable message can be tested.
+// ByChat : Returns everything one turn wrote, oldest first.
+func (m *Repository) ByChat(_ context.Context, chatID string) ([]conversation.Message, error) {
+	if chatID == "" {
+		return nil, nil
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var out []conversation.Message
+	for _, said := range m.said {
+		for _, msg := range said {
+			if msg.ChatID == chatID {
+				out = append(out, msg)
+			}
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Seq < out[j].Seq })
+	return out, nil
+}
+
 func (m *Repository) FailAppendingSaid(err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

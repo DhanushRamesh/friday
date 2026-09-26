@@ -23,6 +23,10 @@ type Repository interface {
 	// All : Returns everything said in a conversation, oldest first.
 	All(ctx context.Context, conversationID string) ([]Message, error)
 
+	// ByChat : Returns everything one turn wrote, oldest first. Empty for a
+	// turn from before messages recorded which one wrote them.
+	ByChat(ctx context.Context, chatID string) ([]Message, error)
+
 	// Summary : Returns the conversation's condensed earlier conversation. A
 	// conversation with none yields the zero Summary and no error.
 	Summary(ctx context.Context, conversationID string) (Summary, error)

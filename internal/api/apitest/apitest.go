@@ -163,6 +163,7 @@ func NewWith(t *testing.T, opts Options) *Env {
 			Logger:           logger.Logger,
 			DB:               opts.DB,
 			Chats:            repo,
+			Messages:         repo,
 			Runner:           chatRunner,
 			Events:           bus,
 			AllowCrossOrigin: opts.AllowCrossOrigin,

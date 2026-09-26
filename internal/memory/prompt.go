@@ -27,7 +27,11 @@ func Standing(all []Memory) string {
 //
 // Answering: nearest is not relevant. A question with nothing stored about
 // it still has a nearest memory, scoring in the same range as a real match,
-// so the model is told that none of them fitting is the usual case.
+// so the model is told that none of them fitting is the usual case. It is
+// also told to judge the thing rather than the wording: asked what the
+// builder charged upstairs, it once refused a note about the roofer and the
+// terrace and said nothing was on record, which is both a miss and a false
+// statement.
 //
 // Warning: an assistant that only answers is an instrument. A note that
 // contradicts what someone is about to do is worth a line even though it is
@@ -48,10 +52,15 @@ func Offered(matches []Match) string {
 	b.WriteString("same as bearing on it: most of the time none of them will, and ")
 	b.WriteString("ignoring all of them is then the right thing to do.\n\n")
 
-	b.WriteString("To answer with: use a note only if it contains what is being ")
-	b.WriteString("asked for, rather than merely a related subject. Do not mention ")
-	b.WriteString("a note you did not use, and do not tell the person a note exists ")
-	b.WriteString("instead of answering them.\n\n")
+	b.WriteString("To answer with: use a note when it holds what is being asked ")
+	b.WriteString("for. The same thing is often named one way in the question and ")
+	b.WriteString("another in the note -- a trade, a place, a person or a job ")
+	b.WriteString("described differently -- so judge whether it is the same thing, ")
+	b.WriteString("not whether the words match. Do not stretch a note to cover a ")
+	b.WriteString("different thing. Where a note is plainly about what was asked, ")
+	b.WriteString("never say there is nothing on record: say what the note says. Do ")
+	b.WriteString("not mention a note you did not use, and do not tell the person a ")
+	b.WriteString("note exists instead of answering them.\n\n")
 
 	b.WriteString("To warn with: if the person says what they are about to do, and ")
 	b.WriteString("a note disagrees with it -- a figure they agreed, a limit they ")

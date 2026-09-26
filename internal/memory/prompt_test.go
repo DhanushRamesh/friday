@@ -49,7 +49,7 @@ func TestOfferedSaysTheyMayNotFit(t *testing.T) {
 	for _, want := range []string{
 		"most of the time none of them will",
 		"ignoring all of them",
-		"rather than merely a related subject",
+		"judge whether it is the same thing",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("Offered is missing %q:\n%s", want, got)
@@ -147,5 +147,22 @@ func TestTheTranscriptMayNotWarn(t *testing.T) {
 	}
 	if !strings.Contains(got, "never state one as a fact of your own") {
 		t.Errorf("the transcript lost its quoting rule:\n%s", got)
+	}
+}
+
+// Refusing a note because the question named the same thing differently is
+// a miss and a false statement at once, so both are forbidden by name.
+func TestOfferedJudgesTheThingNotTheWording(t *testing.T) {
+	got := memory.Offered([]memory.Match{{Memory: memory.Memory{Subject: "Roof quote", Body: "forty thousand"}}})
+
+	for _, want := range []string{
+		"named one way in the question and another in the note",
+		"judge whether it is the same thing",
+		"Do not stretch a note to cover a different thing",
+		"never say there is nothing on record",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("Offered is missing %q:\n%s", want, got)
+		}
 	}
 }

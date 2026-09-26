@@ -47,6 +47,28 @@ func (r *conversationMessageRow) toMessage() conversation.Message {
 	}
 }
 
+// ByChat : Returns everything one turn wrote, oldest first.
+func (r *Repository) ByChat(ctx context.Context, chatID string) ([]conversation.Message, error) {
+	if chatID == "" {
+		return nil, nil
+	}
+
+	var rows []conversationMessageRow
+	err := r.db.WithContext(ctx).
+		Where("chat_id = ?", chatID).
+		Order("seq ASC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("conversation: reading what %s wrote: %w", chatID, err)
+	}
+
+	out := make([]conversation.Message, 0, len(rows))
+	for i := range rows {
+		out = append(out, rows[i].toMessage())
+	}
+	return out, nil
+}
+
 // appendAttempts : How many times a position is retried before giving up.
 //
 // The next position is read and then written, so two appends to one conversation

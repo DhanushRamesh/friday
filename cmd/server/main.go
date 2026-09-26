@@ -226,6 +226,7 @@ func run() error {
 		Logger:         logger.Logger,
 		DB:             db,
 		Chats:          chats,
+		Messages:       chats,
 		Runner:         chatRunner,
 		Events:         bus,
 		Models:         reachableModels(cfg),

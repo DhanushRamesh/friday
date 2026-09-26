@@ -21,6 +21,7 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/api/httpx"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/views"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
 	"github.com/DhanushRamesh/personal-assistant/internal/events"
 )
 
@@ -73,17 +74,19 @@ type ListResponse struct {
 // Handler : Serves the chat endpoints.
 type Handler struct {
 	httpx.Responder
-	repo   chat.Repository
-	runner Runner
-	events Subscriber
+	repo     chat.Repository
+	messages conversation.Repository
+	runner   Runner
+	events   Subscriber
 }
 
 // New : Builds the handler from the store, the runner that executes chats and
 // the bus that carries what they say.
-func New(logger *slog.Logger, repo chat.Repository, runner Runner, bus Subscriber) *Handler {
+func New(logger *slog.Logger, repo chat.Repository, messages conversation.Repository, runner Runner, bus Subscriber) *Handler {
 	return &Handler{
 		Responder: httpx.Responder{Logger: logger},
 		repo:      repo,
+		messages:  messages,
 		runner:    runner,
 		events:    bus,
 	}
@@ -97,6 +100,7 @@ func (h *Handler) Mount(r chi.Router) {
 	r.Route("/v1/chats", func(r chi.Router) {
 		r.Get("/", h.List)
 		r.Get("/{id}", h.Get)
+		r.Get("/{id}/steps", h.Steps)
 		r.Post("/{id}/cancel", h.Cancel)
 	})
 }
@@ -108,6 +112,31 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(ctx, w, http.StatusOK, views.OfChat(t))
+}
+
+// Steps : How one answer was made, in the order it happened.
+//
+// Everything here was recorded as the answer was produced. Nothing is
+// re-derived: a search run now could disagree with the one the model was
+// actually shown.
+func (h *Handler) Steps(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	t, _ := h.loadChat(ctx, w, chi.URLParam(r, "id"))
+	if t == nil {
+		return
+	}
+
+	var wrote []conversation.Message
+	if h.messages != nil {
+		var err error
+		if wrote, err = h.messages.ByChat(ctx, t.ID); err != nil {
+			h.Fail(ctx, w, "reading how the answer was made", err)
+			return
+		}
+	}
+
+	httpx.WriteJSON(ctx, w, http.StatusOK, views.OfTimeline(t, wrote))
 }
 
 // List : Returns recent chats, newest first, without their responses.

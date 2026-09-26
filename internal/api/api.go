@@ -27,6 +27,7 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/api/health"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/middleware"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
+	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
 	"github.com/DhanushRamesh/personal-assistant/internal/llm"
 	"github.com/DhanushRamesh/personal-assistant/internal/persona"
 )
@@ -55,6 +56,10 @@ type Options struct {
 	DB Pinger
 	// Chats : Stores and retrieves chats. Required.
 	Chats chat.Repository
+
+	// Messages : Reads what a turn wrote, for the timeline of an answer.
+	// Optional; without it a timeline carries only what the chat records.
+	Messages conversation.Repository
 	// Runner : Executes chats. Required.
 	Runner Runner
 	// Events : Carries a chat's messages to clients listening for them.
@@ -116,7 +121,7 @@ func New(opts Options) *Server {
 		authn:         authn.New(opts.Logger, opts.Chats),
 		clients:       clients.New(opts.Logger, opts.Chats, opts.Models, opts.DefaultModel, opts.Persona),
 		conversations: conversations.New(opts.Logger, opts.Chats),
-		chats:         chats.New(opts.Logger, opts.Chats, opts.Runner, opts.Events),
+		chats:         chats.New(opts.Logger, opts.Chats, opts.Messages, opts.Runner, opts.Events),
 		assist:        assist.New(opts.Logger, opts.Chats, opts.Runner, opts.Events),
 	}
 	s.routes()

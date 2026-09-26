@@ -85,6 +85,11 @@ var answerable = []answered{
 	{Ask: "what did the roofer quote me", Want: "forty thousand"},
 	{Ask: "which city do I live in", Want: "Chennai"},
 	{Ask: "how much was the terrace work going to cost", Want: "forty thousand"},
+	// The same thing named differently in the question and in the note. It
+	// refused this in use and said nothing was on record, which is a miss
+	// and a false statement at once.
+	{Ask: "what did the builder charge for the upstairs work", Want: "forty thousand"},
+	{Ask: "which town am I in", Want: "Chennai"},
 }
 
 // unanswerable : Questions the notes do not answer, though one of them is
@@ -103,7 +108,7 @@ var leaks = []string{"forty thousand", "Chennai", "Kapil Dev", "MS Dhoni", "roof
 
 func TestOfferedNotesAreUsedOnlyWhenTheyFit(t *testing.T) {
 	env := provider(t)
-	system := persona.Prompt(persona.Default, "Jarvis") + "\n\n" + memory.Offered(notes)
+	system := manner(t) + "\n\n" + memory.Offered(notes)
 
 	var used, missed int
 	for _, c := range answerable {
@@ -144,7 +149,7 @@ func TestOfferedNotesAreUsedOnlyWhenTheyFit(t *testing.T) {
 // risks the second.
 func TestANoteThatDisagreesIsRaised(t *testing.T) {
 	env := provider(t)
-	system := persona.Prompt(persona.Default, "Jarvis") + "\n\n" + memory.Offered(notes)
+	system := manner(t) + "\n\n" + memory.Offered(notes)
 
 	var raised, silent int
 	for _, c := range conflicts {
@@ -185,6 +190,22 @@ func TestANoteThatDisagreesIsRaised(t *testing.T) {
 
 	t.Logf("a note disagrees  : %d of %d raised", raised, raised+silent)
 	t.Logf("nothing disagrees : %d of %d left alone", quiet, quiet+nagged)
+}
+
+// manner : The manner the server is actually configured to answer in.
+//
+// Not the default. These measure a prompt, and a prompt behaves differently
+// under a different manner: an eval that passes under one while the server
+// runs the other measures nothing. This was found the hard way -- the
+// answering rule passed here and refused a direct hit in use.
+func manner(t *testing.T) string {
+	t.Helper()
+
+	cfg, err := config.Load("../../../config.ini", os.LookupEnv)
+	if err != nil {
+		t.Fatalf("config: %v", err)
+	}
+	return persona.Prompt(cfg.Assistant.Persona, cfg.Assistant.Name)
 }
 
 // provider : The real environment, or a skip when none is configured.
