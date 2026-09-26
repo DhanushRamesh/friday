@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/events"
 	"github.com/DhanushRamesh/personal-assistant/internal/llm"
 	"github.com/DhanushRamesh/personal-assistant/internal/logging"
+	"github.com/DhanushRamesh/personal-assistant/internal/memory"
 	"github.com/DhanushRamesh/personal-assistant/internal/persona"
 	"github.com/DhanushRamesh/personal-assistant/internal/tool"
 )
@@ -97,6 +99,10 @@ type Options struct {
 	// Tools : What the assistant can do as well as say. Nil offers none, and
 	// a model offered none answers from what it knows.
 	Tools *tool.Registry
+	// Memory : What the assistant has been asked to remember. Nil remembers
+	// nothing, which is how it behaved before there was anywhere to keep
+	// anything.
+	Memory *memory.Recall
 }
 
 // Runner : Executes chats in the background.
@@ -115,6 +121,7 @@ type Runner struct {
 	persona         *persona.Setting
 	announcer       announce.Announcer
 	tools           *tool.Registry
+	memory          *memory.Recall
 
 	// slots : Limits how many chats run at once. A chat holds one for the
 	// whole of its run.
@@ -178,6 +185,7 @@ func New(opts Options) (*Runner, error) {
 		persona:         opts.Persona,
 		announcer:       opts.Announcer,
 		tools:           opts.Tools,
+		memory:          opts.Memory,
 		slots:           make(chan struct{}, opts.MaxConcurrent),
 		base:            base,
 		stopBase:        stop,
@@ -296,18 +304,78 @@ func (r *Runner) prompt() string {
 // doing, and remembering having switched somewhere is not the same as being
 // there.
 func (r *Runner) promptFor(ctx context.Context, t *chat.Chat) string {
-	prompt := r.prompt() + heard(t)
-	if t.ConversationID == "" || r.repo == nil {
-		return prompt
+	standing := r.prompt() + heard(t)
+
+	// The conversation is read once: it carries both where the assistant is
+	// and whose memories these are.
+	var userID string
+	if t.ConversationID != "" && r.repo != nil {
+		c, err := r.repo.GetConversation(ctx, t.ConversationID)
+		if err != nil {
+			r.logger.ErrorContext(ctx, "cannot tell the assistant where it is",
+				slog.Any("error", err))
+		} else {
+			standing += " " + conversation.Whereabouts(c.ID, c.Title)
+			userID = c.UserID
+		}
 	}
 
-	c, err := r.repo.GetConversation(ctx, t.ConversationID)
-	if err != nil {
-		r.logger.ErrorContext(ctx, "cannot tell the assistant where it is",
-			slog.Any("error", err))
-		return prompt
+	return join(standing, r.known(ctx, userID), r.recalled(ctx, userID, t.Prompt))
+}
+
+// join : The parts of a system prompt that are not empty, separated so the
+// model reads them as separate things rather than one run-on instruction.
+func join(parts ...string) string {
+	kept := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part != "" {
+			kept = append(kept, part)
+		}
 	}
-	return prompt + " " + conversation.Whereabouts(c.ID, c.Title)
+	return strings.Join(kept, "\n\n")
+}
+
+// known : The memories that go into every prompt, if there are any.
+func (r *Runner) known(ctx context.Context, userID string) string {
+	if r.memory == nil || userID == "" {
+		return ""
+	}
+
+	all, err := r.memory.Always(ctx, userID)
+	if err != nil {
+		r.logger.ErrorContext(ctx, "cannot read what the assistant always knows",
+			slog.Any("error", err))
+		return ""
+	}
+	return memory.Standing(all)
+}
+
+// recalled : The memories that resemble what was asked, if any do.
+//
+// Records that they were offered, since a memory that is never found and one
+// that is found every time and never helps are different problems. Nothing
+// here may fail the turn: an answer with no memory is the answer that was
+// given before there was any.
+func (r *Runner) recalled(ctx context.Context, userID, question string) string {
+	if r.memory == nil || userID == "" {
+		return ""
+	}
+
+	found, err := r.memory.For(ctx, userID, question)
+	if err != nil {
+		r.logger.WarnContext(ctx, "cannot search what the assistant remembers",
+			slog.Any("error", err))
+		return ""
+	}
+	if len(found) == 0 {
+		return ""
+	}
+
+	if err := r.memory.Store.Used(ctx, memory.IDs(found)); err != nil {
+		r.logger.WarnContext(ctx, "cannot record that memories were offered",
+			slog.Any("error", err))
+	}
+	return memory.Offered(found)
 }
 
 // heard : The warning that the words were spoken, for a chat that was.
@@ -338,12 +406,12 @@ func (r *Runner) limitsFor(m chat.Model, alongside int) conversation.Limits {
 
 // alongside : How much is sent with the history but is not part of it.
 //
-// The system prompt and every tool offered, whether the turn uses them or
-// not. Measured per chat because both change: the manner can be switched
-// while the server runs, and the tools a channel may reach are not the tools
-// another may.
-func (r *Runner) alongside(t *chat.Chat) int {
-	n := len(r.prompt())
+// The system prompt as it will actually be sent, and every tool offered
+// whether the turn uses them or not. The composed prompt is passed in rather
+// than rebuilt: composing it reads the database and searches memory, and it
+// must be the same string the provider is given or the reserve is wrong.
+func (r *Runner) alongside(t *chat.Chat, systemPrompt string) int {
+	n := len(systemPrompt)
 	for _, spec := range r.offered(t) {
 		n += len(spec.Name) + len(spec.Description) + len(spec.Parameters)
 	}

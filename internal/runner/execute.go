@@ -43,7 +43,11 @@ func (r *Runner) execute(ctx, lifeCtx context.Context, t *chat.Chat) {
 	}
 	r.logger.InfoContext(ctx, "chat started")
 
-	r.consume(runCtx, ctx, t)
+	// Composed once. It reads the database and searches memory, and every
+	// hop of the tool loop must be given the same one.
+	systemPrompt := r.promptFor(ctx, t)
+
+	r.consume(runCtx, ctx, t, systemPrompt)
 
 	// After the answer is recorded and announced, so that maintaining the
 	// conversation's memory is never in front of the person waiting for it. The
@@ -53,7 +57,7 @@ func (r *Runner) execute(ctx, lifeCtx context.Context, t *chat.Chat) {
 	// so they cannot pile up. Naming first, since it is the shorter of the
 	// two and is the one somebody is waiting to hear.
 	r.title(ctx, t)
-	r.condense(ctx, t)
+	r.condense(ctx, t, systemPrompt)
 }
 
 // consume : Reads the provider's stream and records what it produces.
@@ -61,8 +65,8 @@ func (r *Runner) execute(ctx, lifeCtx context.Context, t *chat.Chat) {
 // runCtx bounds the provider's work and is cancelled to stop it. ctx outlives
 // it and is used for the final write, because a cancelled context cannot be
 // used to record that the chat was cancelled.
-func (r *Runner) consume(runCtx, ctx context.Context, t *chat.Chat) {
-	window := r.history(ctx, t)
+func (r *Runner) consume(runCtx, ctx context.Context, t *chat.Chat, systemPrompt string) {
+	window := r.history(ctx, t, systemPrompt)
 	turns := toProviderTurns(window.Messages)
 	prompt := t.Prompt
 
@@ -88,7 +92,7 @@ func (r *Runner) consume(runCtx, ctx context.Context, t *chat.Chat) {
 			Model:   t.Model.ID,
 			Tools:   tools,
 
-			SystemPrompt: r.promptFor(ctx, t),
+			SystemPrompt: systemPrompt,
 		})
 		if err != nil {
 			r.logger.ErrorContext(ctx, "environment would not start", slog.Any("error", err))
@@ -198,7 +202,7 @@ func (r *Runner) drain(ctx context.Context, t *chat.Chat, stream <-chan environm
 // again as the prompt. Neither failure is worth abandoning the chat for: an
 // unrecorded question costs the next turn its context, and an unread history
 // leaves the prompt to make sense on its own, which it usually does.
-func (r *Runner) history(ctx context.Context, t *chat.Chat) conversation.Window {
+func (r *Runner) history(ctx context.Context, t *chat.Chat, systemPrompt string) conversation.Window {
 	if t.ConversationID == "" {
 		return conversation.Window{}
 	}
@@ -222,7 +226,7 @@ func (r *Runner) history(ctx context.Context, t *chat.Chat) conversation.Window 
 		r.logger.ErrorContext(ctx, "cannot read conversation summary", slog.Any("error", err))
 	}
 
-	return conversation.Plan(said, summary, r.limitsFor(t.Model, r.alongside(t)))
+	return conversation.Plan(said, summary, r.limitsFor(t.Model, r.alongside(t, systemPrompt)))
 }
 
 // toProviderTurns : Converts a conversation's messages into the form a provider

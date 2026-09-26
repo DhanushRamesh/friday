@@ -20,13 +20,13 @@ var errNoAnswer = errors.New("runner: the provider said nothing")
 // Every failure here is logged and dropped. The conversation is left as it was, so
 // the next turn sends what it can and tries again; nothing the person asked
 // for depends on this succeeding.
-func (r *Runner) condense(ctx context.Context, t *chat.Chat) {
+func (r *Runner) condense(ctx context.Context, t *chat.Chat, systemPrompt string) {
 	conversationID := t.ConversationID
 	if conversationID == "" {
 		return
 	}
 
-	limits := r.limitsFor(t.Model, r.alongside(t))
+	limits := r.limitsFor(t.Model, r.alongside(t, systemPrompt))
 
 	current, err := r.messages.Summary(ctx, conversationID)
 	if err != nil {

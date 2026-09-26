@@ -60,6 +60,7 @@ type Config struct {
 	Database      Database
 	Assistant     Assistant
 	HomeAssistant HomeAssistant
+	Embedding     Embedding
 	Provider      Provider
 	PlatformAI    PlatformAI
 
@@ -118,6 +119,21 @@ type Assistant struct {
 	// restarts, so this is what a lasting choice is written into.
 	Persona string
 }
+
+// Embedding : How to reach the server that turns text into vectors, which
+// is what lets a memory be found by meaning rather than by wording.
+type Embedding struct {
+	// URL : Where it answers. Empty leaves memory matching words instead.
+	URL string
+	// Model : The model it serves. Stored beside every vector, because
+	// vectors from two models cannot be compared.
+	Model string
+	// Timeout : How long one call may take.
+	Timeout time.Duration
+}
+
+// Configured : Whether there is an embedding server to reach.
+func (e Embedding) Configured() bool { return strings.TrimSpace(e.URL) != "" }
 
 // HomeAssistant : How to reach Home Assistant, for the things the assistant
 // says without having been asked.
@@ -237,6 +253,7 @@ func (c Config) LogValue() slog.Value {
 		// not, and one line saying "configured" answers the only question
 		// anyone reads a log for.
 		slog.Bool("homeassistant.configured", c.HomeAssistant.Configured()),
+		slog.Bool("embedding.configured", c.Embedding.Configured()),
 	)
 }
 
@@ -332,6 +349,11 @@ func Load(path string, lookup Lookup) (Config, error) {
 			URL:       l.str("homeassistant", "url", ""),
 			Token:     logging.Secret(l.str("homeassistant", "token", "")),
 			Satellite: l.str("homeassistant", "satellite", ""),
+		},
+		Embedding: Embedding{
+			URL:     l.str("embedding", "url", ""),
+			Model:   l.str("embedding", "model", ""),
+			Timeout: l.duration("embedding", "timeout", 30*time.Second),
 		},
 		Provider: Provider{
 			Name: ProviderName(l.str("provider", "name", string(ProviderStub))),

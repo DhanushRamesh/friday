@@ -20,11 +20,15 @@ import (
 	chatmysql "github.com/DhanushRamesh/personal-assistant/internal/chat/mysql"
 	"github.com/DhanushRamesh/personal-assistant/internal/config"
 	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
+	"github.com/DhanushRamesh/personal-assistant/internal/embed"
+	"github.com/DhanushRamesh/personal-assistant/internal/embed/tei"
 	"github.com/DhanushRamesh/personal-assistant/internal/environment"
 	"github.com/DhanushRamesh/personal-assistant/internal/environment/platformai"
 	"github.com/DhanushRamesh/personal-assistant/internal/events"
 	"github.com/DhanushRamesh/personal-assistant/internal/llm"
 	"github.com/DhanushRamesh/personal-assistant/internal/logging"
+	"github.com/DhanushRamesh/personal-assistant/internal/memory"
+	memorymysql "github.com/DhanushRamesh/personal-assistant/internal/memory/mysql"
 	"github.com/DhanushRamesh/personal-assistant/internal/persona"
 	"github.com/DhanushRamesh/personal-assistant/internal/runner"
 	"github.com/DhanushRamesh/personal-assistant/internal/storage"
@@ -39,6 +43,13 @@ import (
 // process to whoever is reading the journal, and stays the same whatever the
 // assistant is called today.
 const serviceName = "assistant"
+
+// embeddingCatchUpTimeout : How long embedding what has no vector may take
+// at startup, before the server gets on with answering.
+const embeddingCatchUpTimeout = 60 * time.Second
+
+// embeddingCatchUpLimit : The most memories embedded in one catch-up.
+const embeddingCatchUpLimit = 500
 
 func main() {
 	if len(os.Args) > 2 && os.Args[1] == "createuser" {
@@ -165,6 +176,16 @@ func run() error {
 	}
 	logger.Info("tools registered", slog.Any("tools", tools.Names()))
 
+	// What the assistant has been asked to remember. Without an embedding
+	// server it still works, matching words rather than meaning, which is
+	// worse than the alternative and much better than going blind.
+	remembering := &memory.Recall{
+		Store:    memorymysql.New(db),
+		Embedder: embedder(cfg, logger.Logger),
+		Logger:   logger.Logger,
+	}
+	catchUpEmbeddings(context.Background(), remembering, logger.Logger)
+
 	manner := persona.NewSetting(startingPersona(context.Background(), chats, cfg, logger.Logger))
 
 	chatRunner, err := runner.New(runner.Options{
@@ -178,6 +199,7 @@ func run() error {
 		Persona:       manner,
 		Announcer:     speaker,
 		Tools:         tools,
+		Memory:        remembering,
 	})
 	if err != nil {
 		return err
@@ -286,6 +308,47 @@ func announcer(cfg config.Config, logger *slog.Logger) announce.Announcer {
 	logger.Info("announcing through Home Assistant",
 		slog.String("satellite", cfg.HomeAssistant.Satellite))
 	return speaker
+}
+
+// embedder : What turns text into vectors.
+//
+// Nothing when none is configured, which leaves memory matching words. A
+// server that is configured but not answering is not checked here: it is
+// reached per request, and one that is down at startup and up a minute later
+// should not leave the assistant matching words until it is restarted.
+func embedder(cfg config.Config, logger *slog.Logger) embed.Embedder {
+	if !cfg.Embedding.Configured() {
+		logger.Info("no embedding server, so memories are found by their wording")
+		return embed.Off{}
+	}
+
+	client := tei.New(tei.Config{
+		URL:     cfg.Embedding.URL,
+		Model:   cfg.Embedding.Model,
+		Timeout: cfg.Embedding.Timeout,
+	})
+	logger.Info("embedding memories", slog.String("model", client.Model()))
+	return client
+}
+
+// catchUpEmbeddings : Gives a vector to memories written while the embedding
+// server was away.
+//
+// At startup, and never fatal. A memory with no vector is found by its
+// wording until this succeeds, so failing here costs accuracy rather than
+// the memory.
+func catchUpEmbeddings(ctx context.Context, remembering *memory.Recall, logger *slog.Logger) {
+	ctx, cancel := context.WithTimeout(ctx, embeddingCatchUpTimeout)
+	defer cancel()
+
+	done, err := remembering.Embed(ctx, embeddingCatchUpLimit)
+	switch {
+	case err != nil:
+		logger.Warn("cannot embed the memories that have no vector yet",
+			slog.Any("error", err))
+	case done > 0:
+		logger.Info("memories embedded", slog.Int("memories", done))
+	}
 }
 
 // startingPersona : The manner to begin in.

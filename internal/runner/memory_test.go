@@ -1,0 +1,214 @@
+package runner_test
+
+import (
+	"context"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/DhanushRamesh/personal-assistant/internal/chat"
+	chatmemory "github.com/DhanushRamesh/personal-assistant/internal/chat/memory"
+	"github.com/DhanushRamesh/personal-assistant/internal/embed"
+	"github.com/DhanushRamesh/personal-assistant/internal/events"
+	"github.com/DhanushRamesh/personal-assistant/internal/memory"
+	"github.com/DhanushRamesh/personal-assistant/internal/memory/inmemory"
+	"github.com/DhanushRamesh/personal-assistant/internal/runner"
+)
+
+// remembering : A runner whose conversation belongs to somebody, with the
+// given memories already stored and embedded.
+type remembering struct {
+	runner *runner.Runner
+	repo   *chatmemory.Repository
+	store  *inmemory.Store
+	convID string
+	userID string
+}
+
+// withMemories : Builds one, storing each fact as subject and body.
+func withMemories(t *testing.T, p *recordingProvider, facts map[memory.Tier][][2]string) *remembering {
+	t.Helper()
+	ctx := context.Background()
+
+	repo := chatmemory.New()
+	store := inmemory.New()
+	recall := &memory.Recall{Store: store, Embedder: embed.Fake{}, Logger: discard()}
+
+	userID := chat.NewUserID()
+	c := chat.NewConversation(userID, "Roof Quotes")
+	if err := repo.CreateConversation(ctx, c); err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+
+	for tier, list := range facts {
+		for _, f := range list {
+			m, err := memory.New(userID, tier, f[0], f[1])
+			if err != nil {
+				t.Fatalf("memory.New: %v", err)
+			}
+			if err := store.Create(ctx, m); err != nil {
+				t.Fatalf("Create: %v", err)
+			}
+		}
+	}
+	if _, err := recall.Embed(ctx, 100); err != nil {
+		t.Fatalf("Embed: %v", err)
+	}
+
+	r, err := runner.New(runner.Options{
+		Repository: repo, Messages: repo, Environment: p,
+		Publisher: events.NewBus(discard()), Logger: discard(), Memory: recall,
+	})
+	if err != nil {
+		t.Fatalf("runner.New: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = r.Shutdown(ctx)
+	})
+
+	return &remembering{runner: r, repo: repo, store: store, convID: c.ID, userID: userID}
+}
+
+// ask : Runs one chat and waits for it to finish.
+func (h *remembering) ask(t *testing.T, prompt string) {
+	t.Helper()
+
+	tk, err := chat.New(h.convID, chat.ChannelDirect, prompt)
+	if err != nil {
+		t.Fatalf("chat.New: %v", err)
+	}
+	if err := h.repo.Create(context.Background(), tk); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := h.runner.Submit(tk); err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		got, err := h.repo.Get(context.Background(), tk.ID)
+		if err == nil && got.Status.IsTerminal() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("the chat never finished")
+}
+
+// What the assistant always knows reaches every prompt.
+func TestTheAlwaysTierReachesThePrompt(t *testing.T) {
+	p := &recordingProvider{}
+	h := withMemories(t, p, map[memory.Tier][][2]string{
+		memory.TierAlways: {{"Birthday", "22 October 1999"}},
+	})
+
+	h.ask(t, "anything at all")
+
+	if !strings.Contains(p.systemPrompt(), "22 October 1999") {
+		t.Errorf("system prompt does not carry what is always known:\n%s", p.systemPrompt())
+	}
+}
+
+// A memory resembling the question is offered.
+func TestAResemblingMemoryIsOffered(t *testing.T) {
+	p := &recordingProvider{}
+	h := withMemories(t, p, map[memory.Tier][][2]string{
+		memory.TierRecall: {
+			{"Roof quote", "the roofer quoted forty thousand rupees"},
+			{"Cricket", "follows Kapil Dev and MS Dhoni"},
+		},
+	})
+
+	h.ask(t, "what did the roofer quote")
+
+	if !strings.Contains(p.systemPrompt(), "forty thousand rupees") {
+		t.Errorf("the roof memory was not offered:\n%s", p.systemPrompt())
+	}
+}
+
+// Offered memories are marked used, so one that is found every time and
+// never helps can be told from one that is never found.
+func TestOfferedMemoriesAreRecordedAsUsed(t *testing.T) {
+	p := &recordingProvider{}
+	h := withMemories(t, p, map[memory.Tier][][2]string{
+		memory.TierRecall: {{"Roof quote", "the roofer quoted forty thousand rupees"}},
+	})
+
+	h.ask(t, "what did the roofer quote")
+
+	all, err := h.store.All(context.Background(), h.userID, memory.TierRecall)
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if len(all) != 1 || all[0].Uses != 1 || all[0].LastUsedAt == nil {
+		t.Errorf("uses = %d, last used = %v, want it recorded", all[0].Uses, all[0].LastUsedAt)
+	}
+}
+
+// The notes carry the instruction that makes them safe to ignore. Nearest is
+// not relevant, and without being told so the model treats a near miss as an
+// answer.
+func TestTheOfferedNotesSayTheyMayBeIrrelevant(t *testing.T) {
+	p := &recordingProvider{}
+	h := withMemories(t, p, map[memory.Tier][][2]string{
+		memory.TierRecall: {{"Roof quote", "forty thousand rupees"}},
+	})
+
+	h.ask(t, "what did the roofer quote")
+
+	for _, want := range []string{"none of them will", "ignoring all of them"} {
+		if !strings.Contains(p.systemPrompt(), want) {
+			t.Errorf("the notes are missing %q:\n%s", want, p.systemPrompt())
+		}
+	}
+}
+
+// Another person's memories never reach the prompt.
+func TestAnotherPersonsMemoriesAreNotOffered(t *testing.T) {
+	p := &recordingProvider{}
+	h := withMemories(t, p, nil)
+
+	mine, err := memory.New(chat.NewUserID(), memory.TierRecall, "Roof quote", "forty thousand rupees")
+	if err != nil {
+		t.Fatalf("memory.New: %v", err)
+	}
+	if err := h.store.Create(context.Background(), mine); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	h.ask(t, "what did the roofer quote")
+
+	if strings.Contains(p.systemPrompt(), "forty thousand") {
+		t.Errorf("somebody else's memory reached the prompt:\n%s", p.systemPrompt())
+	}
+}
+
+// With nothing stored the prompt is what it was before memory existed.
+func TestNoMemoriesAddNothing(t *testing.T) {
+	p := &recordingProvider{}
+	h := withMemories(t, p, nil)
+
+	h.ask(t, "anything at all")
+
+	for _, unwanted := range []string{"What you know about the person", "Notes found by searching"} {
+		if strings.Contains(p.systemPrompt(), unwanted) {
+			t.Errorf("an empty memory added %q to the prompt", unwanted)
+		}
+	}
+}
+
+// A runner with no memory at all still answers, which is how it behaved
+// before there was anywhere to keep anything.
+func TestARunnerWithoutMemoryStillAnswers(t *testing.T) {
+	p := &recordingProvider{}
+	h := newHarness(t, p, runner.Options{})
+
+	tk := h.submit(t, "what did the roofer quote")
+	h.await(t, tk.ID, chat.StatusCompleted)
+
+	if p.systemPrompt() == "" {
+		t.Error("no system prompt was sent at all")
+	}
+}
