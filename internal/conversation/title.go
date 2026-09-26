@@ -99,6 +99,26 @@ func Whereabouts(id, title string) string {
 		", with the identifier " + id + "."
 }
 
+// Heard : What the assistant is told when the words reached it as speech.
+//
+// Only for a spoken turn. Speech-to-text fails differently from typing: it
+// does not produce a misspelling, it produces a different word that sounds
+// like the right one, and the sentence stays grammatical while meaning
+// something else. "Unarchive" arrived as "unlock". A model that does not know
+// where the words came from has no reason to look past them.
+//
+// The caution at the end is the part that matters. Reading charitably is
+// right until a charitable reading destroys something.
+func Heard() string {
+	return "What the person said reached you as speech turned into text, and it can be " +
+		"wrong in ways typing is not: a word may be replaced by another that sounds like " +
+		"it, leaving a sentence that reads correctly and means something else. Read for " +
+		"what they meant. Where a word does not fit what is being discussed, consider what " +
+		"similar-sounding word would, and act on that. " +
+		"Where two readings are both plausible and one of them deletes or destroys " +
+		"something, ask which was meant rather than choosing."
+}
+
 // AnnounceTitlesSetting : What the choice to hear a new name is stored under.
 const AnnounceTitlesSetting = "announce_titles"
 

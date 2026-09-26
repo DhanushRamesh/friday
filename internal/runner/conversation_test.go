@@ -177,7 +177,11 @@ type recordingProvider struct {
 	failCode   string
 	failDetail string
 	seen       []environment.Turn
+	system     string
 }
+
+// systemPrompt : What the assistant was last told about itself.
+func (p *recordingProvider) systemPrompt() string { return p.system }
 
 func (p *recordingProvider) Name() string { return "recording" }
 
@@ -190,6 +194,7 @@ func (p *recordingProvider) Run(ctx context.Context, req environment.Request) (<
 	// and carry no history, so recording them would wipe what is asserted on.
 	if req.Purpose == environment.PurposeChat {
 		p.seen = append([]environment.Turn(nil), req.History...)
+		p.system = req.SystemPrompt
 	}
 
 	ch := make(chan environment.Message, 1)
@@ -246,5 +251,25 @@ func TestATypedFailureKeepsTheJargonOutOfTheWay(t *testing.T) {
 	}
 	if done.ErrorDetail != detail {
 		t.Errorf("detail = %q, want it kept for when it is asked for", done.ErrorDetail)
+	}
+}
+
+// A spoken turn is told its words may be misheard. A typed one is not: typing
+// means what it says, and reinterpreting a word somebody chose deliberately
+// is worse than taking it literally.
+func TestOnlyASpokenTurnIsWarnedAboutMishearing(t *testing.T) {
+	recorder := &recordingProvider{}
+	h := newHarness(t, recorder, runner.Options{})
+
+	spoken := h.submitOn(t, chat.ChannelVoice, "can you unlock any of the two conversations")
+	h.await(t, spoken.ID, chatDone...)
+	if !strings.Contains(recorder.systemPrompt(), "sounds like") {
+		t.Error("a spoken turn was not warned that its words may be misheard")
+	}
+
+	typed := h.submitOn(t, chat.ChannelDirect, "can you unlock any of the two conversations")
+	h.await(t, typed.ID, chatDone...)
+	if strings.Contains(recorder.systemPrompt(), "sounds like") {
+		t.Error("a typed turn was warned, and typing means what it says")
 	}
 }

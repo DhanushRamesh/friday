@@ -504,6 +504,30 @@ That was found by asking for song lyrics: the endpoint answered "Output
 blocked by content filtering policy", and the assistant reported that the
 service would not accept the request.
 
+### A spoken turn is told its words may be the wrong ones
+
+"Can you unarchive any of the two conversations" arrived as "can you unlock
+any of the two conversations". Speech-to-text does not misspell. It replaces a
+word with another that sounds like it and leaves a sentence that reads
+correctly and means something else, which is the failure typing never
+produces and the one nothing here was prepared for.
+
+A spoken turn now carries a note saying so: read for what was meant, and where
+a word does not fit what is being discussed, consider what similar-sounding
+word would. It is the same reason a typo in typed text is understood — the
+reader knows the text is imperfect and reads through it. The model had no way
+to know.
+
+Only for a spoken turn. Typing means what it says, and quietly reinterpreting
+a word somebody chose deliberately is worse than taking it literally.
+
+The note stops short of guessing where guessing is expensive: where two
+readings are both plausible and one of them destroys something, it asks.
+Charitable reading is right until a charitable reading deletes a conversation.
+
+Primed separately at the other end, in voice-setup, where the decoder had
+never been given the words the tools use.
+
 ### The assistant is told where it is
 
 Asked which conversation it was in, it named one it had switched away from

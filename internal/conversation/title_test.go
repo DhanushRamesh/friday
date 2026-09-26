@@ -128,3 +128,28 @@ func TestWhereaboutsIsSilentWithoutAConversation(t *testing.T) {
 		t.Errorf("whereabouts = %q, want nothing", got)
 	}
 }
+
+// A spoken turn warns the model that the words may be the wrong ones, since
+// speech-to-text does not misspell: it substitutes a word that sounds alike
+// and leaves the sentence reading correctly.
+func TestHeardWarnsAboutMishearing(t *testing.T) {
+	got := conversation.Heard()
+
+	for _, want := range []string{"sounds like", "Read for"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("heard = %q, want it to mention %q", got, want)
+		}
+	}
+}
+
+// Reading charitably is right until a charitable reading destroys something.
+func TestHeardStopsShortOfGuessingAtDestruction(t *testing.T) {
+	got := conversation.Heard()
+
+	if !strings.Contains(got, "ask which was meant") {
+		t.Errorf("heard = %q, want it told to ask rather than guess", got)
+	}
+	if !strings.Contains(got, "destroys") {
+		t.Errorf("heard = %q, want the caution tied to destructive readings", got)
+	}
+}

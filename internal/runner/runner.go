@@ -296,7 +296,7 @@ func (r *Runner) prompt() string {
 // doing, and remembering having switched somewhere is not the same as being
 // there.
 func (r *Runner) promptFor(ctx context.Context, t *chat.Chat) string {
-	prompt := r.prompt()
+	prompt := r.prompt() + heard(t)
 	if t.ConversationID == "" || r.repo == nil {
 		return prompt
 	}
@@ -308,6 +308,17 @@ func (r *Runner) promptFor(ctx context.Context, t *chat.Chat) string {
 		return prompt
 	}
 	return prompt + " " + conversation.Whereabouts(c.ID, c.Title)
+}
+
+// heard : The warning that the words were spoken, for a chat that was.
+//
+// Not added to a typed turn. Typing means what it says, and reinterpreting a
+// word somebody chose deliberately is worse than taking it literally.
+func heard(t *chat.Chat) string {
+	if t.Channel != chat.ChannelVoice {
+		return ""
+	}
+	return " " + conversation.Heard()
 }
 
 // limitsFor : The ceilings a chat's history is held under.
