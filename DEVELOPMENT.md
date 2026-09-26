@@ -532,6 +532,27 @@ The note stops short of guessing where guessing is expensive: where two
 readings are both plausible and one of them destroys something, it asks.
 Charitable reading is right until a charitable reading deletes a conversation.
 
+A name is carved out of that charity entirely. Everywhere else a word
+that does not fit can be reasoned about from the words that do; a name
+cannot, because a name nobody has heard of and a name the decoder has
+mangled look exactly alike. "Alekhya" came back as Alikia, Alakia and
+alakia chintada in one evening. So a spoken turn is told to say back what
+it heard and ask for the spelling.
+
+It is told to ask **before** using it, not after. Given the rule in
+general terms it still wrote "Sowmiya" into a memory and searched on
+"Karunakaran", both from what it heard: two of five. Naming the acts --
+do not write it into a memory or a reminder, do not search on it, do not
+answer about it until they have spelt it -- made it five of five. A name
+stored wrongly stays wrong, and nothing later will find it to correct.
+
+This is the one place the assistant may end on a question. The spoken
+rules forbid that because Home Assistant reopens the microphone on a
+question mark; here reopening it is the entire point.
+
+Only a spoken turn. Typing spells the name already, and there is an eval
+that a typed one is never asked.
+
 Primed separately at the other end, in voice-setup, where the decoder had
 never been given the words the tools use. That priming is a list of words, not
 example sentences, and it holds no names: the words that repeat are worth the

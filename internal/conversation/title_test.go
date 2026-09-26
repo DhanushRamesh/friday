@@ -3,6 +3,7 @@ package conversation_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
 )
@@ -151,5 +152,39 @@ func TestHeardStopsShortOfGuessingAtDestruction(t *testing.T) {
 	}
 	if !strings.Contains(got, "destroys") {
 		t.Errorf("heard = %q, want the caution tied to destructive readings", got)
+	}
+}
+
+// A name is the one thing not to guess at. Everywhere else a word that
+// does not fit can be reasoned about from what does; an unfamiliar name
+// and a mangled one look exactly alike.
+func TestHeardWillNotGuessAName(t *testing.T) {
+	got := conversation.Heard()
+
+	for _, want := range []string{
+		"A name is the exception",
+		"do not reach for a name that sounds similar",
+		"ask them to spell it",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("heard = %q, want it to mention %q", got, want)
+		}
+	}
+}
+
+// Asking for a spelling is the one place a question is wanted: the
+// question mark is what keeps the microphone open for the answer.
+func TestHeardSaysWhereAQuestionIsAllowed(t *testing.T) {
+	got := conversation.Heard()
+
+	if !strings.Contains(got, "keeps the microphone open") {
+		t.Errorf("heard does not say why a question is wanted here:\n%s", got)
+	}
+}
+
+// Only a spoken turn gets any of it. Typed, a name is spelt already.
+func TestOnlyASpokenTurnIsToldAboutNames(t *testing.T) {
+	if strings.Contains(conversation.Now(time.Now()), "spell") {
+		t.Error("the clock fragment carries the name rule")
 	}
 }

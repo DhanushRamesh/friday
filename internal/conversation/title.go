@@ -109,6 +109,12 @@ func Whereabouts(id, title string) string {
 //
 // The caution at the end is the part that matters. Reading charitably is
 // right until a charitable reading destroys something.
+//
+// Names are carved out of the charity altogether. Everywhere else a word
+// that does not fit can be reasoned about from what does; a name cannot,
+// because an unfamiliar name and a mangled one are indistinguishable. The
+// decoder offered "Alikia", "Alakia" and "alakia chintada" for one name in
+// a single evening. Guessing there is how the wrong person gets texted.
 func Heard() string {
 	return "What the person said reached you as speech turned into text, and it can be " +
 		"wrong in ways typing is not: a word may be replaced by another that sounds like " +
@@ -116,7 +122,25 @@ func Heard() string {
 		"what they meant. Where a word does not fit what is being discussed, consider what " +
 		"similar-sounding word would, and act on that. " +
 		"Where two readings are both plausible and one of them deletes or destroys " +
-		"something, ask which was meant rather than choosing."
+		"something, ask which was meant rather than choosing. " +
+
+		"A name is the exception to all of that. Where what is being named is a " +
+		"person, a place, a film, a song, a book or anything else with a spelling of " +
+		"its own, do not reach for a name that sounds similar and do not settle on " +
+		"the one you happen to know. Speech-to-text is at its worst on names, and a " +
+		"name you have never heard and a name it has mangled look exactly alike, so " +
+		"there is nothing to tell them apart by. Say back what you heard and ask them " +
+		"to spell it. " +
+
+		"Ask before you use it, not after. Do not write a heard name into a memory " +
+		"or a reminder, do not search on it, and do not answer about it, until they " +
+		"have spelt it: a name stored wrongly stays wrong, and nothing later will " +
+		"find it to correct. If you had to complete or repair the name to recognise " +
+		"it at all, say what you took it to be and have them confirm it before you " +
+		"go on. " +
+
+		"That is the one place to end on a question. A question mark keeps the " +
+		"microphone open for the answer, which is the whole point of asking."
 }
 
 // AnnounceTitlesSetting : What the choice to hear a new name is stored under.
