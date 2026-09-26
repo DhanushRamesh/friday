@@ -607,6 +607,20 @@ answered it locally, and did not -- the question reached here and was
 turned down. Do not assume a local intent covers something without
 checking the transcript for it.
 
+### Reminders are said through Home Assistant, and nowhere else
+
+Owner's decision. The satellite is the only place a reminder lands.
+Pushing to a browser was planned and dropped as not worth it: the person
+is not at the screen when a reminder matters, and the server would have
+needed a channel it has never had.
+
+`Everywhere` stays, holding one speaker. It is the seam a second one
+would go in, and it costs nothing to leave.
+
+The browser therefore still goes stale when something is said out loud,
+which the client's own `refresh` comment already describes. That was going
+to be fixed by the same stream and now is not.
+
 ### The first work that happens because of the clock
 
 Everything in this server until now ran because somebody asked. The
