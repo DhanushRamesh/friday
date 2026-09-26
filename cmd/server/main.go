@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"sync"
 	"syscall"
 	"time"
 
@@ -30,6 +31,8 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/memory"
 	memorymysql "github.com/DhanushRamesh/personal-assistant/internal/memory/mysql"
 	"github.com/DhanushRamesh/personal-assistant/internal/persona"
+	"github.com/DhanushRamesh/personal-assistant/internal/remind"
+	remindmysql "github.com/DhanushRamesh/personal-assistant/internal/remind/mysql"
 	"github.com/DhanushRamesh/personal-assistant/internal/runner"
 	"github.com/DhanushRamesh/personal-assistant/internal/storage"
 	"github.com/DhanushRamesh/personal-assistant/internal/tool"
@@ -222,6 +225,32 @@ func run() error {
 	if err := chatRunner.Recover(context.Background()); err != nil {
 		return err
 	}
+
+	// The first work here that happens because of the clock rather than
+	// because somebody asked. Stopped with the server, so a reminder is
+	// never half said during a shutdown.
+	reminders := &remind.Loop{
+		Store:    remindmysql.New(db),
+		Speaker:  remind.Everywhere{To: []remind.Speaker{remind.Aloud{Announcer: speaker}}, Logger: logger.Logger},
+		Location: cfg.Assistant.Location,
+		Logger:   logger.Logger,
+	}
+	remindCtx, stopReminders := context.WithCancel(context.Background())
+
+	var reminding sync.WaitGroup
+	reminding.Add(1)
+	go func() {
+		defer reminding.Done()
+		reminders.Run(remindCtx)
+	}()
+	// Registered in this order so they run in the other: stop first, then
+	// wait for the pass in flight to finish.
+	defer reminding.Wait()
+	defer stopReminders()
+
+	logger.Info("watching for reminders",
+		slog.Duration("every", remind.DefaultEvery),
+		slog.Duration("grace", remind.DefaultGrace))
 
 	handler := api.New(api.Options{
 		Logger:         logger.Logger,

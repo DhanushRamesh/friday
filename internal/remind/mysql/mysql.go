@@ -231,6 +231,23 @@ func (s *Store) Missed(ctx context.Context, id string, at time.Time) error {
 	return nil
 }
 
+// Reschedule : Moves a reminder to its next time without saying it.
+func (s *Store) Reschedule(ctx context.Context, id string, next time.Time) error {
+	out := s.db.WithContext(ctx).Model(&row{}).
+		Where("id = ? AND status = ?", id, string(remind.Pending)).
+		Updates(map[string]any{
+			"due_at":     next.UTC(),
+			"updated_at": time.Now().UTC(),
+		})
+	if out.Error != nil {
+		return fmt.Errorf("remind: rescheduling %s: %w", id, out.Error)
+	}
+	if out.RowsAffected == 0 {
+		return remind.ErrNotFound
+	}
+	return nil
+}
+
 // toReminders : Converts stored rows back into reminders.
 func toReminders(rows []row) []remind.Reminder {
 	out := make([]remind.Reminder, 0, len(rows))

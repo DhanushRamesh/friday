@@ -36,6 +36,13 @@ type Store interface {
 	// Missed : Records that a reminder's time passed with nothing listening,
 	// too long ago to say now.
 	Missed(ctx context.Context, id string, at time.Time) error
+
+	// Reschedule : Moves a reminder to its next time without saying it.
+	//
+	// For a repeating one whose turn was missed. Marking it missed would
+	// end it for good, and recording a firing would claim something was
+	// said that nobody heard.
+	Reschedule(ctx context.Context, id string, next time.Time) error
 }
 
 // DefaultDueLimit : The most reminders one pass of the firing loop takes.

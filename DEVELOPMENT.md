@@ -607,6 +607,33 @@ answered it locally, and did not -- the question reached here and was
 turned down. Do not assume a local intent covers something without
 checking the transcript for it.
 
+### The first work that happens because of the clock
+
+Everything in this server until now ran because somebody asked. The
+reminder loop is the first thing that runs when nobody is. It asks what is
+due every five seconds, which is one indexed read, and is stopped with the
+server so nothing is half said during a shutdown.
+
+Three outcomes, and the difference between them matters:
+
+- **Said.** Delivered, then either finished or moved to its next time.
+- **Missed.** A one-shot too late to be worth saying. Kept rather than
+  removed, so it can be mentioned once.
+- **Moved.** A repeating one whose turn was too late. Moved to its next
+  time, not marked missed -- marking it missed would end a daily reminder
+  for good -- and no firing is counted, because nobody heard it.
+
+Something nobody could deliver stays pending and is tried again. That
+cannot go on for ever: once it is older than the grace window it becomes
+missed like anything else. A speaker that cannot deliver therefore has to
+say so rather than returning quietly, which is why `Nowhere` refuses
+instead of succeeding.
+
+`Fired` only touches a reminder that is still pending. Two passes cannot
+both say the same thing, and a pass that says something and then fails to
+record it is logged loudly, because that is the one way a reminder is
+heard twice.
+
 ### A reminder only ever says something
 
 Owner's decision. A reminder carries words and speaks them: a timer that
