@@ -600,8 +600,12 @@ including the database connection. This is not about storage: it is what
 server rather than quietly becoming UTC, because a reminder at the wrong
 hour every day is worse than a refusal that says why.
 
-Spoken, the time was already answered by Home Assistant, which handles it
-locally and never reaches here. Typed, there was nothing.
+It was refused before this, in those words: "I do not have access to real
+time data, sir, so the current time is not available to me." Spoken, on
+25 September. Home Assistant has `prefer_local_intents` on and might have
+answered it locally, and did not -- the question reached here and was
+turned down. Do not assume a local intent covers something without
+checking the transcript for it.
 
 ### A reminder only ever says something
 
