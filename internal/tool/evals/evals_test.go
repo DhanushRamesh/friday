@@ -78,11 +78,19 @@ var cases = []eval{
 	{Say: "delete the Roof Quotes conversation",
 		Tool: []string{"conversation_find", "conversation_list"}, Channel: chat.ChannelDirect},
 
-	// Remembering, which is only ever asked for. A model that writes down
-	// whatever it hears fills the store with things nobody agreed to keep.
+	// Remembering when asked.
 	{Say: "remember that the roofer quoted forty thousand", Tool: []string{"memory_remember"}, Args: []string{"roof"}},
 	{Say: "keep a note that my birthday is the 22nd of October", Tool: []string{"memory_remember"}, Args: []string{"birthday"}},
 	{Say: "from now on always answer me briefly", Tool: []string{"memory_remember"}, Args: []string{"always"}},
+
+	// And when not asked. Having to say "remember this" is the thing being
+	// designed away: a constraint, a decision and its reason, and a figure
+	// agreed are all worth keeping whether or not anybody said so.
+	{Say: "I cannot take dairy, it gives me a headache", Tool: []string{"memory_remember"}},
+	{Say: "we settled on MySQL in the end, Postgres would have been another thing to run",
+		Tool: []string{"memory_remember"}},
+	{Say: "the plumber and I agreed twelve thousand for the bathroom", Tool: []string{"memory_remember"}},
+	{Say: "my sister's flight lands on the 3rd of March", Tool: []string{"memory_remember"}},
 
 	// Looking something up on purpose, when recall has offered nothing.
 	{Say: "what did I tell you about the roof", Tool: []string{"memory_search"}, Args: []string{"roof"}},
@@ -102,10 +110,13 @@ var cases = []eval{
 	{Say: "thank you"},
 	{Say: "what is twelve times eight"},
 
-	// Nor is every passing fact a thing to write down. Storing this would be
-	// a memory nobody asked for and nobody can see to remove.
+	// Nor is every passing fact a thing to write down. The test is whether
+	// it should still be believed next month, and everything said is
+	// already searchable on its own, so none of these needs a memory.
 	{Say: "I had dosa for breakfast"},
 	{Say: "it is raining here today"},
+	{Say: "I am a bit tired this evening"},
+	{Say: "that took longer than I expected"},
 }
 
 func TestTheModelReachesForTheRightTool(t *testing.T) {

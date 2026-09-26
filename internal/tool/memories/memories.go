@@ -25,6 +25,15 @@ const idPattern = `^mem_[0-9A-HJKMNP-TV-Z]{26}$`
 // Listed : How many memories a search returns by default.
 const Listed = 5
 
+// Duplicate : How alike a new memory must be to one already held before it
+// is refused as the same thing said twice.
+//
+// High on purpose. Two memories about one subject are worth keeping apart;
+// the same memory twice is not, and writing unasked makes that happen often
+// enough to be worth stopping. Near-identical text scores well above this,
+// and two genuinely different facts about one subject score well below.
+const Duplicate = 0.92
+
 // All : Every memory tool, in the order they are offered.
 //
 // Writing and changing may be said out loud; forgetting may not. On voice a
@@ -43,11 +52,16 @@ func All(recall *memory.Recall) []tool.Tool {
 func remember(recall *memory.Recall) tool.Tool {
 	return tool.Tool{
 		Name:    "memory_remember",
-		Purpose: "Write something down so it is known in later conversations.",
-		UseWhen: "The person asks you to remember something, or tells you a lasting fact about themselves that they plainly expect you to keep.",
-		Avoid: "Do not use it for what is only true today, for what was said in passing, " +
-			"or for anything the person did not mean to be kept. Do not write down " +
-			"something you were told earlier in this conversation without being asked to.",
+		Purpose: "Write something down so it is known in later conversations, and tell the person you have.",
+		UseWhen: "Something worth keeping has been said, whether or not you were asked to keep it. " +
+			"A preference, a constraint, a decision and why it was taken, a figure agreed, " +
+			"a name or date that will be needed again. Do not wait to be told.",
+		Avoid: "Before writing, ask whether it would still matter in a month. If not, do not write it, " +
+			"however true it is. A thing that happened once and changes nothing you should believe " +
+			"afterwards is not a memory: a meal, the weather, how somebody feels this evening, how long " +
+			"something took. Everything said is already searchable on its own, so none of that is lost " +
+			"by leaving it. Do not write down what you worked out yourself, only what you were told. " +
+			"One memory per thing, and never a second about something you already hold -- change that one instead.",
 		Channels: []chat.Channel{chat.ChannelVoice, chat.ChannelDirect},
 		Params: tool.Schema{
 			Required: []string{"subject", "body"},
@@ -73,6 +87,12 @@ func remember(recall *memory.Recall) tool.Tool {
 				Args: `{"subject":"Roof quote","body":"The roofer quoted forty thousand rupees for the terrace work."}`},
 			{Ask: "always answer me briefly",
 				Args: `{"subject":"How to answer","body":"Wants answers kept short and plain, without preamble.","always":true}`},
+			// Nobody asked. It is a constraint, so it is kept.
+			{Ask: "I cannot take dairy, it gives me a headache",
+				Args: `{"subject":"Dairy","body":"Cannot take dairy; it gives them a headache.","always":true}`},
+			// Nobody asked. It is a decision with a reason behind it.
+			{Ask: "we went with MySQL in the end, Postgres would have meant another thing to run",
+				Args: `{"subject":"Database choice","body":"Chose MySQL over Postgres, because Postgres would have been another thing to run."}`},
 		},
 		Run: func(ctx context.Context, in tool.Invocation) tool.Result {
 			var args struct {
@@ -96,6 +116,11 @@ func remember(recall *memory.Recall) tool.Tool {
 			if err != nil {
 				return tool.Failed(err.Error())
 			}
+			if held := alreadyHeld(ctx, recall, in.Caller.UserID, m.Text()); held != nil {
+				return tool.Failed(fmt.Sprintf(
+					"Not written: %s already says %q. Change that one with memory_update if it should now "+
+						"say something else, and otherwise say nothing about it.", held.ID, held.Text()))
+			}
 			if err := store.Create(ctx, m); err != nil {
 				return tool.Failed(err.Error())
 			}
@@ -108,7 +133,10 @@ func remember(recall *memory.Recall) tool.Tool {
 					"Remembered %q, with the identifier %s. It could not be indexed for searching by meaning (%s), "+
 						"so until that is working it will only be found when the wording matches.", m.Subject, m.ID, err))
 			}
-			return tool.OK(fmt.Sprintf("Remembered %q, with the identifier %s.", m.Subject, m.ID))
+			return tool.OK(fmt.Sprintf(
+				"Remembered %q, with the identifier %s. Tell the person you have noted it and what you noted, "+
+					"briefly and at the end of your reply. They did not necessarily ask you to keep it, so a memory "+
+					"they are not told about is one they cannot correct.", m.Subject, m.ID))
 		},
 	}
 }
@@ -301,6 +329,24 @@ func storeFor(recall *memory.Recall, in tool.Invocation) (memory.Store, *tool.Re
 		return nil, &fail
 	}
 	return recall.Store, nil
+}
+
+// alreadyHeld : The memory that already says this, if one does.
+//
+// Only a vector comparison counts. The word-matching fallback scores on a
+// different scale, where a high score means shared wording rather than the
+// same fact, and refusing on that would lose real memories.
+func alreadyHeld(ctx context.Context, recall *memory.Recall, userID, text string) *memory.Memory {
+	if recall == nil || recall.Embedder == nil || !recall.Embedder.Available() {
+		return nil
+	}
+
+	found, err := recall.For(ctx, userID, text)
+	if err != nil || len(found) == 0 || found[0].ByWords || found[0].Score < Duplicate {
+		return nil
+	}
+	held := found[0].Memory
+	return &held
 }
 
 // notFound : What to say when a memory cannot be read.

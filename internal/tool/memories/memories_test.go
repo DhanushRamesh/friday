@@ -277,3 +277,63 @@ func TestAnotherPersonCannotReachIt(t *testing.T) {
 		t.Errorf("outcome = %s, want a failure", got.Outcome)
 	}
 }
+
+// The same thing said twice is refused, since writing unasked makes that
+// happen often.
+func TestTheSameMemoryTwiceIsRefused(t *testing.T) {
+	r, store, _ := harness(t)
+
+	first := call(t, r, chat.ChannelDirect, "memory_remember",
+		`{"subject":"Roof quote","body":"the roofer quoted forty thousand rupees"}`)
+	if first.Outcome != conversation.OutcomeOK {
+		t.Fatalf("the first one failed: %s", first.Content)
+	}
+
+	again := call(t, r, chat.ChannelDirect, "memory_remember",
+		`{"subject":"Roof quote","body":"the roofer quoted forty thousand rupees"}`)
+	if again.Outcome != conversation.OutcomeFailed {
+		t.Errorf("outcome = %s, want it refused as a duplicate", again.Outcome)
+	}
+	if !strings.Contains(again.Content, "memory_update") {
+		t.Errorf("the refusal does not say what to do instead: %s", again.Content)
+	}
+
+	all, _ := store.All(context.Background(), user, memory.TierRecall)
+	if len(all) != 1 {
+		t.Errorf("%d memories stored, want 1", len(all))
+	}
+}
+
+// Two different facts about one subject are both kept. The check is for the
+// same memory twice, not for one subject twice.
+func TestTwoFactsAboutOneSubjectAreBothKept(t *testing.T) {
+	r, store, _ := harness(t)
+
+	call(t, r, chat.ChannelDirect, "memory_remember",
+		`{"subject":"Roof","body":"the roofer quoted forty thousand rupees for the terrace"}`)
+	got := call(t, r, chat.ChannelDirect, "memory_remember",
+		`{"subject":"Roof","body":"the work is due to start on the first of November"}`)
+
+	if got.Outcome != conversation.OutcomeOK {
+		t.Errorf("outcome = %s, want a second fact kept: %s", got.Outcome, got.Content)
+	}
+	if all, _ := store.All(context.Background(), user, memory.TierRecall); len(all) != 2 {
+		t.Errorf("%d memories stored, want 2", len(all))
+	}
+}
+
+// Storing it tells the model to say so. A memory written silently is one
+// nobody can correct.
+func TestRememberingTellsTheModelToSaySo(t *testing.T) {
+	r, _, _ := harness(t)
+
+	got := call(t, r, chat.ChannelVoice, "memory_remember",
+		`{"subject":"Dairy","body":"Cannot take dairy; it gives them a headache."}`)
+
+	if got.Outcome != conversation.OutcomeOK {
+		t.Fatalf("outcome = %s: %s", got.Outcome, got.Content)
+	}
+	if !strings.Contains(got.Content, "Tell the person") {
+		t.Errorf("the result does not require it to be announced: %s", got.Content)
+	}
+}
