@@ -538,6 +538,32 @@ budget, and names are endless. It is drawn from the stored user messages, so
 it primes what has actually been said rather than what was imagined. The
 server is unaffected either way -- nothing here knows the decoder exists.
 
+### The point of memory is advice, not recall
+
+Stated by the owner. The assistant is not meant to do only what it is told.
+It should offer insights, point out a better option, bring up what was
+forgotten, and say what could go wrong before something is done -- an
+advisor rather than an instrument.
+
+Recall is the ground floor of that and not the thing itself. Answering
+"what did the roofer quote" when asked is retrieval. Saying "you agreed
+forty thousand and this quote is sixty" without being asked is advice, and
+it needs three things retrieval does not: memories of decisions and their
+reasons rather than only facts, a search run against what the assistant is
+about to say rather than only what the person said, and permission to
+volunteer.
+
+That last one is not free. `memory.Offered` currently instructs the model to
+use a note "only if it contains what is being asked for, rather than merely
+a related subject", which is exactly what stops a near miss being treated as
+an answer -- and exactly what forbids advice. Widening it re-opens the
+problem that instruction was measured to solve, so it is widened with
+evidence or not at all.
+
+The bar is unchanged: an advisor that invents a concern is worse than one
+that says nothing. Anything volunteered has to rest on something stored and
+say what it rests on.
+
 ### Memory is three layers, and only the middle one is hard
 
 What the assistant is asked to remember outlives the conversation it was
