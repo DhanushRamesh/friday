@@ -91,6 +91,7 @@ func (r *Runner) runTools(
 			Name:    c.Name,
 			Outcome: result.Outcome,
 			Content: result.Content,
+			TookMS:  time.Since(started).Milliseconds(),
 		})
 	}
 
@@ -137,8 +138,21 @@ func (r *Runner) remember(ctx context.Context, t *chat.Chat, m conversation.Mess
 	if t.ConversationID == "" {
 		return
 	}
+
+	m = byChat(t, m)
 	if _, err := r.messages.Append(ctx, m); err != nil {
 		r.logger.ErrorContext(ctx, "cannot record what the tools did",
 			slog.String("role", string(m.Role)), slog.Any("error", err))
 	}
+}
+
+// byChat : The message, stamped with the turn that wrote it.
+//
+// Every message the runner stores goes through this. Stamping at each call
+// site instead would work until somebody added a fourth one, and a missing
+// stamp does not fail: it produces an answer whose timeline is silently
+// short.
+func byChat(t *chat.Chat, m conversation.Message) conversation.Message {
+	m.ChatID = t.ID
+	return m
 }

@@ -109,6 +109,10 @@ type Message struct {
 	ID string
 	// ConversationID : The conversation it belongs to.
 	ConversationID string
+	// ChatID : The turn that wrote it. Empty for a message written before
+	// this was recorded, whose timeline is therefore unavailable rather
+	// than wrong.
+	ChatID string
 	// Seq : Position within the conversation, starting at 1. Assigned when the
 	// message is stored, so it is zero until then.
 	Seq int

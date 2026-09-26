@@ -16,6 +16,7 @@ import (
 type conversationMessageRow struct {
 	ID             string    `gorm:"column:id;primaryKey"`
 	ConversationID string    `gorm:"column:conversation_id"`
+	ChatID         *string   `gorm:"column:chat_id"`
 	Seq            int       `gorm:"column:seq"`
 	Kind           string    `gorm:"column:kind"`
 	Role           string    `gorm:"column:role"`
@@ -34,6 +35,7 @@ func (r *conversationMessageRow) toMessage() conversation.Message {
 	return conversation.Message{
 		ID:             r.ID,
 		ConversationID: r.ConversationID,
+		ChatID:         value(r.ChatID),
 		Seq:            r.Seq,
 		Kind:           conversation.Kind(r.Kind),
 		Role:           conversation.Role(r.Role),
@@ -83,6 +85,7 @@ func (r *Repository) Append(ctx context.Context, m conversation.Message) (conver
 		row := &conversationMessageRow{
 			ID:             m.ID,
 			ConversationID: m.ConversationID,
+			ChatID:         nullable(m.ChatID),
 			Seq:            m.Seq,
 			Kind:           string(m.Kind),
 			Role:           string(m.Role),

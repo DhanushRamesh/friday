@@ -208,7 +208,7 @@ func (r *Runner) history(ctx context.Context, t *chat.Chat, systemPrompt string)
 		return conversation.Window{}
 	}
 
-	asked, err := r.messages.Append(ctx, conversation.Said(t.ConversationID, t.Prompt, t.CreatedAt))
+	asked, err := r.messages.Append(ctx, byChat(t, conversation.Said(t.ConversationID, t.Prompt, t.CreatedAt)))
 	if err != nil {
 		r.logger.ErrorContext(ctx, "cannot record the question", slog.Any("error", err))
 	}
@@ -296,7 +296,7 @@ func (r *Runner) recordOutcome(ctx context.Context, t *chat.Chat) {
 	}
 
 	for _, m := range written {
-		if _, err := r.messages.Append(ctx, m); err != nil {
+		if _, err := r.messages.Append(ctx, byChat(t, m)); err != nil {
 			r.logger.ErrorContext(ctx, "cannot record the answer", slog.Any("error", err))
 		}
 	}

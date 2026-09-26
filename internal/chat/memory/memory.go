@@ -97,10 +97,31 @@ func (m *Repository) Update(_ context.Context, t *chat.Chat) error {
 	if m.updateErr != nil {
 		return m.updateErr
 	}
-	if _, ok := m.chats[t.ID]; !ok {
+	kept, ok := m.chats[t.ID]
+	if !ok {
 		return chat.ErrNotFound
 	}
-	m.chats[t.ID] = copyChat(t)
+
+	// What was recalled is not the lifecycle's to write. The MySQL Update
+	// names the columns it sets and this is not among them, so overwriting
+	// it here would make a chat behave differently in a test than in use.
+	next := copyChat(t)
+	next.Recalled = kept.Recalled
+	m.chats[t.ID] = next
+	return nil
+}
+
+// SetRecalled : Records what memory put in front of the model for a chat.
+func (m *Repository) SetRecalled(_ context.Context, id string, recalled *chat.Recalled) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	stored, ok := m.chats[id]
+	if !ok {
+		return chat.ErrNotFound
+	}
+	stored.Recalled = recalled
+	m.chats[id] = stored
 	return nil
 }
 

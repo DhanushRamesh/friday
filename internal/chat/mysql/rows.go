@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
@@ -27,6 +28,7 @@ type chatRow struct {
 	Error          *string    `gorm:"column:error"`
 	ErrorCode      string     `gorm:"column:error_code"`
 	ErrorDetail    *string    `gorm:"column:error_detail"`
+	Recalled       *string    `gorm:"column:recalled"`
 	CreatedAt      time.Time  `gorm:"column:created_at;autoCreateTime:false"`
 	UpdatedAt      time.Time  `gorm:"column:updated_at;autoUpdateTime:false"`
 	StartedAt      *time.Time `gorm:"column:started_at"`
@@ -159,6 +161,7 @@ func toRow(t *chat.Chat) *chatRow {
 		Error:          nullable(t.Error),
 		ErrorCode:      t.ErrorCode,
 		ErrorDetail:    nullable(t.ErrorDetail),
+		Recalled:       fromRecalled(t.Recalled),
 		CreatedAt:      t.CreatedAt,
 		UpdatedAt:      t.UpdatedAt,
 		StartedAt:      t.StartedAt,
@@ -180,6 +183,7 @@ func (r *chatRow) toChat() *chat.Chat {
 		Error:          value(r.Error),
 		ErrorCode:      r.ErrorCode,
 		ErrorDetail:    value(r.ErrorDetail),
+		Recalled:       toRecalled(r.Recalled),
 		CreatedAt:      r.CreatedAt.UTC(),
 		UpdatedAt:      r.UpdatedAt.UTC(),
 		StartedAt:      utc(r.StartedAt),
@@ -238,3 +242,33 @@ type settingRow struct {
 
 // TableName : Names the table this row maps to.
 func (settingRow) TableName() string { return "settings" }
+
+// fromRecalled : What was recalled, as the JSON column holds it.
+func fromRecalled(r *chat.Recalled) *string {
+	if r == nil || r.Empty() {
+		return nil
+	}
+	raw, err := json.Marshal(r)
+	if err != nil {
+		// Only a type that cannot be encoded reaches this, which the tests
+		// would have caught. Losing the timeline is not worth losing the chat.
+		return nil
+	}
+	out := string(raw)
+	return &out
+}
+
+// toRecalled : What the JSON column holds, as a Recalled.
+//
+// Unreadable JSON is treated as nothing recalled. It is a record of how an
+// answer was made, and a chat is still a chat without it.
+func toRecalled(raw *string) *chat.Recalled {
+	if raw == nil || *raw == "" {
+		return nil
+	}
+	var out chat.Recalled
+	if err := json.Unmarshal([]byte(*raw), &out); err != nil {
+		return nil
+	}
+	return &out
+}

@@ -57,6 +57,12 @@ type ToolResult struct {
 	// not do that" without saying why leaves the model to invent a reason,
 	// which is the whole of how an assistant comes to bluff.
 	Content string
+	// TookMS : How long the tool ran, in milliseconds.
+	//
+	// Not shown to the model, which has no use for it. It is what makes a
+	// timeline of an answer readable afterwards, and a tool that has become
+	// slow visible at all.
+	TookMS int64 `json:",omitempty"`
 }
 
 // CalledTools : A message recording that the assistant asked for tools.

@@ -13,6 +13,7 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	chatmysql "github.com/DhanushRamesh/personal-assistant/internal/chat/mysql"
 	"github.com/DhanushRamesh/personal-assistant/internal/config"
+	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
 	"github.com/DhanushRamesh/personal-assistant/internal/storage"
 )
 
@@ -637,5 +638,95 @@ func TestASettingIsReplaced(t *testing.T) {
 		if got != want {
 			t.Errorf("Setting = %q, want %q", got, want)
 		}
+	}
+}
+
+// What was recalled survives the round trip, so a timeline can be shown
+// after a restart.
+func TestWhatWasRecalledIsStored(t *testing.T) {
+	repo := newRepository(t)
+	ctx := context.Background()
+
+	tk := storedChat(t, repo, "what did the roofer quote")
+	want := &chat.Recalled{
+		Always: []chat.RecalledNote{{ID: "mem_a", Text: "Home: Lives in Chennai."}},
+		Notes:  []chat.RecalledNote{{ID: "mem_b", Text: "Roof quote: forty thousand.", Score: 0.562}},
+		Exchanges: []chat.RecalledExchange{{
+			MessageID: "msg_x", ConversationID: "conv_y",
+			Text: "They said: the terrace", Score: 0.484, At: time.Now().UTC().Truncate(time.Second),
+		}},
+		TookMS: 41,
+	}
+
+	if err := repo.SetRecalled(ctx, tk.ID, want); err != nil {
+		t.Fatalf("SetRecalled: %v", err)
+	}
+
+	got, err := repo.Get(ctx, tk.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Recalled == nil {
+		t.Fatal("nothing came back")
+	}
+	if len(got.Recalled.Notes) != 1 || got.Recalled.Notes[0].Score != 0.562 {
+		t.Errorf("notes = %+v", got.Recalled.Notes)
+	}
+	if len(got.Recalled.Exchanges) != 1 || got.Recalled.Exchanges[0].MessageID != "msg_x" {
+		t.Errorf("exchanges = %+v", got.Recalled.Exchanges)
+	}
+	if got.Recalled.TookMS != 41 {
+		t.Errorf("took = %d, want 41", got.Recalled.TookMS)
+	}
+}
+
+// The lifecycle does not overwrite it. Update names the columns it writes
+// and this is not one of them.
+func TestUpdateDoesNotWipeWhatWasRecalled(t *testing.T) {
+	repo := newRepository(t)
+	ctx := context.Background()
+
+	tk := storedChat(t, repo, "what did the roofer quote")
+	if err := repo.SetRecalled(ctx, tk.ID, &chat.Recalled{
+		Notes: []chat.RecalledNote{{ID: "mem_b", Text: "Roof quote", Score: 0.5}},
+	}); err != nil {
+		t.Fatalf("SetRecalled: %v", err)
+	}
+
+	if err := tk.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := repo.Update(ctx, tk); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	got, err := repo.Get(ctx, tk.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Recalled == nil || len(got.Recalled.Notes) != 1 {
+		t.Error("the lifecycle wiped what was recalled")
+	}
+}
+
+// A message says which turn wrote it, so one answer's tool calls can be
+// told from the next one's.
+func TestAMessageRecordsItsChat(t *testing.T) {
+	repo := newRepository(t)
+	ctx := context.Background()
+	convID := storedConversation(t, repo)
+
+	m := conversation.Said(convID, "what did the roofer quote", time.Now().UTC())
+	m.ChatID = "chat_01M3D477HXQ4YNQX7BNXJZZCV0"
+	if _, err := repo.Append(ctx, m); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+
+	all, err := repo.All(ctx, convID)
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if len(all) != 1 || all[0].ChatID != m.ChatID {
+		t.Errorf("chat id = %q, want %q", all[0].ChatID, m.ChatID)
 	}
 }

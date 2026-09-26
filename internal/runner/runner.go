@@ -320,10 +320,21 @@ func (r *Runner) promptFor(ctx context.Context, t *chat.Chat) string {
 		}
 	}
 
-	return join(standing,
-		r.known(ctx, userID),
-		r.recalled(ctx, userID, t.Prompt),
-		r.quoted(ctx, userID, t.Prompt, t.ConversationID))
+	// Gathered while the blocks are built, so what is recorded is what the
+	// model was actually shown rather than a second search that might not
+	// agree with it.
+	var note chat.Recalled
+	started := time.Now()
+
+	prompt := join(standing,
+		r.known(ctx, userID, &note),
+		r.recalled(ctx, userID, t.Prompt, &note),
+		r.quoted(ctx, userID, t.Prompt, t.ConversationID, &note))
+
+	note.TookMS = time.Since(started).Milliseconds()
+	r.recordRecalled(ctx, t, note)
+
+	return prompt
 }
 
 // join : The parts of a system prompt that are not empty, separated so the
@@ -339,7 +350,7 @@ func join(parts ...string) string {
 }
 
 // known : The memories that go into every prompt, if there are any.
-func (r *Runner) known(ctx context.Context, userID string) string {
+func (r *Runner) known(ctx context.Context, userID string, note *chat.Recalled) string {
 	if r.memory == nil || userID == "" {
 		return ""
 	}
@@ -350,6 +361,9 @@ func (r *Runner) known(ctx context.Context, userID string) string {
 			slog.Any("error", err))
 		return ""
 	}
+	for i := range all {
+		note.Always = append(note.Always, chat.RecalledNote{ID: all[i].ID, Text: all[i].Text()})
+	}
 	return memory.Standing(all)
 }
 
@@ -359,7 +373,7 @@ func (r *Runner) known(ctx context.Context, userID string) string {
 // that is found every time and never helps are different problems. Nothing
 // here may fail the turn: an answer with no memory is the answer that was
 // given before there was any.
-func (r *Runner) recalled(ctx context.Context, userID, question string) string {
+func (r *Runner) recalled(ctx context.Context, userID, question string, note *chat.Recalled) string {
 	if r.memory == nil || userID == "" {
 		return ""
 	}
@@ -378,6 +392,15 @@ func (r *Runner) recalled(ctx context.Context, userID, question string) string {
 		r.logger.WarnContext(ctx, "cannot record that memories were offered",
 			slog.Any("error", err))
 	}
+
+	for i := range found {
+		note.Notes = append(note.Notes, chat.RecalledNote{
+			ID:    found[i].Memory.ID,
+			Text:  found[i].Memory.Text(),
+			Score: found[i].Score,
+		})
+		note.ByWords = note.ByWords || found[i].ByWords
+	}
 	return memory.Offered(found)
 }
 
@@ -385,7 +408,7 @@ func (r *Runner) recalled(ctx context.Context, userID, question string) string {
 //
 // Nothing from the conversation in progress, which is already in front of
 // the model. Like recall, this may not fail the turn.
-func (r *Runner) quoted(ctx context.Context, userID, question, conversationID string) string {
+func (r *Runner) quoted(ctx context.Context, userID, question, conversationID string, note *chat.Recalled) string {
 	if r.memory == nil || userID == "" {
 		return ""
 	}
@@ -396,7 +419,31 @@ func (r *Runner) quoted(ctx context.Context, userID, question, conversationID st
 			slog.Any("error", err))
 		return ""
 	}
+	for i := range heard {
+		note.Exchanges = append(note.Exchanges, chat.RecalledExchange{
+			MessageID:      heard[i].Exchange.MessageID,
+			ConversationID: heard[i].Exchange.ConversationID,
+			Text:           heard[i].Exchange.Text,
+			Score:          heard[i].Score,
+			At:             heard[i].Exchange.At,
+		})
+	}
 	return memory.Quoted(heard)
+}
+
+// recordRecalled : Stores what was put in front of the model.
+//
+// Observability, so a failure is logged and dropped: an answer whose
+// timeline is missing is the answer that was given before there were
+// timelines.
+func (r *Runner) recordRecalled(ctx context.Context, t *chat.Chat, note chat.Recalled) {
+	if r.repo == nil || note.Empty() {
+		return
+	}
+	if err := r.repo.SetRecalled(ctx, t.ID, &note); err != nil {
+		r.logger.WarnContext(ctx, "cannot record what was recalled",
+			slog.Any("error", err))
+	}
 }
 
 // heard : The warning that the words were spoken, for a chat that was.

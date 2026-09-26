@@ -40,6 +40,24 @@ func (r *Repository) Create(ctx context.Context, t *chat.Chat) error {
 	return r.touchConversation(ctx, t.ConversationID, t.CreatedAt)
 }
 
+// SetRecalled : Records what memory put in front of the model for a chat.
+//
+// Written with a map rather than a struct, so there is no select-list for a
+// later column to be left out of. Update writes the lifecycle's columns and
+// is called from the lifecycle; this is written once, before it.
+func (r *Repository) SetRecalled(ctx context.Context, id string, recalled *chat.Recalled) error {
+	out := r.db.WithContext(ctx).Model(&chatRow{}).
+		Where("id = ?", id).
+		Updates(map[string]any{"recalled": fromRecalled(recalled)})
+	if out.Error != nil {
+		return fmt.Errorf("chat: recording what was recalled for %s: %w", id, out.Error)
+	}
+	if out.RowsAffected == 0 {
+		return chat.ErrNotFound
+	}
+	return nil
+}
+
 // Get : Returns the chat with the given identifier, including its response.
 func (r *Repository) Get(ctx context.Context, id string) (*chat.Chat, error) {
 	var row chatRow

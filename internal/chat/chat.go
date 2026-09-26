@@ -99,6 +99,10 @@ type Chat struct {
 	// disagreeing with the live ones, and so failures can be counted.
 	ErrorCode string
 
+	// Recalled : What memory put in front of the model, and what it scored.
+	// Nil when nothing was searched.
+	Recalled *Recalled
+
 	// ErrorDetail : What the service actually said, kept exactly.
 	//
 	// Not for reading aloud. It is what "more info" shows, and what lets the

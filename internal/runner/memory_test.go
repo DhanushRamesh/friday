@@ -79,6 +79,21 @@ func withMemories(t *testing.T, p *recordingProvider, facts map[memory.Tier][][2
 	}
 }
 
+// settle : Waits for a chat to reach a terminal state.
+func (h *remembering) settle(t *testing.T, id string) {
+	t.Helper()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		got, err := h.repo.Get(context.Background(), id)
+		if err == nil && got.Status.IsTerminal() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("the chat never finished")
+}
+
 // ask : Runs one chat and waits for it to finish.
 func (h *remembering) ask(t *testing.T, prompt string) {
 	t.Helper()
@@ -268,5 +283,90 @@ func TestTheCurrentConversationIsNotQuotedBack(t *testing.T) {
 
 	if strings.Contains(p.systemPrompt(), "forty thousand rupees") {
 		t.Errorf("this conversation was quoted back to itself:\n%s", p.systemPrompt())
+	}
+}
+
+// What the model was shown is recorded on the chat, so an answer can be
+// explained afterwards rather than guessed at.
+func TestWhatWasRecalledIsRecordedOnTheChat(t *testing.T) {
+	p := &recordingProvider{}
+	h := withMemories(t, p, map[memory.Tier][][2]string{
+		memory.TierAlways: {{"Home", "Lives in Chennai"}},
+		memory.TierRecall: {{"Roof quote", "the roofer quoted forty thousand rupees"}},
+	})
+
+	h.past.Add(memory.Exchange{
+		MessageID:      "msg_earlier",
+		UserID:         h.userID,
+		ConversationID: "conv_01M3D477HXQ4YNQX7BNXJZZCV9",
+		Text:           memory.ExchangeText("is the terrace worth doing", "Yes, before the rains."),
+		At:             time.Now().UTC().Add(-48 * time.Hour),
+	})
+	if _, err := h.recall.IndexTranscript(context.Background(), 10); err != nil {
+		t.Fatalf("IndexTranscript: %v", err)
+	}
+
+	tk, err := chat.New(h.convID, chat.ChannelDirect, "what did the roofer quote")
+	if err != nil {
+		t.Fatalf("chat.New: %v", err)
+	}
+	if err := h.repo.Create(context.Background(), tk); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := h.runner.Submit(tk); err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	h.settle(t, tk.ID)
+
+	got, err := h.repo.Get(context.Background(), tk.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Recalled == nil {
+		t.Fatal("nothing was recorded about how the answer was made")
+	}
+	if len(got.Recalled.Always) != 1 || !strings.Contains(got.Recalled.Always[0].Text, "Chennai") {
+		t.Errorf("always = %v, want the Chennai memory", got.Recalled.Always)
+	}
+	if len(got.Recalled.Notes) == 0 || !strings.Contains(got.Recalled.Notes[0].Text, "forty thousand") {
+		t.Errorf("notes = %v, want the roof memory", got.Recalled.Notes)
+	}
+	if got.Recalled.Notes[0].Score <= 0 {
+		t.Error("a searched note was recorded with no score")
+	}
+	if len(got.Recalled.Exchanges) == 0 {
+		t.Error("the past exchange was not recorded")
+	}
+}
+
+// Every message a turn writes says which turn wrote it, or the tool calls
+// of one answer cannot be told from those of the next.
+func TestEveryMessageSaysWhichChatWroteIt(t *testing.T) {
+	p := &recordingProvider{}
+	h := withMemories(t, p, nil)
+
+	tk, err := chat.New(h.convID, chat.ChannelDirect, "anything at all")
+	if err != nil {
+		t.Fatalf("chat.New: %v", err)
+	}
+	if err := h.repo.Create(context.Background(), tk); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := h.runner.Submit(tk); err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	h.settle(t, tk.ID)
+
+	said, err := h.repo.All(context.Background(), h.convID)
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if len(said) == 0 {
+		t.Fatal("nothing was recorded at all")
+	}
+	for _, m := range said {
+		if m.ChatID != tk.ID {
+			t.Errorf("message %s says chat %q, want %q", m.ID, m.ChatID, tk.ID)
+		}
 	}
 }

@@ -84,6 +84,11 @@ type Repository interface {
 	// ErrNotFound if the chat has since been removed.
 	Update(ctx context.Context, t *Chat) error
 
+	// SetRecalled : Records what memory put in front of the model for a
+	// chat. Its own method rather than part of Update, which writes a fixed
+	// list of columns and is called from the lifecycle.
+	SetRecalled(ctx context.Context, id string, r *Recalled) error
+
 	// List : Returns chats in reverse order of creation, newest first,
 	// without their responses.
 	List(ctx context.Context, f Filter) ([]Summary, error)
