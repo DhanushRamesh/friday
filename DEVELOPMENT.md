@@ -792,6 +792,19 @@ until the audio finishes, so announcing now waits for idle first. A satellite
 that never falls quiet is left alone and the announcement is dropped, which is
 the right outcome for anything incidental.
 
+Idle is not the end, though. The state flips when the satellite stops feeding
+the speaker, so an announcement sent the moment it reads idle lands on the
+tail of the last sentence and the two run together as one. It now waits a
+further second of quiet, and reads the state again afterwards: speech
+starting during that second means the gap never happened, so the wait begins
+again. A held second is the difference between two things said and one long
+one.
+
+`Settle`, defaulting to `DefaultSettle`. Negative restores announcing on the
+first idle reading, which is what every test that is not about the pause
+passes -- a suite that spends a second a case proving something else stops
+being run.
+
 ### A request says why it is being made
 
 `Purpose` marks a request as the person's question, or as the assistant's own

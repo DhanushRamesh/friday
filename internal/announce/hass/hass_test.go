@@ -59,7 +59,11 @@ func (s *satellite) handler() http.Handler {
 }
 
 // speaker : A Speaker pointed at the given satellite.
-func speaker(t *testing.T, s *satellite, quiet time.Duration) *hass.Speaker {
+//
+// settle is given explicitly by every test: left at zero it would take the
+// default second, and a suite that waits a second per case to prove
+// something else stops being run.
+func speaker(t *testing.T, s *satellite, quiet, settle time.Duration) *hass.Speaker {
 	t.Helper()
 	server := httptest.NewServer(s.handler())
 	t.Cleanup(server.Close)
@@ -69,6 +73,7 @@ func speaker(t *testing.T, s *satellite, quiet time.Duration) *hass.Speaker {
 		Token:     logging.Secret("token"),
 		Satellite: "assist_satellite.test",
 		QuietWait: quiet,
+		Settle:    settle,
 	})
 	if err != nil {
 		t.Fatalf("hass.New: %v", err)
@@ -81,7 +86,7 @@ func speaker(t *testing.T, s *satellite, quiet time.Duration) *hass.Speaker {
 // stopped dead so the assistant could say what it had named the conversation.
 func TestNothingIsSaidWhileTheSatelliteIsSpeaking(t *testing.T) {
 	sat := &satellite{states: []string{"responding", "responding", "idle"}}
-	sp := speaker(t, sat, 10*time.Second)
+	sp := speaker(t, sat, 10*time.Second, -1)
 
 	if err := sp.Say(context.Background(), "I have called this conversation Roof Quotes."); err != nil {
 		t.Fatalf("Say: %v", err)
@@ -101,7 +106,7 @@ func TestNothingIsSaidWhileTheSatelliteIsSpeaking(t *testing.T) {
 // A satellite that is already quiet is spoken to at once.
 func TestAQuietSatelliteIsSpokenToAtOnce(t *testing.T) {
 	sat := &satellite{states: []string{"idle"}}
-	sp := speaker(t, sat, 10*time.Second)
+	sp := speaker(t, sat, 10*time.Second, -1)
 
 	start := time.Now()
 	if err := sp.Say(context.Background(), "Your timer is up."); err != nil {
@@ -120,7 +125,7 @@ func TestAQuietSatelliteIsSpokenToAtOnce(t *testing.T) {
 // better than cutting across an answer to deliver it.
 func TestASatelliteThatNeverStopsIsNotInterrupted(t *testing.T) {
 	sat := &satellite{states: []string{"responding"}}
-	sp := speaker(t, sat, 900*time.Millisecond)
+	sp := speaker(t, sat, 900*time.Millisecond, -1)
 
 	err := sp.Say(context.Background(), "I have called this conversation Roof Quotes.")
 	if err == nil {
@@ -137,13 +142,73 @@ func TestASatelliteThatNeverStopsIsNotInterrupted(t *testing.T) {
 // An empty message is not worth a round trip, let alone an interruption.
 func TestNothingIsSaidForAnEmptyMessage(t *testing.T) {
 	sat := &satellite{states: []string{"idle"}}
-	sp := speaker(t, sat, time.Second)
+	sp := speaker(t, sat, time.Second, -1)
 
 	if err := sp.Say(context.Background(), "   "); err != nil {
 		t.Fatalf("Say: %v", err)
 	}
 	if sat.asked.Load() != 0 || sat.polls.Load() != 0 {
 		t.Error("an empty message reached Home Assistant")
+	}
+}
+
+// Falling idle is not the same as having finished. The state flips when the
+// satellite stops feeding the speaker, so announcing the instant it reads
+// idle runs the two sentences together.
+func TestTheAnnouncementWaitsAfterTheSpeechEnds(t *testing.T) {
+	sat := &satellite{states: []string{"idle"}}
+	sp := speaker(t, sat, 10*time.Second, 400*time.Millisecond)
+
+	start := time.Now()
+	if err := sp.Say(context.Background(), "I have called this conversation Roof Quotes."); err != nil {
+		t.Fatalf("Say: %v", err)
+	}
+
+	if took := time.Since(start); took < 400*time.Millisecond {
+		t.Errorf("announced after %s, want it held back for the settle", took)
+	}
+	if sat.polls.Load() < 2 {
+		t.Errorf("polled %d times, want the quiet confirmed after the pause", sat.polls.Load())
+	}
+	if sat.asked.Load() != 1 {
+		t.Errorf("announced %d times, want once", sat.asked.Load())
+	}
+}
+
+// The quiet has to hold. Speech starting again during the pause means the
+// gap never happened, so the wait begins again rather than announcing into
+// it.
+func TestSpeechDuringThePauseStartsTheWaitAgain(t *testing.T) {
+	sat := &satellite{states: []string{"idle", "responding", "idle", "idle"}}
+	sp := speaker(t, sat, 10*time.Second, 100*time.Millisecond)
+
+	if err := sp.Say(context.Background(), "I have called this conversation Roof Quotes."); err != nil {
+		t.Fatalf("Say: %v", err)
+	}
+
+	if got := sat.stateWhenAsked.Load(); got != "idle" {
+		t.Errorf("announced while the satellite was %v, want it to wait again", got)
+	}
+	if sat.polls.Load() < 4 {
+		t.Errorf("polled %d times, want the interrupted pause restarted", sat.polls.Load())
+	}
+}
+
+// A negative settle is the old behaviour, kept so it can be turned off.
+func TestANegativeSettleSpeaksAsSoonAsItIsIdle(t *testing.T) {
+	sat := &satellite{states: []string{"idle"}}
+	sp := speaker(t, sat, 10*time.Second, -1)
+
+	start := time.Now()
+	if err := sp.Say(context.Background(), "Your timer is up."); err != nil {
+		t.Fatalf("Say: %v", err)
+	}
+
+	if took := time.Since(start); took > 200*time.Millisecond {
+		t.Errorf("waited %s, want no pause at all", took)
+	}
+	if sat.polls.Load() != 1 {
+		t.Errorf("polled %d times, want one", sat.polls.Load())
 	}
 }
 

@@ -35,6 +35,16 @@ const DefaultTimeout = 10 * time.Second
 // abandoned rather than delivered on top of speech.
 const DefaultQuietWait = 90 * time.Second
 
+// DefaultSettle : How long the satellite must stay quiet before the
+// announcement is spoken.
+//
+// Falling idle is not the same as having finished: the state flips when the
+// satellite stops feeding the speaker, so an announcement sent the instant it
+// goes idle lands on the tail of the previous sentence and the two run
+// together. A held second separates them, and the person hears two things
+// said rather than one long one.
+const DefaultSettle = time.Second
+
 // idlePoll : How often the satellite is asked whether it has finished.
 const idlePoll = 400 * time.Millisecond
 
@@ -63,6 +73,10 @@ type Config struct {
 	// before announcing. Zero selects DefaultQuietWait; negative announces
 	// at once and interrupts whatever is playing.
 	QuietWait time.Duration
+	// Settle : How long the satellite must stay quiet before the
+	// announcement is spoken. Zero selects DefaultSettle; negative speaks as
+	// soon as it first reads as idle.
+	Settle time.Duration
 	// HTTP : The client to use. Optional.
 	HTTP *http.Client
 }
@@ -92,6 +106,9 @@ func New(cfg Config) (*Speaker, error) {
 	}
 	if cfg.QuietWait == 0 {
 		cfg.QuietWait = DefaultQuietWait
+	}
+	if cfg.Settle == 0 {
+		cfg.Settle = DefaultSettle
 	}
 
 	client := cfg.HTTP
@@ -164,7 +181,13 @@ func (s *Speaker) Say(ctx context.Context, message string) error {
 	return nil
 }
 
-// waitUntilQuiet : Blocks until the satellite is doing nothing.
+// waitUntilQuiet : Blocks until the satellite has been doing nothing for
+// Settle.
+//
+// The quiet has to hold, not merely occur. Idle is read again after the pause
+// because the satellite reaches it before the speaker has finished and
+// because a new turn can begin during the pause; either way the wait starts
+// over rather than announcing into speech.
 //
 // A satellite that never falls quiet is reported rather than spoken over: the
 // caller can then log it and drop the announcement, which is the right
@@ -183,18 +206,41 @@ func (s *Speaker) waitUntilQuiet(ctx context.Context) error {
 			// across an answer.
 			return err
 		}
+
 		if state == stateIdle {
-			return nil
+			if s.cfg.Settle <= 0 {
+				return nil
+			}
+			if err := s.pause(ctx, s.cfg.Settle); err != nil {
+				return err
+			}
+			// Still idle after the pause means the previous speech really
+			// has ended, and a gap has been left after it.
+			if state, err = s.state(ctx); err != nil {
+				return err
+			}
+			if state == stateIdle {
+				return nil
+			}
 		}
+
 		if time.Now().After(deadline) {
 			return fmt.Errorf("hass: %s was still %s after %s", s.cfg.Satellite, state, s.cfg.QuietWait)
 		}
 
-		select {
-		case <-time.After(idlePoll):
-		case <-ctx.Done():
-			return ctx.Err()
+		if err := s.pause(ctx, idlePoll); err != nil {
+			return err
 		}
+	}
+}
+
+// pause : Waits, unless the caller gives up first.
+func (s *Speaker) pause(ctx context.Context, d time.Duration) error {
+	select {
+	case <-time.After(d):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
