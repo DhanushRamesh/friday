@@ -473,6 +473,17 @@ exact error present there is nothing left to invent, and asking out loud what
 precisely failed is answerable rather than a guess. That was the point of
 keeping it.
 
+### Home Assistant is reached on loopback, not on a LAN address
+
+A reboot moved this machine from 192.168.0.102 to .107 and the voice stack
+stopped: Home Assistant kept dialling the satellite at the old address, and
+the server kept trying to announce at it. Both said so clearly and neither
+could do anything about it.
+
+Everything here runs on the one machine, and both containers use host
+networking, so the address they use for each other is 127.0.0.1. A loopback
+address cannot drift when DHCP hands out a different lease.
+
 ### A spoken failure says the exact error; a typed one keeps it aside
 
 Typed, a failure shows the sentence and keeps the service's own words under
