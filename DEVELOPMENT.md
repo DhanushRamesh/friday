@@ -601,16 +601,32 @@ reasons rather than only facts, a search run against what the assistant is
 about to say rather than only what the person said, and permission to
 volunteer.
 
-That last one is not free. `memory.Offered` currently instructs the model to
-use a note "only if it contains what is being asked for, rather than merely
-a related subject", which is exactly what stops a near miss being treated as
-an answer -- and exactly what forbids advice. Widening it re-opens the
-problem that instruction was measured to solve, so it is widened with
-evidence or not at all.
+That last one was not free. `memory.Offered` instructed the model to use a
+note "only if it contains what is being asked for, rather than merely a
+related subject", which is what stops a near miss being read as an answer
+and is also what forbids advice.
+
+It now does both jobs, stated as two separate instructions, because the
+rule for one forbids the other. Answering is unchanged. Warning is narrow
+on purpose: only when the person says what they are about to do, only when
+a note disagrees with it, one line, attributed, nothing beyond what the
+note says, and nothing at all when the note agrees.
+
+Widening it did not cost the filter. Measured in one run: three of three
+notes used when they fit, five of five unrelated questions still left
+clean, three of three real conflicts raised, four of four harmless
+intentions left alone. Told "I am going to tell the roofer sixty thousand
+is fine" it answers "the agreed price was forty thousand rupees, not sixty
+thousand, based on the roof quote you saved"; told "I am going to pay the
+roofer the forty thousand we agreed" it says nothing about the note.
+
+The licence is on the curated memories only. The transcript keeps its
+quoting rule and no licence to warn: it carries whatever speech-to-text got
+wrong, and a warning founded on a misheard sentence is worse than none.
 
 The bar is unchanged: an advisor that invents a concern is worse than one
-that says nothing. Anything volunteered has to rest on something stored and
-say what it rests on.
+that says nothing. Anything volunteered rests on something stored and says
+what it rests on.
 
 ### Memory is three layers, and only the middle one is hard
 

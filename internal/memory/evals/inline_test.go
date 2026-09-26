@@ -32,10 +32,45 @@ import (
 // notes : What the search puts in front of the model. The same three every
 // time, so that what changes between cases is only the question.
 var notes = []memory.Match{
-	{Memory: memory.Memory{Subject: "Roof quote", Body: "The roofer quoted forty thousand rupees for the terrace work."}},
+	{Memory: memory.Memory{Subject: "Roof quote", Body: "Agreed forty thousand rupees with the roofer for the terrace work."}},
+	{Memory: memory.Memory{Subject: "Monthly budget", Body: "Keeping household spending under fifty thousand rupees this month."}},
+	{Memory: memory.Memory{Subject: "Peanuts", Body: "Allergic to peanuts, and carries an epipen."}},
 	{Memory: memory.Memory{Subject: "Cricket", Body: "Follows cricket closely, especially Kapil Dev and MS Dhoni."}},
 	{Memory: memory.Memory{Subject: "Home", Body: "Lives in Chennai."}},
 }
+
+// warned : An intention a note disagrees with, and the thing a warning has
+// to mention for it to be any use.
+type warned struct {
+	// Ask : What the person said they are about to do.
+	Ask string
+	// Want : One of these has to appear, or nothing useful was said.
+	Want []string
+}
+
+// conflicts : Things that should draw a line, because a note disagrees.
+var conflicts = []warned{
+	{Ask: "I am going to tell the roofer that sixty thousand is fine",
+		Want: []string{"forty thousand", "40,000", "40000"}},
+	{Ask: "I will order the peanut korma for dinner tonight",
+		Want: []string{"allerg", "epipen"}},
+	{Ask: "I am about to spend another sixty thousand on the kitchen this month",
+		Want: []string{"fifty thousand", "50,000", "50000"}},
+}
+
+// harmless : Intentions no note disagrees with. Nothing from a note should
+// reach these answers: an assistant that raises something every time is
+// worse than one that never does.
+var harmless = []string{
+	"I am going to watch the cricket this evening",
+	"I am going to buy a new pair of shoes tomorrow",
+	"I will call my brother later today",
+	"I am going to pay the roofer the forty thousand we agreed",
+}
+
+// alarms : Fragments that only an unwanted warning could have supplied.
+// Cricket and Chennai are left out: a question may reach them innocently.
+var alarms = []string{"fifty thousand", "peanut", "allerg", "epipen", "terrace"}
 
 // answered : A question whose answer is in the notes.
 type answered struct {
@@ -64,7 +99,7 @@ var unanswerable = []string{
 }
 
 // leaks : Fragments that only a note could have supplied.
-var leaks = []string{"forty thousand", "Chennai", "Kapil Dev", "MS Dhoni", "roofer", "terrace"}
+var leaks = []string{"forty thousand", "Chennai", "Kapil Dev", "MS Dhoni", "roofer", "terrace", "epipen"}
 
 func TestOfferedNotesAreUsedOnlyWhenTheyFit(t *testing.T) {
 	env := provider(t)
@@ -101,6 +136,55 @@ func TestOfferedNotesAreUsedOnlyWhenTheyFit(t *testing.T) {
 
 	t.Logf("notes that fit    : %d of %d used", used, used+missed)
 	t.Logf("notes that do not : %d of %d left out of the answer", clean, clean+leaked)
+}
+
+// An assistant that only answers is an instrument. One that raises
+// something every time is worse than one that never does. Both are
+// measured here, because widening the instruction for the first is what
+// risks the second.
+func TestANoteThatDisagreesIsRaised(t *testing.T) {
+	env := provider(t)
+	system := persona.Prompt(persona.Default, "Jarvis") + "\n\n" + memory.Offered(notes)
+
+	var raised, silent int
+	for _, c := range conflicts {
+		answer := strings.ToLower(ask(t, env, system, c.Ask))
+
+		var found bool
+		for _, want := range c.Want {
+			if strings.Contains(answer, strings.ToLower(want)) {
+				found = true
+				break
+			}
+		}
+		if found {
+			raised++
+			continue
+		}
+		silent++
+		t.Errorf("%-62q said nothing about %v:\n    %s", c.Ask, c.Want, answer)
+	}
+
+	var quiet, nagged int
+	for _, intention := range harmless {
+		answer := strings.ToLower(ask(t, env, system, intention))
+
+		var found []string
+		for _, alarm := range alarms {
+			if strings.Contains(answer, strings.ToLower(alarm)) {
+				found = append(found, alarm)
+			}
+		}
+		if len(found) == 0 {
+			quiet++
+			continue
+		}
+		nagged++
+		t.Errorf("%-62q raised %v with nothing to raise:\n    %s", intention, found, answer)
+	}
+
+	t.Logf("a note disagrees  : %d of %d raised", raised, raised+silent)
+	t.Logf("nothing disagrees : %d of %d left alone", quiet, quiet+nagged)
 }
 
 // provider : The real environment, or a skip when none is configured.

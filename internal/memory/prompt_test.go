@@ -3,6 +3,7 @@ package memory_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DhanushRamesh/personal-assistant/internal/memory"
 )
@@ -91,5 +92,60 @@ func TestIDsFollowTheMatches(t *testing.T) {
 
 	if len(got) != 2 || got[0] != "mem_1" || got[1] != "mem_2" {
 		t.Errorf("IDs = %v", got)
+	}
+}
+
+// The licence to warn is narrow on purpose. Unbounded, it produces an
+// assistant that second-guesses every sentence; without it, one that
+// watches somebody walk into something it knew about.
+func TestOfferedPermitsAWarningAndBoundsIt(t *testing.T) {
+	got := memory.Offered([]memory.Match{
+		{Memory: memory.Memory{Subject: "Roof quote", Body: "Agreed forty thousand."}},
+	})
+
+	for _, want := range []string{
+		"says what they are about to do",
+		"a note disagrees with it",
+		"one short line",
+		"say what it is you are going on",
+		"not where it merely shares a subject",
+		"not where it agrees with what they intend",
+		"invent no concern it does not support",
+		"Most turns need no such line",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the licence to warn is missing %q:\n%s", want, got)
+		}
+	}
+}
+
+// Warning and answering are told apart, because the rule for one forbids
+// the other.
+func TestAnsweringAndWarningAreSeparateInstructions(t *testing.T) {
+	got := memory.Offered([]memory.Match{{Memory: memory.Memory{Subject: "A", Body: "b"}}})
+
+	answer := strings.Index(got, "To answer with:")
+	warn := strings.Index(got, "To warn with:")
+	if answer < 0 || warn < 0 {
+		t.Fatalf("the two jobs are not named separately:\n%s", got)
+	}
+	if warn < answer {
+		t.Error("warning is stated before answering, which is not the common case")
+	}
+}
+
+// The transcript carries no licence to warn. It contains whatever
+// speech-to-text got wrong, and a warning founded on a misheard sentence is
+// worse than no warning at all.
+func TestTheTranscriptMayNotWarn(t *testing.T) {
+	got := memory.Quoted([]memory.Heard{{
+		Exchange: memory.Exchange{Text: "They said: something", At: time.Now()},
+	}})
+
+	if strings.Contains(got, "To warn with:") {
+		t.Errorf("the transcript was given the licence to warn:\n%s", got)
+	}
+	if !strings.Contains(got, "never state one as a fact of your own") {
+		t.Errorf("the transcript lost its quoting rule:\n%s", got)
 	}
 }
