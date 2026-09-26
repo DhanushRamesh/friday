@@ -621,6 +621,20 @@ The browser therefore still goes stale when something is said out loud,
 which the client's own `refresh` comment already describes. That was going
 to be fixed by the same stream and now is not.
 
+### The reminders screen shows what is coming, not what happened
+
+`GET /v1/reminders` lists what is still pending, and `DELETE
+/v1/reminders/{id}` calls one off. `?all=true` includes the rest, for
+anything that wants it; the screen does not. Everything that ever fired is
+a log, and nobody opens a settings screen to read one.
+
+Cancelling from the screen removes the row rather than showing it struck
+through. The list is what is coming, and something called off is not.
+
+A default scope was planned for this screen and left out. With one
+satellite, user and client land in the same place, so the setting would
+configure nothing anybody could hear.
+
 ### A length of time is the server's arithmetic, not the model's
 
 `reminder_set` takes either `minutes_from_now` or `at`, never both.

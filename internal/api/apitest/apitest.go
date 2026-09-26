@@ -37,6 +37,8 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/environment"
 	"github.com/DhanushRamesh/personal-assistant/internal/events"
 	"github.com/DhanushRamesh/personal-assistant/internal/logging"
+	"github.com/DhanushRamesh/personal-assistant/internal/remind"
+	remindmemory "github.com/DhanushRamesh/personal-assistant/internal/remind/inmemory"
 	"github.com/DhanushRamesh/personal-assistant/internal/runner"
 )
 
@@ -95,6 +97,9 @@ type Options struct {
 	// AllowCrossOrigin : Whether the server answers a browser's
 	// cross-origin checks, as it does outside production.
 	AllowCrossOrigin bool
+	// Reminders : What is waiting to be said. Nil selects an empty store,
+	// so a test that does not care need not build one.
+	Reminders remind.Store
 }
 
 // Env : A server, its dependencies, and a client already logged in.
@@ -158,12 +163,17 @@ func NewWith(t *testing.T, opts Options) *Env {
 		_ = chatRunner.Shutdown(ctx)
 	})
 
+	if opts.Reminders == nil {
+		opts.Reminders = remindmemory.New()
+	}
+
 	e := &Env{
 		Server: api.New(api.Options{
 			Logger:           logger.Logger,
 			DB:               opts.DB,
 			Chats:            repo,
 			Messages:         repo,
+			Reminders:        opts.Reminders,
 			Runner:           chatRunner,
 			Events:           bus,
 			AllowCrossOrigin: opts.AllowCrossOrigin,

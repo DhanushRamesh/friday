@@ -26,10 +26,12 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/api/conversations"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/health"
 	"github.com/DhanushRamesh/personal-assistant/internal/api/middleware"
+	"github.com/DhanushRamesh/personal-assistant/internal/api/reminders"
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	"github.com/DhanushRamesh/personal-assistant/internal/conversation"
 	"github.com/DhanushRamesh/personal-assistant/internal/llm"
 	"github.com/DhanushRamesh/personal-assistant/internal/persona"
+	"github.com/DhanushRamesh/personal-assistant/internal/remind"
 )
 
 // DefaultRequestTimeout : The per-request deadline applied when Options does
@@ -60,6 +62,10 @@ type Options struct {
 	// Messages : Reads what a turn wrote, for the timeline of an answer.
 	// Optional; without it a timeline carries only what the chat records.
 	Messages conversation.Repository
+
+	// Reminders : What is waiting to be said. Optional; without it the
+	// listing is empty and nothing can be called off from the screen.
+	Reminders remind.Store
 	// Runner : Executes chats. Required.
 	Runner Runner
 	// Events : Carries a chat's messages to clients listening for them.
@@ -102,6 +108,7 @@ type Server struct {
 	clients       *clients.Handler
 	conversations *conversations.Handler
 	chats         *chats.Handler
+	reminders     *reminders.Handler
 	assist        *assist.Handler
 }
 
@@ -122,6 +129,7 @@ func New(opts Options) *Server {
 		clients:       clients.New(opts.Logger, opts.Chats, opts.Models, opts.DefaultModel, opts.Persona),
 		conversations: conversations.New(opts.Logger, opts.Chats),
 		chats:         chats.New(opts.Logger, opts.Chats, opts.Messages, opts.Runner, opts.Events),
+		reminders:     reminders.New(opts.Logger, opts.Reminders),
 		assist:        assist.New(opts.Logger, opts.Chats, opts.Runner, opts.Events),
 	}
 	s.routes()
@@ -162,6 +170,7 @@ func (s *Server) routes() {
 		s.clients.Mount(r)
 		s.conversations.Mount(r)
 		s.chats.Mount(r)
+		s.reminders.Mount(r)
 		s.assist.Mount(r)
 	})
 }

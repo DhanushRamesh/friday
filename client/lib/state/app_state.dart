@@ -99,6 +99,11 @@ class AppState extends ChangeNotifier {
   List<Client> _clients = const [];
   List<Client> get clients => _clients;
 
+  List<Reminder> _reminders = const [];
+
+  /// reminders : What is waiting to be said, soonest first.
+  List<Reminder> get reminders => _reminders;
+
   Personas _personas = const Personas();
 
   /// personas : The manners the assistant can answer in, and the one it is
@@ -224,6 +229,7 @@ class AppState extends ChangeNotifier {
     _identity = null;
     _conversations = const [];
     _clients = const [];
+    _reminders = const [];
     _turns = const [];
     _conversationId = null;
     _error = null;
@@ -439,6 +445,36 @@ class AppState extends ChangeNotifier {
       _error = _explain(e);
     }
     notifyListeners();
+  }
+
+  /// loadReminders : Reads what is waiting to be said, for the settings
+  /// screen.
+  ///
+  /// Only what is still coming. Everything that ever fired is a log, and
+  /// nobody opens a settings screen for one.
+  Future<void> loadReminders() async {
+    _set(busy: true, error: null);
+    try {
+      _reminders = await api.listReminders();
+    } on Object catch (e) {
+      _error = _explain(e);
+    }
+    _set(busy: false);
+  }
+
+  /// cancelReminder : Calls one off and drops it from the list.
+  ///
+  /// Removed rather than shown as cancelled: the list is what is coming,
+  /// and something called off is not.
+  Future<void> cancelReminder(String id) async {
+    _set(busy: true, error: null);
+    try {
+      await api.cancelReminder(id);
+      _reminders = _reminders.where((r) => r.id != id).toList(growable: false);
+    } on Object catch (e) {
+      _error = _explain(e);
+    }
+    _set(busy: false);
   }
 
   /// loadClients : Reads the clients holding a token, for the settings screen.

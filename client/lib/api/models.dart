@@ -761,3 +761,61 @@ class AnswerTimeline {
     ],
   );
 }
+
+/// Reminder : Something waiting to be said.
+class Reminder {
+  const Reminder({
+    required this.id,
+    required this.title,
+    required this.say,
+    required this.dueAt,
+    this.repeats = '',
+    this.scope = 'user',
+    this.status = 'pending',
+    this.fires = 0,
+    this.lastFiredAt,
+  });
+
+  final String id;
+  final String title;
+
+  /// say : What will actually be spoken.
+  final String say;
+
+  /// dueAt : When, in local time.
+  final DateTime dueAt;
+
+  /// repeats : daily, weekdays, weekly, monthly, or empty for once only.
+  final String repeats;
+
+  /// scope : user follows the person; client belongs to one device.
+  final String scope;
+
+  /// status : pending, done, missed or cancelled.
+  final String status;
+
+  final int fires;
+  final DateTime? lastFiredAt;
+
+  /// pending : Whether it is still going to happen.
+  bool get pending => status == 'pending';
+
+  /// repeating : Whether it comes back.
+  bool get repeating => repeats.isNotEmpty;
+
+  factory Reminder.fromJson(Map<String, dynamic> json) => Reminder(
+    id: json['id'] as String? ?? '',
+    title: json['title'] as String? ?? '',
+    say: json['say'] as String? ?? '',
+    dueAt:
+        DateTime.tryParse(json['due_at'] as String? ?? '')?.toLocal() ??
+        DateTime.now(),
+    repeats: json['repeats'] as String? ?? '',
+    scope: json['scope'] as String? ?? 'user',
+    status: json['status'] as String? ?? 'pending',
+    fires: (json['fires'] as num?)?.toInt() ?? 0,
+    lastFiredAt: DateTime.tryParse(
+      json['last_fired_at'] as String? ?? '',
+    )?.toLocal(),
+  );
+}

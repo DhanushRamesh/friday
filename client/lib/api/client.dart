@@ -32,6 +32,7 @@ export 'models.dart'
         Recalled,
         RecalledNote,
         RecalledExchange,
+        Reminder,
         User;
 export 'server_url.dart';
 export 'token_store.dart';

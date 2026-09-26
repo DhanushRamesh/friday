@@ -11,6 +11,7 @@ import '../state/app_state.dart';
 enum SettingsModule {
   account('Account', Icons.person_outline),
   clients('Clients', Icons.devices_other_outlined),
+  reminders('Reminders', Icons.alarm_outlined),
   server('Server', Icons.dns_outlined);
 
   const SettingsModule(this.title, this.icon);
@@ -42,6 +43,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     widget.state.loadClients();
+    widget.state.loadReminders();
   }
 
   Future<void> _confirmRevoke(Client client) async {
@@ -140,6 +142,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         SettingsModule.clients => _ClientsModule(
                           state: state,
                           onRevoke: _confirmRevoke,
+                        ),
+                        SettingsModule.reminders => _RemindersModule(
+                          state: state,
                         ),
                         SettingsModule.server => _ServerModule(state: state),
                       },
@@ -414,6 +419,149 @@ class _ClientsModule extends StatelessWidget {
 
 /// _Section : A titled card, so the page reads as a few groups rather than
 /// one long list of fields.
+/// _RemindersModule : What is waiting to be said, and a way to stop it.
+///
+/// Only what is still coming. Everything that ever fired is a log, and
+/// nobody opens a settings screen to read one.
+class _RemindersModule extends StatelessWidget {
+  const _RemindersModule({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) => _Section(
+    title: 'Reminders',
+    subtitle:
+        'Everything waiting to be said, soonest first. These are spoken '
+        'through the voice satellite when their time comes, whether or not '
+        'anything is open here.',
+    action: InkWell(
+      onTap: state.loadReminders,
+      borderRadius: BorderRadius.circular(AppRadius.xs),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xxs),
+        child: Text(
+          'Refresh',
+          style: context.text.caption.copyWith(color: context.colors.accent),
+        ),
+      ),
+    ),
+    child: state.reminders.isEmpty
+        ? Text(
+            'Nothing waiting. Ask for a timer or a reminder and it appears '
+            'here.',
+            style: context.text.caption.copyWith(
+              color: context.colors.textSecondary,
+            ),
+          )
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final r in state.reminders)
+                _ReminderTile(
+                  reminder: r,
+                  onCancel: () => state.cancelReminder(r.id),
+                ),
+            ],
+          ),
+  );
+}
+
+/// _ReminderTile : One thing waiting to be said.
+class _ReminderTile extends StatelessWidget {
+  const _ReminderTile({required this.reminder, required this.onCancel});
+
+  final Reminder reminder;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.md),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            reminder.repeating ? Icons.repeat : Icons.alarm_outlined,
+            size: 15,
+            color: colors.textMuted,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(reminder.title, style: context.text.body),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Text(_when(reminder), style: context.text.caption),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.xxs),
+                // What it will actually say, because the name is for
+                // finding it and this is what you will hear.
+                Text(
+                  reminder.say,
+                  style: context.text.caption.copyWith(
+                    color: colors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          AppButton(
+            label: 'Cancel',
+            variant: AppButtonVariant.ghost,
+            onPressed: onCancel,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// _when : When it happens, said the way a person would.
+  ///
+  /// A date on its own makes somebody work out whether it is soon. Today
+  /// and tomorrow are what almost every reminder is.
+  static String _when(Reminder r) {
+    final at = r.dueAt;
+    final clock = _clock(at);
+
+    final today = DateUtils.dateOnly(DateTime.now());
+    final day = DateUtils.dateOnly(at);
+    final days = day.difference(today).inDays;
+
+    final when = switch (days) {
+      0 => 'today at $clock',
+      1 => 'tomorrow at $clock',
+      _ when days > 1 && days < 7 => '${_weekday(at)} at $clock',
+      _ => '${at.day}/${at.month} at $clock',
+    };
+    return r.repeating ? '$when, ${r.repeats}' : when;
+  }
+
+  /// _clock : The time of day, without dragging in a locale package.
+  static String _clock(DateTime at) =>
+      '${at.hour.toString().padLeft(2, '0')}:'
+      '${at.minute.toString().padLeft(2, '0')}';
+
+  static String _weekday(DateTime at) => const [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ][at.weekday - 1];
+}
+
 class _Section extends StatelessWidget {
   const _Section({
     required this.title,

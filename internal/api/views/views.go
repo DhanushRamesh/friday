@@ -14,6 +14,7 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	"github.com/DhanushRamesh/personal-assistant/internal/llm"
 	"github.com/DhanushRamesh/personal-assistant/internal/persona"
+	"github.com/DhanushRamesh/personal-assistant/internal/remind"
 )
 
 // Chat : A chat as the API returns it.
@@ -202,4 +203,50 @@ type Persona struct {
 // OfPersona : Renders a persona for the API.
 func OfPersona(p persona.Persona) Persona {
 	return Persona{ID: p.ID, Name: p.Name, Summary: p.Summary}
+}
+
+// Reminder : Something waiting to be said, as a client sees it.
+type Reminder struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	// Say : What will actually be spoken.
+	Say string `json:"say"`
+	// DueAt : When, in UTC. A client shows it in whatever zone it likes.
+	DueAt time.Time `json:"due_at"`
+	// Repeats : daily, weekdays, weekly, monthly, or empty for once only.
+	Repeats string `json:"repeats,omitempty"`
+	// Scope : user or client.
+	Scope string `json:"scope"`
+	// Status : pending, done, missed or cancelled.
+	Status string `json:"status"`
+	// Fires : How many times it has been said.
+	Fires int `json:"fires,omitempty"`
+	// LastFiredAt : When it was last said, or null if never.
+	LastFiredAt *time.Time `json:"last_fired_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+// OfReminder : One reminder as a client sees it.
+func OfReminder(r remind.Reminder) Reminder {
+	return Reminder{
+		ID:          r.ID,
+		Title:       r.Title,
+		Say:         r.Body,
+		DueAt:       r.DueAt,
+		Repeats:     string(r.Repeats),
+		Scope:       string(r.Scope),
+		Status:      string(r.Status),
+		Fires:       r.Fires,
+		LastFiredAt: r.LastFiredAt,
+		CreatedAt:   r.CreatedAt,
+	}
+}
+
+// OfReminders : Several, in the order they were given.
+func OfReminders(all []remind.Reminder) []Reminder {
+	out := make([]Reminder, 0, len(all))
+	for i := range all {
+		out = append(out, OfReminder(all[i]))
+	}
+	return out
 }

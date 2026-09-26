@@ -64,6 +64,8 @@ func TestRouteTableIsComplete(t *testing.T) {
 		"GET /v1/chats/{id}":                    true,
 		"GET /v1/chats/{id}/steps":              true,
 		"POST /v1/chats/{id}/cancel":            true,
+		"GET /v1/reminders":                     true,
+		"DELETE /v1/reminders/{id}":             true,
 		// Fixed by the caller: Home Assistant appends these to the address it
 		// was given, so they cannot live under /v1 with the rest. /api/chat
 		// is also the only way to submit a prompt, whatever is asking.

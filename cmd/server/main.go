@@ -265,6 +265,7 @@ func run() error {
 		DB:             db,
 		Chats:          chats,
 		Messages:       chats,
+		Reminders:      reminderStore,
 		Runner:         chatRunner,
 		Events:         bus,
 		Models:         reachableModels(cfg),

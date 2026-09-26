@@ -341,6 +341,20 @@ class AssistantApi {
   Future<Chat> chat(String chatId) async =>
       Chat.fromJson(await _send('GET', '/v1/chats/$chatId'));
 
+  /// listReminders : What is waiting to be said, soonest first.
+  ///
+  /// Only what is still coming unless all is true. Everything that ever
+  /// fired is a log, and nobody opens a settings screen for one.
+  Future<List<Reminder>> listReminders({bool all = false}) async => parseList(
+    await _send('GET', '/v1/reminders', query: {if (all) 'all': 'true'}),
+    'reminders',
+    Reminder.fromJson,
+  );
+
+  /// cancelReminder : Calls one off.
+  Future<Reminder> cancelReminder(String id) async =>
+      Reminder.fromJson(await _send('DELETE', '/v1/reminders/$id'));
+
   /// steps : How one answer was made, in the order it happened.
   ///
   /// Everything in it was recorded while the answer was produced. Nothing is
