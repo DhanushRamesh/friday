@@ -587,6 +587,21 @@ An advisor needs both of the last two: something to reason from, and a
 record to check itself against. They must stay distinguishable in the
 prompt, because "you told me" and "I concluded" are not the same claim.
 
+### A reminder only ever says something
+
+Owner's decision. A reminder carries words and speaks them: a timer that
+has finished, something to be told at seven. It does not run instructions
+unattended.
+
+That was the other half of the idea and it was dropped deliberately. A
+task firing with nobody watching runs with the owner's authority and can
+reach tools, and a misread instruction at three in the morning has nobody
+to catch it. Announcing is most of the value and almost none of the risk.
+
+A timer and a schedule are one thing stored one way, differing only in how
+the time was written. Two stores would mean two firing loops and two sets
+of bugs.
+
 ### An answer records how it was made
 
 `messages.chat_id` says which turn wrote a message, and `chats.recalled`
