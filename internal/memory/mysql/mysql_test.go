@@ -90,6 +90,11 @@ func stored(t *testing.T, s *memorymysql.Store, user string, tier memory.Tier, s
 	return m
 }
 
+// unembeddedLimit : Big enough to see past the rows earlier runs left
+// behind. These tests share a database and do not clean up, so a small limit
+// would return other runs' memories and never reach this one's.
+const unembeddedLimit = 100000
+
 // A memory survives the round trip unchanged.
 func TestAMemoryComesBackAsItWentIn(t *testing.T) {
 	s, user := newStore(t)
@@ -290,7 +295,7 @@ func TestUnembeddedFindsWhatNeedsAVector(t *testing.T) {
 
 	m := stored(t, s, user, memory.TierRecall, "Roof quote", "forty thousand")
 
-	pending, err := s.Unembedded(ctx, "bge", 100)
+	pending, err := s.Unembedded(ctx, "bge", unembeddedLimit)
 	if err != nil {
 		t.Fatalf("Unembedded: %v", err)
 	}
@@ -301,7 +306,7 @@ func TestUnembeddedFindsWhatNeedsAVector(t *testing.T) {
 	if err := s.SetEmbedding(ctx, m.ID, "bge", embed.Vector{1, 0, 0}); err != nil {
 		t.Fatalf("SetEmbedding: %v", err)
 	}
-	if pending, err = s.Unembedded(ctx, "bge", 100); err != nil {
+	if pending, err = s.Unembedded(ctx, "bge", unembeddedLimit); err != nil {
 		t.Fatalf("Unembedded: %v", err)
 	}
 	if contains(pending, m.ID) {
@@ -309,7 +314,7 @@ func TestUnembeddedFindsWhatNeedsAVector(t *testing.T) {
 	}
 
 	// A different model means the vector it has is of no use.
-	if pending, err = s.Unembedded(ctx, "another-model", 100); err != nil {
+	if pending, err = s.Unembedded(ctx, "another-model", unembeddedLimit); err != nil {
 		t.Fatalf("Unembedded: %v", err)
 	}
 	if !contains(pending, m.ID) {

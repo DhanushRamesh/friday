@@ -276,3 +276,56 @@ func TestAnEmptyQuestionSearchesNothing(t *testing.T) {
 		t.Errorf("For = %v, %v, want nothing", got, err)
 	}
 }
+
+// Embedding one particular memory embeds that one, not the oldest waiting.
+//
+// Embed works a backlog oldest first, so calling it for a memory just
+// written would embed something else and report success.
+func TestEmbedOneEmbedsTheOneAskedFor(t *testing.T) {
+	s := inmemory.New()
+	ctx := context.Background()
+
+	older, _ := memory.New("usr_1", memory.TierRecall, "Older", "written first")
+	if err := s.Create(ctx, older); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	newer, _ := memory.New("usr_1", memory.TierRecall, "Newer", "written second")
+	if err := s.Create(ctx, newer); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	r := &memory.Recall{Store: s, Embedder: embed.Fake{}}
+	if err := r.EmbedOne(ctx, newer); err != nil {
+		t.Fatalf("EmbedOne: %v", err)
+	}
+
+	got, err := s.Get(ctx, "usr_1", newer.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if !got.Embedded("fake") {
+		t.Error("the memory asked for was not embedded")
+	}
+
+	stale, err := s.Get(ctx, "usr_1", older.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if stale.Embedded("fake") {
+		t.Error("it embedded the older one instead of the one asked for")
+	}
+}
+
+// Without an embedder it is not an error, just nothing done.
+func TestEmbedOneWithoutAnEmbedderDoesNothing(t *testing.T) {
+	s := inmemory.New()
+	m, _ := memory.New("usr_1", memory.TierRecall, "Roof", "forty thousand")
+	if err := s.Create(context.Background(), m); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	r := &memory.Recall{Store: s, Embedder: embed.Off{}}
+	if err := r.EmbedOne(context.Background(), m); err != nil {
+		t.Errorf("EmbedOne: %v, want it to do nothing quietly", err)
+	}
+}

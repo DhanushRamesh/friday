@@ -28,11 +28,15 @@ import (
 
 	"github.com/DhanushRamesh/personal-assistant/internal/chat"
 	"github.com/DhanushRamesh/personal-assistant/internal/config"
+	"github.com/DhanushRamesh/personal-assistant/internal/embed"
 	"github.com/DhanushRamesh/personal-assistant/internal/environment"
 	"github.com/DhanushRamesh/personal-assistant/internal/environment/platformai"
+	"github.com/DhanushRamesh/personal-assistant/internal/memory"
+	"github.com/DhanushRamesh/personal-assistant/internal/memory/inmemory"
 	"github.com/DhanushRamesh/personal-assistant/internal/persona"
 	"github.com/DhanushRamesh/personal-assistant/internal/tool"
 	"github.com/DhanushRamesh/personal-assistant/internal/tool/conversations"
+	"github.com/DhanushRamesh/personal-assistant/internal/tool/memories"
 )
 
 // eval : One thing a person might say, and what should happen.
@@ -74,16 +78,46 @@ var cases = []eval{
 	{Say: "delete the Roof Quotes conversation",
 		Tool: []string{"conversation_find", "conversation_list"}, Channel: chat.ChannelDirect},
 
+	// Remembering, which is only ever asked for. A model that writes down
+	// whatever it hears fills the store with things nobody agreed to keep.
+	{Say: "remember that the roofer quoted forty thousand", Tool: []string{"memory_remember"}, Args: []string{"roof"}},
+	{Say: "keep a note that my birthday is the 22nd of October", Tool: []string{"memory_remember"}, Args: []string{"birthday"}},
+	{Say: "from now on always answer me briefly", Tool: []string{"memory_remember"}, Args: []string{"always"}},
+
+	// Looking something up on purpose, when recall has offered nothing.
+	{Say: "what did I tell you about the roof", Tool: []string{"memory_search"}, Args: []string{"roof"}},
+	{Say: "do you remember anything about my shopping list", Tool: []string{"memory_search"}, Args: []string{"shopping"}},
+
+	// Changing and forgetting both need the identifier, and the point is
+	// that it looks one up rather than inventing one.
+	{Say: "the roofer actually said fifty thousand, update that",
+		Tool: []string{"memory_search", "memory_update"}},
+	{Say: "forget what I told you about the roof",
+		Tool: []string{"memory_search", "memory_forget"}, Channel: chat.ChannelDirect},
+
 	// Reaching for none. A model that calls a tool at every question is as
 	// wrong as one that never does.
 	{Say: "what is the capital of Australia"},
 	{Say: "how are you"},
 	{Say: "thank you"},
 	{Say: "what is twelve times eight"},
+
+	// Nor is every passing fact a thing to write down. Storing this would be
+	// a memory nobody asked for and nobody can see to remove.
+	{Say: "I had dosa for breakfast"},
+	{Say: "it is raining here today"},
 }
 
 func TestTheModelReachesForTheRightTool(t *testing.T) {
-	registry, err := tool.NewRegistry(conversations.All(nil)...)
+	// A store, so a tool that runs has somewhere to run against. What is
+	// measured is the choice, which is made before anything runs, but a
+	// registry that cannot build measures nothing.
+	recall := &memory.Recall{Store: inmemory.New(), Embedder: embed.Fake{}}
+
+	registry, err := tool.NewRegistry(append(
+		conversations.All(nil),
+		memories.All(recall)...,
+	)...)
 	if err != nil {
 		t.Fatalf("NewRegistry: %v", err)
 	}

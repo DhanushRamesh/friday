@@ -109,6 +109,31 @@ func (r *Recall) Always(ctx context.Context, userID string) ([]Memory, error) {
 	return out, nil
 }
 
+// EmbedOne : Gives a vector to one particular memory.
+//
+// For a memory just written or just changed. Embed works through a backlog
+// oldest first, so it is the wrong thing to call for a specific one: with
+// anything waiting, it would embed something else and report success.
+func (r *Recall) EmbedOne(ctx context.Context, m *Memory) error {
+	if r == nil || r.Store == nil || r.Embedder == nil || !r.Embedder.Available() || m == nil {
+		return nil
+	}
+
+	vectors, err := r.Embedder.Documents(ctx, []string{m.Text()})
+	if err != nil {
+		return fmt.Errorf("memory: embedding %s: %w", m.ID, err)
+	}
+	if len(vectors) != 1 {
+		return fmt.Errorf("memory: asked for 1 vector, got %d", len(vectors))
+	}
+
+	if err := r.Store.SetEmbedding(ctx, m.ID, r.Embedder.Model(), vectors[0]); err != nil {
+		return err
+	}
+	m.EmbedModel, m.Embedding = r.Embedder.Model(), vectors[0]
+	return nil
+}
+
 // Embed : Gives a vector to memories that have none.
 //
 // Called after writing one, and at startup for anything written while the

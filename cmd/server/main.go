@@ -34,6 +34,7 @@ import (
 	"github.com/DhanushRamesh/personal-assistant/internal/storage"
 	"github.com/DhanushRamesh/personal-assistant/internal/tool"
 	"github.com/DhanushRamesh/personal-assistant/internal/tool/conversations"
+	"github.com/DhanushRamesh/personal-assistant/internal/tool/memories"
 )
 
 // main : Runs the server, or the named command.
@@ -167,15 +168,6 @@ func run() error {
 	// behaved before it could speak first.
 	speaker := announcer(cfg, logger.Logger)
 
-	// What the assistant can do as well as say. A registry that will not
-	// build is a programming mistake, not a configuration one, so it stops
-	// the server rather than quietly offering nothing.
-	tools, err := tool.NewRegistry(conversations.All(chats)...)
-	if err != nil {
-		return err
-	}
-	logger.Info("tools registered", slog.Any("tools", tools.Names()))
-
 	// What the assistant has been asked to remember. Without an embedding
 	// server it still works, matching words rather than meaning, which is
 	// worse than the alternative and much better than going blind.
@@ -185,6 +177,18 @@ func run() error {
 		Logger:   logger.Logger,
 	}
 	catchUpEmbeddings(context.Background(), remembering, logger.Logger)
+
+	// What the assistant can do as well as say. A registry that will not
+	// build is a programming mistake, not a configuration one, so it stops
+	// the server rather than quietly offering nothing.
+	tools, err := tool.NewRegistry(append(
+		conversations.All(chats),
+		memories.All(remembering)...,
+	)...)
+	if err != nil {
+		return err
+	}
+	logger.Info("tools registered", slog.Any("tools", tools.Names()))
 
 	manner := persona.NewSetting(startingPersona(context.Background(), chats, cfg, logger.Logger))
 

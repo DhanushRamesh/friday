@@ -538,6 +538,39 @@ budget, and names are endless. It is drawn from the stored user messages, so
 it primes what has actually been said rather than what was imagined. The
 server is unaffected either way -- nothing here knows the decoder exists.
 
+### Memory is three layers, and only the middle one is hard
+
+What the assistant is asked to remember outlives the conversation it was
+said in. `internal/memory` holds it in two tiers. `always` goes into every
+system prompt whole, under a ceiling in both count and bytes, because
+anything composed into every prompt needs a size that cannot run away.
+`recall` is searched with whatever was just asked, and the nearest few are
+offered. `internal/tool/memories` is the deliberate path: remember, search,
+update, forget.
+
+Nearest is not relevant, and that is the whole difficulty. A question with
+nothing stored about it still has a nearest memory, and it scores in the
+same range as a real match. Measured over twelve questions whose answer was
+stored and eight with nothing stored, the two groups overlapped: a genuine
+match scored as low as 0.414 while an unrelated one reached 0.504, so no
+cut-off separates them. A cross-encoder rejected all eight but found only
+eight of twelve. The model, shown three candidates and told that none of
+them fitting is the usual case, found twelve of twelve and left all eight
+alone. So the search shortlists and the model decides, and `memory.Offered`
+carries the instruction that makes that work.
+
+That instruction is load-bearing and invisible, so it is measured. The
+inline shape -- notes in the system prompt of the call that also answers --
+scores three of three used and five of five left out of the answer, under
+`make evals`.
+
+Writing happens only when asked. A missing memory is noticed and can be
+added; a wrong one comes back as fact and nothing prompts anyone to doubt
+it.
+
+`EmbedOne` exists because `Embed` works a backlog oldest first: calling it
+for a memory just written would embed something else and report success.
+
 ### The assistant is told where it is
 
 Asked which conversation it was in, it named one it had switched away from
