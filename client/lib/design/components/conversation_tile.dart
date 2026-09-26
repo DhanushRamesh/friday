@@ -55,6 +55,10 @@ class _ConversationTileState extends State<AppConversationTile> {
       widget.onArchive != null ||
       widget.onDelete != null;
 
+  /// _showMenu : Whether the actions are worth showing. They are still in
+  /// the tree when they are not, only invisible.
+  bool get _showMenu => _hovered || widget.selected;
+
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
@@ -123,12 +127,29 @@ class _ConversationTileState extends State<AppConversationTile> {
                   ],
                 ),
               ),
-              if (_hasActions && (_hovered || widget.selected))
-                _TileMenu(
-                  archived: widget.archived,
-                  onRename: widget.onRename,
-                  onArchive: widget.onArchive,
-                  onDelete: widget.onDelete,
+              // Faded out rather than taken away. Removing it unmounts the
+              // button, and a PopupMenuButton that is unmounted while its
+              // menu is open drops the selection without a word: its
+              // handler begins "if (!mounted) return". Opening the menu
+              // moves the pointer onto the overlay, which ends the hover,
+              // which removed this -- so none of the three actions ever
+              // ran, and the stray tap switched conversation instead.
+              //
+              // Keeping it in the tree also stops the row jumping as the
+              // pointer crosses it, since the space is always reserved.
+              if (_hasActions)
+                IgnorePointer(
+                  ignoring: !_showMenu,
+                  child: AnimatedOpacity(
+                    duration: AppMotion.fast,
+                    opacity: _showMenu ? 1 : 0,
+                    child: _TileMenu(
+                      archived: widget.archived,
+                      onRename: widget.onRename,
+                      onArchive: widget.onArchive,
+                      onDelete: widget.onDelete,
+                    ),
+                  ),
                 ),
             ],
           ),
