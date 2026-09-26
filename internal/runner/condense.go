@@ -126,3 +126,33 @@ func (r *Runner) ask(ctx context.Context, model chat.Model, why environment.Purp
 	}
 	return text, nil
 }
+
+// indexBudget : How many exchanges one turn indexes.
+//
+// The turn just finished is one; the rest is a backlog left by an embedding
+// server that was away. Small, because this runs while the slot is still
+// held.
+const indexBudget = 20
+
+// index : Makes what was just said searchable later.
+//
+// After the answer, like condensing, and its failure is logged and dropped:
+// an exchange that is not indexed is found by nothing, which is what every
+// exchange was before this existed.
+func (r *Runner) index(ctx context.Context) {
+	if r.memory == nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, r.condenseTimeout)
+	defer cancel()
+
+	done, err := r.memory.IndexTranscript(ctx, indexBudget)
+	if err != nil {
+		r.logger.WarnContext(ctx, "cannot index what was said", slog.Any("error", err))
+		return
+	}
+	if done > 0 {
+		r.logger.DebugContext(ctx, "exchanges indexed", slog.Int("exchanges", done))
+	}
+}

@@ -21,6 +21,8 @@ type remembering struct {
 	runner *runner.Runner
 	repo   *chatmemory.Repository
 	store  *inmemory.Store
+	past   *inmemory.Transcript
+	recall *memory.Recall
 	convID string
 	userID string
 }
@@ -32,7 +34,10 @@ func withMemories(t *testing.T, p *recordingProvider, facts map[memory.Tier][][2
 
 	repo := chatmemory.New()
 	store := inmemory.New()
-	recall := &memory.Recall{Store: store, Embedder: embed.Fake{}, Logger: discard()}
+	past := inmemory.NewTranscript()
+	recall := &memory.Recall{
+		Store: store, Transcript: past, Embedder: embed.Fake{}, Logger: discard(),
+	}
 
 	userID := chat.NewUserID()
 	c := chat.NewConversation(userID, "Roof Quotes")
@@ -68,7 +73,10 @@ func withMemories(t *testing.T, p *recordingProvider, facts map[memory.Tier][][2
 		_ = r.Shutdown(ctx)
 	})
 
-	return &remembering{runner: r, repo: repo, store: store, convID: c.ID, userID: userID}
+	return &remembering{
+		runner: r, repo: repo, store: store, past: past, recall: recall,
+		convID: c.ID, userID: userID,
+	}
 }
 
 // ask : Runs one chat and waits for it to finish.
@@ -210,5 +218,55 @@ func TestARunnerWithoutMemoryStillAnswers(t *testing.T) {
 
 	if p.systemPrompt() == "" {
 		t.Error("no system prompt was sent at all")
+	}
+}
+
+// Something said in another conversation is found again and quoted.
+func TestAPastExchangeIsQuoted(t *testing.T) {
+	p := &recordingProvider{}
+	h := withMemories(t, p, nil)
+
+	h.past.Add(memory.Exchange{
+		MessageID:      "msg_earlier",
+		UserID:         h.userID,
+		ConversationID: "conv_01M3D477HXQ4YNQX7BNXJZZCV9",
+		Text:           memory.ExchangeText("what did the roofer quote", "He quoted forty thousand rupees."),
+		At:             time.Now().UTC().Add(-72 * time.Hour),
+	})
+	if _, err := h.recall.IndexTranscript(context.Background(), 10); err != nil {
+		t.Fatalf("IndexTranscript: %v", err)
+	}
+
+	h.ask(t, "what did the roofer quote")
+
+	if !strings.Contains(p.systemPrompt(), "forty thousand rupees") {
+		t.Errorf("the earlier exchange was not quoted:\n%s", p.systemPrompt())
+	}
+	if !strings.Contains(p.systemPrompt(), "never state one as a fact of your own") {
+		t.Errorf("the transcript was offered without saying it is a transcript:\n%s", p.systemPrompt())
+	}
+}
+
+// What was said in this conversation is not quoted back: it is already in
+// front of the model.
+func TestTheCurrentConversationIsNotQuotedBack(t *testing.T) {
+	p := &recordingProvider{}
+	h := withMemories(t, p, nil)
+
+	h.past.Add(memory.Exchange{
+		MessageID:      "msg_here",
+		UserID:         h.userID,
+		ConversationID: h.convID,
+		Text:           memory.ExchangeText("what did the roofer quote", "He quoted forty thousand rupees."),
+		At:             time.Now().UTC(),
+	})
+	if _, err := h.recall.IndexTranscript(context.Background(), 10); err != nil {
+		t.Fatalf("IndexTranscript: %v", err)
+	}
+
+	h.ask(t, "what did the roofer quote")
+
+	if strings.Contains(p.systemPrompt(), "forty thousand rupees") {
+		t.Errorf("this conversation was quoted back to itself:\n%s", p.systemPrompt())
 	}
 }

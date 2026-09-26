@@ -320,7 +320,10 @@ func (r *Runner) promptFor(ctx context.Context, t *chat.Chat) string {
 		}
 	}
 
-	return join(standing, r.known(ctx, userID), r.recalled(ctx, userID, t.Prompt))
+	return join(standing,
+		r.known(ctx, userID),
+		r.recalled(ctx, userID, t.Prompt),
+		r.quoted(ctx, userID, t.Prompt, t.ConversationID))
 }
 
 // join : The parts of a system prompt that are not empty, separated so the
@@ -376,6 +379,24 @@ func (r *Runner) recalled(ctx context.Context, userID, question string) string {
 			slog.Any("error", err))
 	}
 	return memory.Offered(found)
+}
+
+// quoted : Past exchanges that resemble what was asked.
+//
+// Nothing from the conversation in progress, which is already in front of
+// the model. Like recall, this may not fail the turn.
+func (r *Runner) quoted(ctx context.Context, userID, question, conversationID string) string {
+	if r.memory == nil || userID == "" {
+		return ""
+	}
+
+	heard, err := r.memory.Said(ctx, userID, question, conversationID)
+	if err != nil {
+		r.logger.WarnContext(ctx, "cannot search the transcript",
+			slog.Any("error", err))
+		return ""
+	}
+	return memory.Quoted(heard)
 }
 
 // heard : The warning that the words were spoken, for a chat that was.

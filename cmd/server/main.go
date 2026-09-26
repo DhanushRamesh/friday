@@ -52,6 +52,13 @@ const embeddingCatchUpTimeout = 60 * time.Second
 // embeddingCatchUpLimit : The most memories embedded in one catch-up.
 const embeddingCatchUpLimit = 500
 
+// transcriptCatchUpLimit : The most exchanges indexed in one catch-up.
+//
+// The transcript is indexed from nothing the first time, and the server
+// should start answering rather than finish the backlog. What is left is
+// picked up after each turn and at the next restart.
+const transcriptCatchUpLimit = 2000
+
 func main() {
 	if len(os.Args) > 2 && os.Args[1] == "createuser" {
 		osExitOnError(runCreateUser(os.Args[2]))
@@ -172,9 +179,10 @@ func run() error {
 	// server it still works, matching words rather than meaning, which is
 	// worse than the alternative and much better than going blind.
 	remembering := &memory.Recall{
-		Store:    memorymysql.New(db),
-		Embedder: embedder(cfg, logger.Logger),
-		Logger:   logger.Logger,
+		Store:      memorymysql.New(db),
+		Transcript: memorymysql.NewTranscript(db),
+		Embedder:   embedder(cfg, logger.Logger),
+		Logger:     logger.Logger,
 	}
 	catchUpEmbeddings(context.Background(), remembering, logger.Logger)
 
@@ -352,6 +360,18 @@ func catchUpEmbeddings(ctx context.Context, remembering *memory.Recall, logger *
 			slog.Any("error", err))
 	case done > 0:
 		logger.Info("memories embedded", slog.Int("memories", done))
+	}
+
+	// The transcript is the larger of the two and is indexed from nothing
+	// the first time, so it is bounded and finishes in the background over
+	// however many restarts it takes.
+	indexed, err := remembering.IndexTranscript(ctx, transcriptCatchUpLimit)
+	switch {
+	case err != nil:
+		logger.Warn("cannot index the exchanges that have no vector yet",
+			slog.Any("error", err))
+	case indexed > 0:
+		logger.Info("exchanges indexed", slog.Int("exchanges", indexed))
 	}
 }
 

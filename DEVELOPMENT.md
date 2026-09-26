@@ -548,7 +548,26 @@ case it is meant to cover.
 This needs no new hoarding. Every message is already stored and condensing
 deletes nothing -- it adds a summary and leaves the transcript alone -- so
 the whole record exists and is merely unsearchable. Indexing it is what is
-missing.
+missing, and `message_vectors` is that index: one row per exchange, keyed
+by the message somebody sent.
+
+An exchange, not a message. A third of what gets said is unsearchable
+alone -- "yes", "try again", "do both" -- and means something only beside
+what it answered, so the row holds the message and the reply it drew. The
+text is stored rather than rebuilt, so the words that were embedded and
+the words that are shown cannot drift apart.
+
+Searching reads every vector for that person and scores them in Go, capped
+at the most recent `MaxScanned`. The cap is what stops a transcript of
+years making every turn slow; it has never been reached.
+
+The conversation in progress is left out. It is already in front of the
+model, and offering it back reads as the assistant quoting itself.
+
+Measured on the real transcript: 191 exchanges indexed, and five questions
+worded to share nothing with what was said each found the right one --
+"who sings the song Fireflies" found an exchange about Adam Young and Owl
+City that does not contain the word Fireflies.
 
 That is also safer than extracting facts automatically. An extractor
 invents: it writes down a claim nobody made and it comes back later as

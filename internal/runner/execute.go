@@ -58,6 +58,7 @@ func (r *Runner) execute(ctx, lifeCtx context.Context, t *chat.Chat) {
 	// two and is the one somebody is waiting to hear.
 	r.title(ctx, t)
 	r.condense(ctx, t, systemPrompt)
+	r.index(ctx)
 }
 
 // consume : Reads the provider's stream and records what it produces.

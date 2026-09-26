@@ -40,6 +40,16 @@ func testEnv(key string) (string, bool) {
 	return "", false
 }
 
+// uniqueName : A username no other test will take.
+//
+// A ULID's first ten characters are its millisecond, so a name built from
+// them collides between two users made in the same one. The remainder is the
+// random half.
+func uniqueName() string {
+	id := chat.NewUserID()
+	return "tester" + id[len(id)-12:]
+}
+
 // newStore : Opens the test database, migrates it, and returns a store and a
 // user to own the memories. It skips when MySQL is not reachable, so the
 // suite still runs on a bare checkout.
@@ -67,7 +77,7 @@ func newStore(t *testing.T) (*memorymysql.Store, string) {
 		t.Fatalf("Migrate: %v", err)
 	}
 
-	owner, err := chat.NewUser("tester"+chat.NewUserID()[4:14], "hash")
+	owner, err := chat.NewUser(uniqueName(), "hash")
 	if err != nil {
 		t.Fatalf("chat.NewUser: %v", err)
 	}

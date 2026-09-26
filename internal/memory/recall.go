@@ -32,8 +32,13 @@ type Recall struct {
 	// Embedder : What turns a question into something comparable. Off or nil
 	// falls back to matching words.
 	Embedder embed.Embedder
+	// Transcript : The record of everything said. Nil searches only the
+	// curated memories.
+	Transcript Transcript
 	// Candidates : How many to offer. Zero selects DefaultCandidates.
 	Candidates int
+	// Quoted : How many past exchanges to offer. Zero selects MaxQuoted.
+	Quoted int
 	// AlwaysCap : The most always-memories to use. Zero selects
 	// DefaultAlwaysCap.
 	AlwaysCap int
