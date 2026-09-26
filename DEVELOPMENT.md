@@ -538,6 +538,35 @@ budget, and names are endless. It is drawn from the stored user messages, so
 it primes what has actually been said rather than what was imagined. The
 server is unaffected either way -- nothing here knows the decoder exists.
 
+### Recall reaches everything said, not only what was written down
+
+Owner's decision, revising "written only when asked". The assistant should
+be able to reach anything that was ever said to it, not only the facts
+somebody thought to save. Forgetting to ask it to remember is exactly the
+case it is meant to cover.
+
+This needs no new hoarding. Every message is already stored and condensing
+deletes nothing -- it adds a summary and leaves the transcript alone -- so
+the whole record exists and is merely unsearchable. Indexing it is what is
+missing.
+
+That is also safer than extracting facts automatically. An extractor
+invents: it writes down a claim nobody made and it comes back later as
+truth. The transcript returns what was actually said, with when it was
+said, and can be quoted rather than asserted.
+
+So recall has three sources, and they are different things:
+
+- the always tier, in every prompt;
+- curated memories, which are what the assistant **believes** -- distilled,
+  correctable, and the only ones that can be edited or forgotten;
+- the transcript, which is what **happened** -- complete, never edited, and
+  including everything the decoder misheard.
+
+An advisor needs both of the last two: something to reason from, and a
+record to check itself against. They must stay distinguishable in the
+prompt, because "you told me" and "I concluded" are not the same claim.
+
 ### The point of memory is advice, not recall
 
 Stated by the owner. The assistant is not meant to do only what it is told.
