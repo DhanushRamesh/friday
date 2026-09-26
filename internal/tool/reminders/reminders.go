@@ -28,6 +28,13 @@ const (
 	// MaxMinutes : The longest a relative reminder may be, in minutes.
 	// A year, which is past anything anybody says out loud.
 	MaxMinutes = 525600
+	// MinSeconds : The shortest a reminder may be, in seconds.
+	//
+	// Below this it would fire while the assistant is still saying that it
+	// has been set.
+	MinSeconds = 5
+	// MaxSeconds : The longest worth saying in seconds rather than minutes.
+	MaxSeconds = 86400
 	// MaxAhead : The furthest ahead an absolute one may be set.
 	MaxAhead = 5 * 365 * 24 * time.Hour
 	// Slack : How far in the past a time may be and still be taken as now.
@@ -92,9 +99,11 @@ func set(store remind.Store, clock Clock) tool.Tool {
 		Name:    "reminder_set",
 		Purpose: "Arrange for something to be said out loud at a time, once or repeatedly.",
 		UseWhen: "The person asks to be reminded, wants a timer, or wants telling at a time or on a day.",
-		Avoid: "Give either minutes_from_now or at, never both. Use minutes_from_now for anything said as " +
-			"a length of time, so the arithmetic is not yours to get wrong. Do not use this to write " +
-			"something down for later reference: that is memory_remember.",
+		Avoid: "Give exactly one of seconds_from_now, minutes_from_now or at. Use one of the first two for " +
+			"anything said as a length of time, so the arithmetic is not yours to get wrong: do not " +
+			"convert seconds into minutes, and never refuse a length because it is not a whole number " +
+			"of minutes. Do not use this to write something down for later reference: that is " +
+			"memory_remember.",
 		Channels: []chat.Channel{chat.ChannelVoice, chat.ChannelDirect},
 		Params: tool.Schema{
 			Required: []string{"title", "say"},
@@ -107,10 +116,15 @@ func set(store remind.Store, clock Clock) tool.Tool {
 					Type:        "string",
 					Description: "Exactly what should be spoken when the time comes, as a whole sentence. It is read out with nothing around it, so make it make sense on its own.",
 				},
+				"seconds_from_now": {
+					Type:    "integer",
+					Minimum: tool.Bound(MinSeconds), Maximum: tool.Bound(MaxSeconds),
+					Description: "For a length of time said in seconds. Thirty seconds is 30, ninety seconds is 90.",
+				},
 				"minutes_from_now": {
 					Type:    "integer",
 					Minimum: tool.Bound(1), Maximum: tool.Bound(MaxMinutes),
-					Description: "For anything said as a length of time. Twenty minutes is 20, two hours is 120. Leave out if using at.",
+					Description: "For a length of time said in minutes or hours. Twenty minutes is 20, two hours is 120.",
 				},
 				"at": {
 					Type: "string",
@@ -131,6 +145,8 @@ func set(store remind.Store, clock Clock) tool.Tool {
 		Examples: []tool.Example{
 			{Ask: "set a timer for twenty minutes",
 				Args: `{"title":"Timer","say":"Your twenty minute timer has finished.","minutes_from_now":20}`},
+			{Ask: "set a timer for thirty seconds",
+				Args: `{"title":"Timer","say":"Your thirty second timer has finished.","seconds_from_now":30}`},
 			{Ask: "remind me to call the roofer at half past four",
 				Args: `{"title":"Call the roofer","say":"Time to call the roofer.","at":"2026-09-26 16:30"}`},
 			{Ask: "wake me at seven every weekday",
@@ -140,6 +156,7 @@ func set(store remind.Store, clock Clock) tool.Tool {
 			var args struct {
 				Title   string `json:"title"`
 				Say     string `json:"say"`
+				Seconds int    `json:"seconds_from_now"`
 				Minutes int    `json:"minutes_from_now"`
 				At      string `json:"at"`
 				Repeats string `json:"repeats"`
@@ -154,7 +171,7 @@ func set(store remind.Store, clock Clock) tool.Tool {
 				return tool.Failed("This request did not come from a known person, so there is nobody to remind.")
 			}
 
-			due, fail := when(clock, args.Minutes, args.At)
+			due, fail := when(clock, args.Seconds, args.Minutes, args.At)
 			if fail != "" {
 				return tool.Failed(fail)
 			}
@@ -287,13 +304,33 @@ func cancel(store remind.Store) tool.Tool {
 // Minutes are preferred to a written time wherever the person said a
 // length, because the arithmetic is then the server's rather than the
 // model's.
-func when(clock Clock, minutes int, written string) (time.Time, string) {
+func when(clock Clock, seconds, minutes int, written string) (time.Time, string) {
 	now := clock.now()
 	written = strings.TrimSpace(written)
 
+	var given int
+	for _, set := range []bool{seconds > 0, minutes > 0, written != ""} {
+		if set {
+			given++
+		}
+	}
+
 	switch {
-	case minutes > 0 && written != "":
-		return time.Time{}, "Give either minutes_from_now or at, not both. Which was meant?"
+	case given > 1:
+		return time.Time{}, "Give exactly one of seconds_from_now, minutes_from_now or at. Which was meant?"
+
+	case seconds > 0:
+		switch {
+		case seconds < MinSeconds:
+			return time.Time{}, fmt.Sprintf(
+				"seconds_from_now was %d, and the least allowed is %d: anything shorter goes off while you are still saying it is set.",
+				seconds, MinSeconds)
+		case seconds > MaxSeconds:
+			return time.Time{}, fmt.Sprintf(
+				"seconds_from_now was %d, and the most allowed is %d. Use minutes_from_now for anything longer.",
+				seconds, MaxSeconds)
+		}
+		return now.Add(time.Duration(seconds) * time.Second), ""
 
 	case minutes > 0:
 		if minutes > MaxMinutes {

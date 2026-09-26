@@ -637,10 +637,17 @@ configure nothing anybody could hear.
 
 ### A length of time is the server's arithmetic, not the model's
 
-`reminder_set` takes either `minutes_from_now` or `at`, never both.
+`reminder_set` takes exactly one of `seconds_from_now`, `minutes_from_now`
+or `at`.
 
-Minutes exist so that "in twenty minutes" needs no arithmetic from the
-model: it is told the current time in the prompt, and asking it to add
+Seconds were missing at first, and the model reported that faithfully:
+asked for thirty seconds it answered "timers can only be set for whole
+minutes". It was not being awkward -- there was no argument that could
+carry it. A tool's limits become the assistant's excuses, stated with
+confidence, and are hard to tell from the model refusing.
+
+The two lengths exist so that "in twenty minutes" needs no arithmetic from
+the model: it is told the current time in the prompt, and asking it to add
 twenty minutes to that is a step that can go wrong silently. A time of day
 still has to be written out, and is read in the person's own zone.
 

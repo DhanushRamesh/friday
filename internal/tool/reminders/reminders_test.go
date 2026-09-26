@@ -310,3 +310,47 @@ func TestARequestFromNobodyStoresNothing(t *testing.T) {
 		t.Error("something was stored for nobody")
 	}
 }
+
+// A timer said in seconds is set in seconds. Refusing it because it is not
+// a whole number of minutes was a limitation of the tool, not of anything
+// real.
+func TestATimerInSecondsWorks(t *testing.T) {
+	r, store := harness(t)
+
+	got := call(t, r, "reminder_set",
+		`{"title":"Timer","say":"Your thirty second timer has finished.","seconds_from_now":30}`)
+	if got.Outcome != conversation.OutcomeOK {
+		t.Fatalf("outcome = %s: %s", got.Outcome, got.Content)
+	}
+
+	all, _ := store.List(context.Background(), user, remind.Pending)
+	if want := noon.Add(30 * time.Second); !all[0].DueAt.Equal(want) {
+		t.Errorf("due = %v, want %v", all[0].DueAt.In(india), want)
+	}
+}
+
+// Shorter than the assistant takes to say it is set would go off while it
+// is still speaking.
+func TestATimerTooShortIsRefused(t *testing.T) {
+	r, _ := harness(t)
+
+	got := call(t, r, "reminder_set", `{"title":"Timer","say":"Up.","seconds_from_now":1}`)
+	if got.Outcome != conversation.OutcomeFailed {
+		t.Errorf("outcome = %s, want it refused", got.Outcome)
+	}
+}
+
+// Two ways of saying when is ambiguous however they are combined.
+func TestOnlyOneWayOfSayingWhen(t *testing.T) {
+	r, _ := harness(t)
+
+	for _, args := range []string{
+		`{"title":"T","say":"Up.","seconds_from_now":30,"minutes_from_now":20}`,
+		`{"title":"T","say":"Up.","seconds_from_now":30,"at":"2026-09-26 16:30"}`,
+		`{"title":"T","say":"Up.","minutes_from_now":20,"at":"2026-09-26 16:30"}`,
+	} {
+		if got := call(t, r, "reminder_set", args); got.Outcome != conversation.OutcomeFailed {
+			t.Errorf("%s was accepted", args)
+		}
+	}
+}

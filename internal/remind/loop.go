@@ -9,9 +9,10 @@ import (
 const (
 	// DefaultEvery : How often the loop asks what is due.
 	//
-	// Five seconds is how late a timer can be, which nobody notices, and
-	// the question is one indexed read.
-	DefaultEvery = 5 * time.Second
+	// This is how late a timer can be. Five seconds was chosen when the
+	// shortest was a minute; a thirty second timer five seconds late is
+	// noticeably wrong, and the question is one indexed read.
+	DefaultEvery = 2 * time.Second
 
 	// DefaultGrace : How late a reminder may be and still be worth saying.
 	//

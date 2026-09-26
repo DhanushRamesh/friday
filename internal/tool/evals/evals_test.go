@@ -109,6 +109,10 @@ var cases = []eval{
 	// Reminders. A length of time goes to minutes_from_now so the
 	// arithmetic is the server's, and a time of day goes to at.
 	{Say: "set a timer for twenty minutes", Tool: []string{"reminder_set"}, Args: []string{"20"}},
+	// Seconds are seconds. Refusing them for not being whole minutes was a
+	// limitation of the tool, and the model repeated it faithfully.
+	{Say: "set a timer for thirty seconds", Tool: []string{"reminder_set"}, Args: []string{"seconds_from_now", "30"}},
+	{Say: "time me for ninety seconds", Tool: []string{"reminder_set"}, Args: []string{"seconds_from_now"}},
 	{Say: "remind me in two hours to take the washing out", Tool: []string{"reminder_set"}, Args: []string{"120"}},
 	{Say: "wake me at seven every weekday", Tool: []string{"reminder_set"}, Args: []string{"weekdays"}},
 	{Say: "what timers do I have", Tool: []string{"reminder_list"}},
